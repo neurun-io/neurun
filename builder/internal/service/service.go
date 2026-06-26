@@ -17,18 +17,12 @@ type Store interface {
 }
 
 type BuildService struct {
-	store  Store
-	goos   string
-	goarch string
-	cgo    string
+	store Store
 }
 
 func NewBuildService(store Store) *BuildService {
 	return &BuildService{
-		store:  store,
-		goos:   "linux",
-		goarch: "amd64",
-		cgo:    "0",
+		store: store,
 	}
 }
 

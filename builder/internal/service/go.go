@@ -16,11 +16,8 @@ func (s *BuildService) buildGo(ctx context.Context, srcDir, outDir, entrypoint, 
 	}
 
 	binName := pkg.SafeName(appID)
-	if s.goos == "windows" && !strings.HasSuffix(strings.ToLower(binName), ".exe") {
-		binName += ".exe"
-	}
 	outPath := filepath.Join(outDir, binName)
-	env := []string{"GOOS=" + s.goos, "GOARCH=" + s.goarch, "CGO_ENABLED=" + s.cgo}
+	env := []string{"GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0"}
 	if err := pkg.Run(ctx, srcDir, env, "go", "build", "-o", outPath, target); err != nil {
 		return nil, err
 	}
