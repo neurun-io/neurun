@@ -1,6 +1,6 @@
 # Dagflows Builder
 
-Small gRPC build service for packaging apps into deployable artifacts.
+SQS worker for packaging workflow code into deployable artifacts.
 
 ## Runtimes
 
@@ -11,7 +11,16 @@ Small gRPC build service for packaging apps into deployable artifacts.
 ## Config
 
 ```sh
-GRPC_PORT=50051
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=<access-key-id>
+AWS_SECRET_ACCESS_KEY=<secret-access-key>
+AWS_SESSION_TOKEN=
+
+SQS_REQUEST_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/<account-id>/<request-queue>
+SQS_RESPONSE_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/<account-id>/<response-queue>
+SQS_MAX_MESSAGES=1
+SQS_WAIT_TIME_SECONDS=20
+SQS_VISIBILITY_TIMEOUT_SECONDS=900
 
 R2_ACCOUNT_ID=<account-id>
 R2_ENDPOINT=
@@ -23,13 +32,12 @@ R2_PREFIX=builds
 
 `.env` is loaded on startup. If `R2_ENDPOINT` is blank, the service uses Cloudflare's documented S3 endpoint format: `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`. `R2_BUCKET` has no provider default and must be set.
 
-Host tools must be installed: `python`, `npm`, and `go`.
+Host tools must be installed: `git`, `python`, `npm`, and `go`.
 
 ## Layout
 
-- DTOs: `proto/builder/v1`
+- SQS listener: `internal/listener/sqs`
 - Domain: `internal/domain`
-- Handlers: `internal/handler/grpc`
 - Build service: `internal/service`
 - Shared helpers: `pkg`
 - Storage: `internal/storage`
@@ -37,11 +45,46 @@ Host tools must be installed: `python`, `npm`, and `go`.
 ## Run
 
 ```sh
-go run ./cmd/builderd
+go run ./cmd/builder
 ```
 
-## API
+## Messages
 
-See `proto/builder/v1/builder.proto`.
+Request messages are read from `SQS_REQUEST_QUEUE_URL`:
 
-`BuildRequest.source_path` is a directory visible to the builder host. The response returns uploaded R2 bucket/key pairs plus SHA-256 and size for each artifact.
+```json
+{
+  "deployment_id": "uuid",
+  "workflow_id": "uuid",
+  "organization_id": "uuid",
+  "git_url": "https://github.com/...",
+  "git_branch": "main",
+  "git_commit_hash": "abc1234"
+}
+```
+
+Response messages are sent to `SQS_RESPONSE_QUEUE_URL`:
+
+```json
+{
+  "deployment_id": "uuid",
+  "status": "SUCCESS",
+  "error_message": "",
+  "nodes": [
+    {
+      "key": "main",
+      "type": "task",
+      "language": "python",
+      "entrypoint": "main.py:handler",
+      "artifact_id": "uuid",
+      "deps_artifact_id": "uuid",
+      "config": {},
+      "depends": [],
+      "retry_count": 3,
+      "timeout_seconds": 300
+    }
+  ]
+}
+```
+
+The worker uses `nodes` from the request when present. Otherwise it checks for `dagflows.json`, `.dagflows.json`, `dagflows.workflow.json`, or `workflow.json`. If no manifest exists, it infers one `main` node from `package.json`, `go.mod`, `requirements.txt`, or Python source files.

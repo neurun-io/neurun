@@ -30,6 +30,7 @@ type UploadedArtifact struct {
 }
 
 type Artifact struct {
+	ID        string
 	Kind      ArtifactKind
 	Name      string
 	Bucket    string

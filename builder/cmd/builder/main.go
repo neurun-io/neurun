@@ -1,15 +1,17 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
-	"net"
-	"strings"
+	"os"
+	"os/signal"
+	"syscall"
 
-	handlergrpc "github.com/dagflows/builder/internal/handler/grpc"
+	listenersqs "github.com/dagflows/builder/internal/listener/sqs"
 	"github.com/dagflows/builder/internal/service"
 	"github.com/dagflows/builder/internal/storage"
 	"github.com/dagflows/builder/pkg"
-	"google.golang.org/grpc"
 )
 
 func main() {
@@ -22,17 +24,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	addr := ":" + strings.TrimPrefix(pkg.EnvOr("GRPC_PORT", "50051"), ":")
-	listener, err := net.Listen("tcp", addr)
+	builder := service.NewDeploymentService(service.NewBuildService(store))
+	listener, err := listenersqs.NewListenerFromEnv(builder)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	server := grpc.NewServer()
-	handlergrpc.Register(server, service.NewBuildService(store))
-
-	log.Printf("builderd listening on %s", addr)
-	if err := server.Serve(listener); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := listener.Listen(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Fatal(err)
 	}
 }

@@ -72,13 +72,15 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 
 	result := domain.BuildResult{BuildID: buildID}
 	for _, artifact := range artifacts {
-		key := objectpath.Join(pkg.SafeName(req.AppID), buildID, artifact.Name)
+		artifactID := pkg.NewUUID()
+		key := objectpath.Join(pkg.SafeName(req.AppID), buildID, artifactID, artifact.Name)
 		uploaded, err := s.store.PutFile(ctx, key, artifact.Path, artifact.MediaType)
 		if err != nil {
 			return domain.BuildResult{}, fmt.Errorf("upload %s: %w", artifact.Name, err)
 		}
 
 		result.Artifacts = append(result.Artifacts, domain.Artifact{
+			ID:        artifactID,
 			Kind:      artifact.Kind,
 			Name:      artifact.Name,
 			Bucket:    uploaded.Bucket,
