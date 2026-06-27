@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dagflows/builder/internal/config"
 	"github.com/dagflows/builder/internal/domain"
 )
 
@@ -31,16 +32,16 @@ type R2Store struct {
 	secretKey string
 }
 
-func NewR2FromEnv() (*R2Store, error) {
-	endpoint, err := endpointFromEnv()
+func NewR2(cfg config.R2Config) (*R2Store, error) {
+	endpoint, err := endpointFromConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	bucket := strings.TrimSpace(os.Getenv("R2_BUCKET"))
-	accessKey := strings.TrimSpace(os.Getenv("R2_ACCESS_KEY_ID"))
-	secretKey := strings.TrimSpace(os.Getenv("R2_SECRET_ACCESS_KEY"))
-	prefix := strings.Trim(os.Getenv("R2_PREFIX"), "/")
+	bucket := strings.TrimSpace(cfg.Bucket)
+	accessKey := strings.TrimSpace(cfg.AccessKeyID)
+	secretKey := strings.TrimSpace(cfg.SecretAccessKey)
+	prefix := strings.Trim(cfg.Prefix, "/")
 
 	if bucket == "" || accessKey == "" || secretKey == "" {
 		return nil, fmt.Errorf("R2_BUCKET, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY are required")
@@ -56,12 +57,12 @@ func NewR2FromEnv() (*R2Store, error) {
 	}, nil
 }
 
-func endpointFromEnv() (*url.URL, error) {
-	if endpoint := strings.TrimSpace(os.Getenv("R2_ENDPOINT")); endpoint != "" {
+func endpointFromConfig(cfg config.R2Config) (*url.URL, error) {
+	if endpoint := strings.TrimSpace(cfg.Endpoint); endpoint != "" {
 		return normalizeEndpoint(endpoint)
 	}
 
-	accountID := strings.TrimSpace(os.Getenv("R2_ACCOUNT_ID"))
+	accountID := strings.TrimSpace(cfg.AccountID)
 	if accountID == "" {
 		return nil, fmt.Errorf("R2_ENDPOINT or R2_ACCOUNT_ID is required")
 	}

@@ -6,34 +6,24 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	awssqs "github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
+	"github.com/dagflows/builder/internal/config"
 	"github.com/dagflows/builder/internal/domain"
+	"github.com/dagflows/builder/internal/service"
 )
-
-const (
-	defaultMaxMessages       = 1
-	defaultWaitSeconds       = 20
-	defaultVisibilitySeconds = 900
-)
-
-type DeploymentBuilder interface {
-	BuildDeployment(ctx context.Context, req domain.DeploymentRequest) (domain.DeploymentResponse, error)
-}
 
 type Listener struct {
-	client        *awssqs.Client
-	builder       DeploymentBuilder
-	requestQueue  string
-	responseQueue string
-	options       receiveOptions
+	client            *awssqs.Client
+	deploymentService *service.DeploymentService
+	requestQueue      string
+	responseQueue     string
+	options           receiveOptions
 }
 
 type receiveOptions struct {
@@ -42,30 +32,28 @@ type receiveOptions struct {
 	visibilityTimeoutSeconds int32
 }
 
-func NewListenerFromEnv(builder DeploymentBuilder) (*Listener, error) {
-	requestQueue := firstEnv("SQS_REQUEST_QUEUE_URL", "SQS_QUEUE_URL")
-	responseQueue := firstEnv("SQS_RESPONSE_QUEUE_URL", "SQS_RESULT_QUEUE_URL")
-	if requestQueue == "" {
+func NewListener(cfg config.Config, deploymentService *service.DeploymentService) (*Listener, error) {
+	if cfg.SQS.RequestQueueURL == "" {
 		return nil, fmt.Errorf("SQS_REQUEST_QUEUE_URL or SQS_QUEUE_URL is required")
 	}
-	if responseQueue == "" {
+	if cfg.SQS.ResponseQueueURL == "" {
 		return nil, fmt.Errorf("SQS_RESPONSE_QUEUE_URL or SQS_RESULT_QUEUE_URL is required")
 	}
 
-	cfg, err := loadAWSConfig(context.Background())
+	awsCfg, err := loadAWSConfig(context.Background(), cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Listener{
-		client:        awssqs.NewFromConfig(cfg),
-		builder:       builder,
-		requestQueue:  requestQueue,
-		responseQueue: responseQueue,
+		client:            awssqs.NewFromConfig(awsCfg),
+		deploymentService: deploymentService,
+		requestQueue:      cfg.SQS.RequestQueueURL,
+		responseQueue:     cfg.SQS.ResponseQueueURL,
 		options: receiveOptions{
-			maxMessages:              envInt32Or("SQS_MAX_MESSAGES", defaultMaxMessages),
-			waitTimeSeconds:          envInt32Or("SQS_WAIT_TIME_SECONDS", defaultWaitSeconds),
-			visibilityTimeoutSeconds: envInt32Or("SQS_VISIBILITY_TIMEOUT_SECONDS", defaultVisibilitySeconds),
+			maxMessages:              cfg.SQS.MaxMessages,
+			waitTimeSeconds:          cfg.SQS.WaitTimeSeconds,
+			visibilityTimeoutSeconds: cfg.SQS.VisibilityTimeoutSeconds,
 		},
 	}, nil
 }
@@ -134,7 +122,7 @@ func (l *Listener) processMessage(ctx context.Context, body string) domain.Deplo
 		return failedResponse(extractDeploymentID(body), fmt.Errorf("decode request: %w", err))
 	}
 
-	response, err := l.builder.BuildDeployment(ctx, req)
+	response, err := l.deploymentService.BuildDeployment(ctx, req)
 	if err != nil {
 		return failedResponse(req.DeploymentID, err)
 	}
@@ -171,34 +159,20 @@ func sleep(ctx context.Context, duration time.Duration) error {
 	}
 }
 
-func firstEnv(names ...string) string {
-	for _, name := range names {
-		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			return value
+func loadAWSConfig(ctx context.Context, cfg config.Config) (aws.Config, error) {
+	var options []func(*awsconfig.LoadOptions) error
+	if cfg.AWS.Region != "" {
+		options = append(options, awsconfig.WithRegion(cfg.AWS.Region))
+	}
+	if cfg.AWS.AccessKeyID != "" || cfg.AWS.SecretAccessKey != "" || cfg.AWS.SessionToken != "" {
+		if cfg.AWS.AccessKeyID == "" || cfg.AWS.SecretAccessKey == "" {
+			return aws.Config{}, fmt.Errorf("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required when AWS credentials are configured")
 		}
+		options = append(options, awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			cfg.AWS.AccessKeyID,
+			cfg.AWS.SecretAccessKey,
+			cfg.AWS.SessionToken,
+		)))
 	}
-	return ""
-}
-
-func loadAWSConfig(ctx context.Context) (aws.Config, error) {
-	region := firstEnv("SQS_REGION", "AWS_REGION", "AWS_DEFAULT_REGION")
-	if region == "" {
-		return config.LoadDefaultConfig(ctx)
-	}
-	return config.LoadDefaultConfig(ctx, config.WithRegion(region))
-}
-
-func envInt32Or(name string, fallback int32) int32 {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed <= 0 {
-		return fallback
-	}
-	if name == "SQS_MAX_MESSAGES" && parsed > 10 {
-		return 10
-	}
-	return int32(parsed)
+	return awsconfig.LoadDefaultConfig(ctx, options...)
 }

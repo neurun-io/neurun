@@ -8,24 +8,27 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/dagflows/builder/internal/config"
 	listenersqs "github.com/dagflows/builder/internal/listener/sqs"
 	"github.com/dagflows/builder/internal/service"
 	"github.com/dagflows/builder/internal/storage"
-	"github.com/dagflows/builder/pkg"
 )
 
 func main() {
-	if err := pkg.LoadDotEnv(".env"); err != nil {
-		log.Fatal(err)
-	}
-
-	store, err := storage.NewR2FromEnv()
+	cfg, err := config.Load(".env")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	builder := service.NewDeploymentService(service.NewBuildService(store))
-	listener, err := listenersqs.NewListenerFromEnv(builder)
+	store, err := storage.NewR2(cfg.R2)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	buildService := service.NewBuildService(store)
+	github := service.NewGitHubService(cfg.GitHub)
+	deploymentService := service.NewDeploymentService(buildService, github)
+	listener, err := listenersqs.NewListener(cfg, deploymentService)
 	if err != nil {
 		log.Fatal(err)
 	}

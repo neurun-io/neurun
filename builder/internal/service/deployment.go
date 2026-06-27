@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	defaultGitBranch      = "main"
 	defaultNodeKey        = "main"
 	defaultNodeType       = "task"
 	defaultRetryCount     = 3
@@ -30,16 +29,16 @@ var manifestNames = []string{
 	"workflow.json",
 }
 
-type DeploymentBuilder interface {
-	Build(ctx context.Context, req domain.BuildRequest) (domain.BuildResult, error)
-}
-
 type DeploymentService struct {
-	builder DeploymentBuilder
+	buildService *BuildService
+	github       *GitHubService
 }
 
-func NewDeploymentService(builder DeploymentBuilder) *DeploymentService {
-	return &DeploymentService{builder: builder}
+func NewDeploymentService(buildService *BuildService, github *GitHubService) *DeploymentService {
+	return &DeploymentService{
+		buildService: buildService,
+		github:       github,
+	}
 }
 
 func (s *DeploymentService) BuildDeployment(ctx context.Context, req domain.DeploymentRequest) (domain.DeploymentResponse, error) {
@@ -47,24 +46,19 @@ func (s *DeploymentService) BuildDeployment(ctx context.Context, req domain.Depl
 		return domain.DeploymentResponse{}, err
 	}
 
-	workDir, err := os.MkdirTemp("", "dagflows-deployment-*")
+	checkout, err := s.github.FetchCode(ctx, req)
 	if err != nil {
-		return domain.DeploymentResponse{}, fmt.Errorf("create work dir: %w", err)
+		return domain.DeploymentResponse{}, fmt.Errorf("fetch code: %w", err)
 	}
-	defer os.RemoveAll(workDir)
+	defer checkout.Close()
 
-	repoDir := filepath.Join(workDir, "repo")
-	if err := cloneRepository(ctx, req, repoDir); err != nil {
-		return domain.DeploymentResponse{}, fmt.Errorf("clone repository: %w", err)
-	}
-
-	nodes, err := resolveWorkflowNodes(repoDir, req.Nodes)
+	nodes, err := resolveWorkflowNodes(checkout.Path, req.Nodes)
 	if err != nil {
 		return domain.DeploymentResponse{}, err
 	}
 
 	for i := range nodes {
-		if err := s.buildNode(ctx, req, repoDir, &nodes[i]); err != nil {
+		if err := s.buildNode(ctx, req, checkout.Path, &nodes[i]); err != nil {
 			return domain.DeploymentResponse{}, fmt.Errorf("build node %q: %w", nodes[i].Key, err)
 		}
 	}
@@ -90,24 +84,6 @@ func validateDeploymentRequest(req domain.DeploymentRequest) error {
 	default:
 		return nil
 	}
-}
-
-func cloneRepository(ctx context.Context, req domain.DeploymentRequest, dst string) error {
-	branch := strings.TrimSpace(req.GitBranch)
-	if branch == "" {
-		branch = defaultGitBranch
-	}
-
-	if err := pkg.Run(ctx, "", nil, "git", "clone", "--branch", branch, "--single-branch", req.GitURL, dst); err != nil {
-		return err
-	}
-
-	if commit := strings.TrimSpace(req.GitCommitHash); commit != "" {
-		if err := pkg.Run(ctx, dst, nil, "git", "checkout", commit); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func resolveWorkflowNodes(repoDir string, requestNodes []domain.WorkflowNode) ([]domain.WorkflowNode, error) {
@@ -249,7 +225,7 @@ func (s *DeploymentService) buildNode(ctx context.Context, req domain.Deployment
 	nodeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	result, err := s.builder.Build(nodeCtx, domain.BuildRequest{
+	result, err := s.buildService.Build(nodeCtx, domain.BuildRequest{
 		AppID:      req.DeploymentID + "-" + node.Key,
 		SourcePath: sourcePath,
 		Runtime:    runtime,

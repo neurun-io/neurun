@@ -3,7 +3,6 @@ package pkg
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"os"
 	"strings"
 	"time"
 )
@@ -62,12 +61,4 @@ func tail(value string, max int) string {
 		return value
 	}
 	return value[len(value)-max:]
-}
-
-func EnvOr(name, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	return value
 }
