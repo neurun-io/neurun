@@ -52,7 +52,7 @@ func (s *DeploymentService) BuildDeployment(ctx context.Context, req domain.Depl
 	}
 	defer checkout.Close()
 
-	nodes, err := resolveWorkflowNodes(checkout.Path, req.Nodes)
+	nodes, err := resolveWorkflowNodes(checkout.Path)
 	if err != nil {
 		return domain.DeploymentResponse{}, err
 	}
@@ -77,8 +77,6 @@ func validateDeploymentRequest(req domain.DeploymentRequest) error {
 		return fmt.Errorf("deployment_id is required")
 	case strings.TrimSpace(req.WorkflowID) == "":
 		return fmt.Errorf("workflow_id is required")
-	case strings.TrimSpace(req.OrganizationID) == "":
-		return fmt.Errorf("organization_id is required")
 	case strings.TrimSpace(req.GitURL) == "":
 		return fmt.Errorf("git_url is required")
 	default:
@@ -86,11 +84,7 @@ func validateDeploymentRequest(req domain.DeploymentRequest) error {
 	}
 }
 
-func resolveWorkflowNodes(repoDir string, requestNodes []domain.WorkflowNode) ([]domain.WorkflowNode, error) {
-	if len(requestNodes) > 0 {
-		return normalizeWorkflowNodes(repoDir, requestNodes)
-	}
-
+func resolveWorkflowNodes(repoDir string) ([]domain.WorkflowNode, error) {
 	for _, name := range manifestNames {
 		nodes, err := readManifestNodes(filepath.Join(repoDir, name))
 		if errors.Is(err, os.ErrNotExist) {
@@ -184,7 +178,7 @@ func inferWorkflowNode(repoDir string) (domain.WorkflowNode, error) {
 	case pkg.FileExists(filepath.Join(repoDir, "requirements.txt")) || pkg.FileExists(filepath.Join(repoDir, "main.py")) || hasFileWithExt(repoDir, ".py"):
 		return domain.WorkflowNode{Key: defaultNodeKey, Type: defaultNodeType, Language: string(domain.RuntimePython)}, nil
 	default:
-		return domain.WorkflowNode{}, fmt.Errorf("no workflow nodes found; add nodes to the request or a dagflows.json manifest")
+		return domain.WorkflowNode{}, fmt.Errorf("no workflow nodes found; add a dagflows.json manifest")
 	}
 }
 

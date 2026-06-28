@@ -8,13 +8,11 @@ const (
 )
 
 type DeploymentRequest struct {
-	DeploymentID   string         `json:"deployment_id"`
-	WorkflowID     string         `json:"workflow_id"`
-	OrganizationID string         `json:"organization_id"`
-	GitURL         string         `json:"git_url"`
-	GitBranch      string         `json:"git_branch"`
-	GitCommitHash  string         `json:"git_commit_hash"`
-	Nodes          []WorkflowNode `json:"nodes,omitempty"`
+	DeploymentID  string `json:"deployment_id"`
+	WorkflowID    string `json:"workflow_id"`
+	GitURL        string `json:"git_url"`
+	GitBranch     string `json:"git_branch"`
+	GitCommitHash string `json:"git_commit_hash"`
 }
 
 type DeploymentResponse struct {

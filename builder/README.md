@@ -52,6 +52,21 @@ Host tools must be installed: `git`, `python`, `npm`, and `go`.
 go run ./cmd/builder
 ```
 
+## Local Run
+
+Run one deployment request without SQS:
+
+```sh
+go run ./cmd/builder-local \
+  --deployment-id local-deployment \
+  --workflow-id local-workflow \
+  --git-url file:///D:/path/to/project \
+  --git-branch main \
+  --git-commit-hash abc1234
+```
+
+The local command uses the same build path as the SQS worker and prints the deployment response JSON to stdout. `--git-branch` defaults to `GIT_DEFAULT_BRANCH`, and `--git-commit-hash` is optional. `--git-url` can be a `file:///...` URL, but it must point to a Git repository.
+
 ## Messages
 
 Request messages are read from `SQS_REQUEST_QUEUE_URL`:
@@ -60,7 +75,6 @@ Request messages are read from `SQS_REQUEST_QUEUE_URL`:
 {
   "deployment_id": "uuid",
   "workflow_id": "uuid",
-  "organization_id": "uuid",
   "git_url": "https://github.com/...",
   "git_branch": "main",
   "git_commit_hash": "abc1234"
@@ -92,4 +106,4 @@ Response messages are sent to `SQS_RESPONSE_QUEUE_URL`:
 }
 ```
 
-For each request, the worker clones `git_url`, checks out `git_commit_hash` when provided, then runs the build against the fetched checkout. It uses `nodes` from the request when present. Otherwise it checks for `dagflows.json`, `.dagflows.json`, `dagflows.workflow.json`, or `workflow.json`. If no manifest exists, it infers one `main` node from `package.json`, `go.mod`, `requirements.txt`, or Python source files.
+For each request, the worker clones `git_url`, checks out `git_commit_hash` when provided, then runs the build against the fetched checkout. It checks for `dagflows.json`, `.dagflows.json`, `dagflows.workflow.json`, or `workflow.json`. If no manifest exists, it infers one `main` node from `package.json`, `go.mod`, `requirements.txt`, or Python source files.
