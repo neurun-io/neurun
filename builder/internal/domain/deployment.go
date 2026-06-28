@@ -35,4 +35,5 @@ type WorkflowNode struct {
 	Depends        []string       `json:"depends"`
 	RetryCount     int            `json:"retry_count"`
 	TimeoutSeconds int            `json:"timeout_seconds"`
+	MemoryLimitMB  int            `json:"memory_limit_mb,omitempty"`
 }

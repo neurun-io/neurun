@@ -85,7 +85,8 @@ Response messages are sent to `SQS_RESPONSE_QUEUE_URL`:
       "config": {},
       "depends": [],
       "retry_count": 3,
-      "timeout_seconds": 300
+      "timeout_seconds": 300,
+      "memory_limit_mb": 512
     }
   ]
 }
