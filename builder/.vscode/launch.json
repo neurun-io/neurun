@@ -1,0 +1,69 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Builder: SQS Worker",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/builder",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Builder: Local Deployment",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/builder-local",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "args": [
+        "--env",
+        "${workspaceFolder}/.env",
+        "--deployment-id",
+        "${input:deploymentId}",
+        "--workflow-id",
+        "${input:workflowId}",
+        "--git-url",
+        "${input:gitUrl}",
+        "--git-branch",
+        "${input:gitBranch}",
+        "--git-commit-hash",
+        "${input:gitCommitHash}"
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "deploymentId",
+      "type": "promptString",
+      "description": "Deployment ID",
+      "default": "local-deployment"
+    },
+    {
+      "id": "workflowId",
+      "type": "promptString",
+      "description": "Workflow ID",
+      "default": "local-workflow"
+    },
+    {
+      "id": "gitUrl",
+      "type": "promptString",
+      "description": "Git URL",
+      "default": "file:///D:/path/to/project"
+    },
+    {
+      "id": "gitBranch",
+      "type": "promptString",
+      "description": "Git branch",
+      "default": "main"
+    },
+    {
+      "id": "gitCommitHash",
+      "type": "promptString",
+      "description": "Git commit hash, optional",
+      "default": ""
+    }
+  ]
+}

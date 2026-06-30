@@ -33,8 +33,6 @@ R2_SECRET_ACCESS_KEY=<secret-access-key>
 R2_PREFIX=builds
 ```
 
-`.env` is loaded into `internal/config.Config` on startup. Defaults are applied before env overrides. If `R2_ENDPOINT` is blank, the service uses Cloudflare's documented S3 endpoint format: `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`. `R2_BUCKET` has no provider default and must be set.
-
 Host tools must be installed: `git`, `python`, `npm`, and `go`.
 
 ## Layout
