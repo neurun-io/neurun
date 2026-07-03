@@ -26,11 +26,7 @@
         "--workflow-id",
         "${input:workflowId}",
         "--git-url",
-        "${input:gitUrl}",
-        "--git-branch",
-        "${input:gitBranch}",
-        "--git-commit-hash",
-        "${input:gitCommitHash}"
+        "${input:gitUrl}"
       ]
     }
   ],
@@ -52,18 +48,6 @@
       "type": "promptString",
       "description": "Git URL",
       "default": "file:///D:/path/to/project"
-    },
-    {
-      "id": "gitBranch",
-      "type": "promptString",
-      "description": "Git branch",
-      "default": "main"
-    },
-    {
-      "id": "gitCommitHash",
-      "type": "promptString",
-      "description": "Git commit hash, optional",
-      "default": ""
     }
   ]
 }

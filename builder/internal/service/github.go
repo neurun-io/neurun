@@ -13,9 +13,8 @@ import (
 )
 
 type GitHubService struct {
-	defaultBranch string
-	tempDir       string
-	run           commandRunner
+	tempDir string
+	run     commandRunner
 }
 
 type GitHubCheckout struct {
@@ -34,9 +33,8 @@ type commandRunner func(ctx context.Context, dir string, env []string, name stri
 
 func NewGitHubService(cfg config.GitHubConfig) *GitHubService {
 	return &GitHubService{
-		defaultBranch: strings.TrimSpace(cfg.DefaultBranch),
-		tempDir:       cfg.TempDir,
-		run:           pkg.Run,
+		tempDir: cfg.TempDir,
+		run:     pkg.Run,
 	}
 }
 
@@ -71,9 +69,6 @@ func (s *GitHubService) FetchCode(ctx context.Context, req domain.DeploymentRequ
 
 func (s *GitHubService) clone(ctx context.Context, gitURL, branch, dst string) error {
 	branch = strings.TrimSpace(branch)
-	if branch == "" {
-		branch = s.defaultBranch
-	}
 	if branch == "" {
 		branch = config.DefaultGitBranch
 	}

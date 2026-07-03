@@ -22,7 +22,6 @@ SQS_MAX_MESSAGES=1
 SQS_WAIT_TIME_SECONDS=20
 SQS_VISIBILITY_TIMEOUT_SECONDS=900
 
-GIT_DEFAULT_BRANCH=main
 GIT_TEMP_DIR=
 
 R2_ACCOUNT_ID=<account-id>
@@ -58,12 +57,10 @@ Run one deployment request without SQS:
 go run ./cmd/builder-local \
   --deployment-id local-deployment \
   --workflow-id local-workflow \
-  --git-url file:///D:/path/to/project \
-  --git-branch main \
-  --git-commit-hash abc1234
+  --git-url file:///D:/path/to/project
 ```
 
-The local command uses the same build path as the SQS worker and prints the deployment response JSON to stdout. `--git-branch` defaults to `GIT_DEFAULT_BRANCH`, and `--git-commit-hash` is optional. `--git-url` can be a `file:///...` URL, but it must point to a Git repository.
+The local command uses the same build path as the SQS worker and prints the deployment response JSON to stdout. `--git-branch` is optional and defaults to `main`. `--git-commit-hash` is optional; when omitted, the builder uses the latest commit on the selected branch. `--git-url` can be a `file:///...` URL, but it must point to a Git repository.
 
 ## Messages
 
@@ -73,11 +70,11 @@ Request messages are read from `SQS_REQUEST_QUEUE_URL`:
 {
   "deployment_id": "uuid",
   "workflow_id": "uuid",
-  "git_url": "https://github.com/...",
-  "git_branch": "main",
-  "git_commit_hash": "abc1234"
+  "git_url": "https://github.com/..."
 }
 ```
+
+`git_branch` is optional and defaults to `main`. `git_commit_hash` is optional; when omitted, the builder uses the latest commit on the selected branch.
 
 Response messages are sent to `SQS_RESPONSE_QUEUE_URL`:
 
@@ -104,4 +101,4 @@ Response messages are sent to `SQS_RESPONSE_QUEUE_URL`:
 }
 ```
 
-For each request, the worker clones `git_url`, checks out `git_commit_hash` when provided, then runs the build against the fetched checkout. It checks for `dagflows.json`, `.dagflows.json`, `dagflows.workflow.json`, or `workflow.json`. If no manifest exists, it infers one `main` node from `package.json`, `go.mod`, `requirements.txt`, or Python source files.
+For each request, the worker clones `git_url`, checks out `git_commit_hash` when provided, then runs the build against the fetched checkout. Without `git_commit_hash`, the checkout stays on the latest commit from the selected branch. It checks for `dagflows.json`, `.dagflows.json`, `dagflows.workflow.json`, or `workflow.json`. If no manifest exists, it infers one `main` node from `package.json`, `go.mod`, `requirements.txt`, or Python source files.

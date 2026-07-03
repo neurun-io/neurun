@@ -49,8 +49,7 @@ type R2Config struct {
 }
 
 type GitHubConfig struct {
-	DefaultBranch string
-	TempDir       string
+	TempDir string
 }
 
 func Load(path string) (Config, error) {
@@ -80,7 +79,6 @@ func Load(path string) (Config, error) {
 	cfg.R2.SecretAccessKey = env("R2_SECRET_ACCESS_KEY")
 	cfg.R2.Prefix = strings.Trim(envOr("R2_PREFIX", cfg.R2.Prefix), "/")
 
-	cfg.GitHub.DefaultBranch = envOr("GIT_DEFAULT_BRANCH", cfg.GitHub.DefaultBranch)
 	cfg.GitHub.TempDir = env("GIT_TEMP_DIR")
 
 	return cfg, nil
@@ -99,9 +97,7 @@ func Default() Config {
 		R2: R2Config{
 			Prefix: DefaultR2Prefix,
 		},
-		GitHub: GitHubConfig{
-			DefaultBranch: DefaultGitBranch,
-		},
+		GitHub: GitHubConfig{},
 	}
 }
 

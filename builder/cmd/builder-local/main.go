@@ -19,8 +19,8 @@ func main() {
 	deploymentID := flag.String("deployment-id", "", "deployment id")
 	workflowID := flag.String("workflow-id", "", "workflow id")
 	gitURL := flag.String("git-url", "", "Git repository URL")
-	gitBranch := flag.String("git-branch", "", "Git branch; defaults to GIT_DEFAULT_BRANCH")
-	gitCommitHash := flag.String("git-commit-hash", "", "Git commit hash")
+	gitBranch := flag.String("git-branch", "", "optional Git branch; defaults to main")
+	gitCommitHash := flag.String("git-commit-hash", "", "optional Git commit hash; omitted uses the latest commit on the branch")
 	flag.Parse()
 
 	if *deploymentID == "" || *workflowID == "" || *gitURL == "" {
@@ -33,15 +33,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	branch := *gitBranch
-	if branch == "" {
-		branch = cfg.GitHub.DefaultBranch
-	}
 	request := domain.DeploymentRequest{
 		DeploymentID:  *deploymentID,
 		WorkflowID:    *workflowID,
 		GitURL:        *gitURL,
-		GitBranch:     branch,
+		GitBranch:     *gitBranch,
 		GitCommitHash: *gitCommitHash,
 	}
 
