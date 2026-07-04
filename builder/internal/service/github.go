@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,8 +19,10 @@ type GitHubService struct {
 }
 
 type GitHubCheckout struct {
-	Path    string
-	workDir string
+	Path         string
+	RepoSequence string
+	CommitHash   string
+	workDir      string
 }
 
 func (c GitHubCheckout) Close() error {
@@ -63,6 +66,13 @@ func (s *GitHubService) FetchCode(ctx context.Context, req domain.DeploymentRequ
 			return GitHubCheckout{}, fmt.Errorf("checkout commit %s: %w", commit, err)
 		}
 	}
+	resolvedCommit, err := pkg.Output(ctx, checkout.Path, nil, "git", "rev-parse", "HEAD")
+	if err != nil {
+		_ = checkout.Close()
+		return GitHubCheckout{}, fmt.Errorf("resolve commit hash: %w", err)
+	}
+	checkout.CommitHash = strings.TrimSpace(resolvedCommit)
+	checkout.RepoSequence = repoSequence(gitURL)
 
 	return checkout, nil
 }
@@ -77,4 +87,39 @@ func (s *GitHubService) clone(ctx context.Context, gitURL, branch, dst string) e
 		return fmt.Errorf("clone %s branch %s: %w", gitURL, branch, err)
 	}
 	return nil
+}
+
+func repoSequence(gitURL string) string {
+	canonical := canonicalRepoIdentity(gitURL)
+	sequence := pkg.SafeName(strings.ReplaceAll(canonical, "/", "-"))
+	if sequence == "" {
+		return "repo"
+	}
+	return strings.ToLower(sequence)
+}
+
+func canonicalRepoIdentity(gitURL string) string {
+	raw := strings.TrimSpace(strings.TrimSuffix(gitURL, ".git"))
+	if raw == "" {
+		return "repo"
+	}
+
+	if strings.HasPrefix(raw, "git@") {
+		withoutUser := strings.TrimPrefix(raw, "git@")
+		host, path, ok := strings.Cut(withoutUser, ":")
+		if ok {
+			return strings.ToLower(strings.Trim(host, "/")) + "/" + strings.Trim(strings.TrimSuffix(path, ".git"), "/")
+		}
+	}
+
+	parsed, err := url.Parse(raw)
+	if err == nil && parsed.Host != "" {
+		path := strings.Trim(strings.TrimSuffix(parsed.Path, ".git"), "/")
+		if parsed.Scheme == "file" {
+			return "local/" + path
+		}
+		return strings.ToLower(parsed.Host) + "/" + path
+	}
+
+	return raw
 }

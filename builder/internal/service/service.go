@@ -7,20 +7,18 @@ import (
 	"os"
 	objectpath "path"
 	"path/filepath"
+	"strings"
 
 	"github.com/dagflows/builder/internal/domain"
+	"github.com/dagflows/builder/internal/storage"
 	"github.com/dagflows/builder/pkg"
 )
 
-type Store interface {
-	PutFile(ctx context.Context, key, path, mediaType string) (domain.UploadedArtifact, error)
-}
-
 type BuildService struct {
-	store Store
+	store storage.Store
 }
 
-func NewBuildService(store Store) *BuildService {
+func NewBuildService(store storage.Store) *BuildService {
 	return &BuildService{
 		store: store,
 	}
@@ -39,7 +37,10 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 		return domain.BuildResult{}, fmt.Errorf("source_path must be a directory")
 	}
 
-	buildID := pkg.NewBuildID()
+	buildID := strings.Trim(req.BuildID, "/")
+	if buildID == "" {
+		buildID = pkg.NewBuildID()
+	}
 	workDir, err := os.MkdirTemp("", "dagflows-build-*")
 	if err != nil {
 		return domain.BuildResult{}, fmt.Errorf("create work dir: %w", err)
@@ -72,8 +73,8 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 
 	result := domain.BuildResult{BuildID: buildID}
 	for _, artifact := range artifacts {
-		artifactID := pkg.NewUUID()
-		key := objectpath.Join(pkg.SafeName(req.AppID), buildID, artifactID, artifact.Name)
+		artifactID := pkg.NewDeterministicUUID(req.AppID + "/" + buildID + "/" + string(artifact.Kind) + "/" + artifact.Name)
+		key := objectpath.Join(pkg.SafeName(req.AppID), buildID, artifact.Name)
 		uploaded, err := s.store.PutFile(ctx, key, artifact.Path, artifact.MediaType)
 		if err != nil {
 			return domain.BuildResult{}, fmt.Errorf("upload %s: %w", artifact.Name, err)

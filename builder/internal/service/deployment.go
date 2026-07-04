@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/dagflows/builder/internal/domain"
 	"github.com/dagflows/builder/pkg"
@@ -47,10 +46,8 @@ func (s *DeploymentService) BuildDeployment(ctx context.Context, req domain.Depl
 		return domain.DeploymentResponse{}, err
 	}
 
-	for i := range nodes {
-		if err := s.buildNode(ctx, req, checkout.Path, &nodes[i]); err != nil {
-			return domain.DeploymentResponse{}, fmt.Errorf("build node %q: %w", nodes[i].Key, err)
-		}
+	if err := s.buildPackage(ctx, req, checkout, nodes); err != nil {
+		return domain.DeploymentResponse{}, err
 	}
 
 	return domain.DeploymentResponse{
@@ -80,17 +77,17 @@ func (s *DeploymentService) resolveWorkflowNodes(ctx context.Context, repoDir st
 		if err != nil {
 			return nil, err
 		}
-		return normalizeWorkflowNodes(repoDir, nodes)
+		return normalizeWorkflowNodes(nodes)
 	}
 
 	node, err := inferWorkflowNode(repoDir)
 	if err != nil {
 		return nil, err
 	}
-	return normalizeWorkflowNodes(repoDir, []domain.WorkflowNode{node})
+	return normalizeWorkflowNodes([]domain.WorkflowNode{node})
 }
 
-func normalizeWorkflowNodes(repoDir string, nodes []domain.WorkflowNode) ([]domain.WorkflowNode, error) {
+func normalizeWorkflowNodes(nodes []domain.WorkflowNode) ([]domain.WorkflowNode, error) {
 	normalized := make([]domain.WorkflowNode, len(nodes))
 	for i, node := range nodes {
 		if strings.TrimSpace(node.Key) == "" {
@@ -117,9 +114,6 @@ func normalizeWorkflowNodes(repoDir string, nodes []domain.WorkflowNode) ([]doma
 		}
 		if node.TimeoutSeconds <= 0 {
 			node.TimeoutSeconds = defaultTimeoutSeconds
-		}
-		if _, err := nodeSourcePath(repoDir, node); err != nil {
-			return nil, fmt.Errorf("nodes[%d].config.source_path: %w", i, err)
 		}
 		normalized[i] = node
 	}
@@ -166,31 +160,25 @@ func hasFileWithExt(root, ext string) bool {
 	return found
 }
 
-func (s *DeploymentService) buildNode(ctx context.Context, req domain.DeploymentRequest, repoDir string, node *domain.WorkflowNode) error {
-	sourcePath, err := nodeSourcePath(repoDir, *node)
+func (s *DeploymentService) buildPackage(ctx context.Context, req domain.DeploymentRequest, checkout GitHubCheckout, nodes []domain.WorkflowNode) error {
+	runtime, err := runtimeFromNodes(nodes)
 	if err != nil {
 		return err
 	}
 
-	runtime, err := runtimeFromLanguage(node.Language)
-	if err != nil {
-		return err
-	}
-
-	timeout := time.Duration(node.TimeoutSeconds) * time.Second
-	nodeCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	result, err := s.buildService.Build(nodeCtx, domain.BuildRequest{
-		AppID:      req.DeploymentID + "-" + node.Key,
-		SourcePath: sourcePath,
+	result, err := s.buildService.Build(ctx, domain.BuildRequest{
+		AppID:      checkout.RepoSequence,
+		BuildID:    checkout.CommitHash,
+		SourcePath: checkout.Path,
 		Runtime:    runtime,
-		EntryPoint: node.EntryPoint,
+		EntryPoint: nodes[0].EntryPoint,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("build package: %w", err)
 	}
 
+	artifactID := ""
+	depsArtifactID := ""
 	for _, artifact := range result.Artifacts {
 		id := artifact.ID
 		if id == "" {
@@ -198,47 +186,38 @@ func (s *DeploymentService) buildNode(ctx context.Context, req domain.Deployment
 		}
 		switch artifact.Kind {
 		case domain.ArtifactInstallLayer:
-			node.DepsArtifactID = id
+			depsArtifactID = id
 		case domain.ArtifactCodeLayer, domain.ArtifactDeployable:
-			node.ArtifactID = id
+			artifactID = id
 		}
+	}
+
+	for i := range nodes {
+		nodes[i].ArtifactID = artifactID
+		nodes[i].DepsArtifactID = depsArtifactID
 	}
 	return nil
 }
 
-func nodeSourcePath(repoDir string, node domain.WorkflowNode) (string, error) {
-	sourcePath := "."
-	for _, key := range []string{"source_path", "sourcePath", "path"} {
-		value, ok := node.Config[key]
-		if !ok {
-			continue
-		}
-		raw, ok := value.(string)
-		if !ok {
-			return "", fmt.Errorf("%s must be a string", key)
-		}
-		if strings.TrimSpace(raw) != "" {
-			sourcePath = raw
-			break
-		}
+func runtimeFromNodes(nodes []domain.WorkflowNode) (domain.Runtime, error) {
+	if len(nodes) == 0 {
+		return "", fmt.Errorf("no workflow nodes found")
 	}
 
-	joined, err := filepath.Abs(filepath.Join(repoDir, filepath.FromSlash(sourcePath)))
+	runtime, err := runtimeFromLanguage(nodes[0].Language)
 	if err != nil {
 		return "", err
 	}
-	repoAbs, err := filepath.Abs(repoDir)
-	if err != nil {
-		return "", err
+	for _, node := range nodes[1:] {
+		next, err := runtimeFromLanguage(node.Language)
+		if err != nil {
+			return "", err
+		}
+		if next != runtime {
+			return "", fmt.Errorf("single-package deployments cannot mix node languages: %s and %s", runtime, next)
+		}
 	}
-	rel, err := filepath.Rel(repoAbs, joined)
-	if err != nil {
-		return "", err
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-		return "", fmt.Errorf("path escapes repository")
-	}
-	return joined, nil
+	return runtime, nil
 }
 
 func normalizeLanguage(language string) string {

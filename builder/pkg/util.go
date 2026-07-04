@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"strings"
 	"time"
@@ -22,6 +23,16 @@ func NewUUID() string {
 	}
 
 	random[6] = (random[6] & 0x0f) | 0x40
+	random[8] = (random[8] & 0x3f) | 0x80
+
+	encoded := hex.EncodeToString(random)
+	return encoded[0:8] + "-" + encoded[8:12] + "-" + encoded[12:16] + "-" + encoded[16:20] + "-" + encoded[20:32]
+}
+
+func NewDeterministicUUID(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	random := append([]byte(nil), sum[:16]...)
+	random[6] = (random[6] & 0x0f) | 0x50
 	random[8] = (random[8] & 0x3f) | 0x80
 
 	encoded := hex.EncodeToString(random)

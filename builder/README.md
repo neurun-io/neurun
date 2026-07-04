@@ -24,6 +24,9 @@ SQS_VISIBILITY_TIMEOUT_SECONDS=900
 
 GIT_TEMP_DIR=
 
+STORAGE_DRIVER=local
+LOCAL_STORAGE_DIR=.dagflows-artifacts
+
 R2_ACCOUNT_ID=<account-id>
 R2_ENDPOINT=
 R2_BUCKET=<bucket>
@@ -31,6 +34,8 @@ R2_ACCESS_KEY_ID=<access-key-id>
 R2_SECRET_ACCESS_KEY=<secret-access-key>
 R2_PREFIX=builds
 ```
+
+`STORAGE_DRIVER` can be `local` or `r2`. Local storage writes artifacts under `LOCAL_STORAGE_DIR` and is the default. R2 config is only required when `STORAGE_DRIVER=r2`.
 
 Host tools must be installed: `git`, `python`, `npm`, and `go`.
 
@@ -101,4 +106,4 @@ Response messages are sent to `SQS_RESPONSE_QUEUE_URL`:
 }
 ```
 
-For each request, the worker clones `git_url`, checks out `git_commit_hash` when provided, then runs the build against the fetched checkout. Without `git_commit_hash`, the checkout stays on the latest commit from the selected branch. Python projects are inspected with `python -m dagflows inspect`, so the repo should expose a `Workflow` through the SDK CLI. Node and Go projects still use a single inferred `main` node from `package.json` or `go.mod`.
+For each request, the worker clones `git_url`, checks out `git_commit_hash` when provided, then runs the build against the fetched checkout. Without `git_commit_hash`, the checkout stays on the latest commit from the selected branch. Artifacts are stored by repository sequence and resolved commit hash, so rebuilding the same repo at the same commit overwrites the same artifact objects. For example, `https://github.com/Dagflows/python-sdk.git` stores under `github-com-dagflows-python-sdk/<commit-hash>/`. Python projects are inspected with `python -m dagflows inspect`, so the repo should expose a `Workflow` through the SDK CLI. The project is built once as a single package, and the resulting artifact IDs are attached to every node. Node and Go projects still use a single inferred `main` node from `package.json` or `go.mod`.

@@ -18,6 +18,7 @@ const (
 
 type BuildRequest struct {
 	AppID      string
+	BuildID    string
 	SourcePath string
 	Runtime    Runtime
 	EntryPoint string

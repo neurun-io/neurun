@@ -15,13 +15,17 @@ const (
 	DefaultSQSVisibilityTimeoutSeconds = int32(900)
 	DefaultR2Prefix                    = "builds"
 	DefaultGitBranch                   = "main"
+	DefaultStorageDriver               = "local"
+	DefaultLocalStorageDir             = ".dagflows-artifacts"
 )
 
 type Config struct {
-	AWS    AWSConfig
-	SQS    SQSConfig
-	R2     R2Config
-	GitHub GitHubConfig
+	AWS          AWSConfig
+	SQS          SQSConfig
+	Storage      StorageConfig
+	LocalStorage LocalStorageConfig
+	R2           R2Config
+	GitHub       GitHubConfig
 }
 
 type AWSConfig struct {
@@ -37,6 +41,14 @@ type SQSConfig struct {
 	MaxMessages              int32
 	WaitTimeSeconds          int32
 	VisibilityTimeoutSeconds int32
+}
+
+type StorageConfig struct {
+	Driver string
+}
+
+type LocalStorageConfig struct {
+	Dir string
 }
 
 type R2Config struct {
@@ -72,6 +84,9 @@ func Load(path string) (Config, error) {
 		cfg.SQS.MaxMessages = 10
 	}
 
+	cfg.Storage.Driver = strings.ToLower(envOr("STORAGE_DRIVER", cfg.Storage.Driver))
+	cfg.LocalStorage.Dir = envOr("LOCAL_STORAGE_DIR", cfg.LocalStorage.Dir)
+
 	cfg.R2.AccountID = env("R2_ACCOUNT_ID")
 	cfg.R2.Endpoint = env("R2_ENDPOINT")
 	cfg.R2.Bucket = env("R2_BUCKET")
@@ -93,6 +108,12 @@ func Default() Config {
 			MaxMessages:              DefaultSQSMaxMessages,
 			WaitTimeSeconds:          DefaultSQSWaitTimeSeconds,
 			VisibilityTimeoutSeconds: DefaultSQSVisibilityTimeoutSeconds,
+		},
+		Storage: StorageConfig{
+			Driver: DefaultStorageDriver,
+		},
+		LocalStorage: LocalStorageConfig{
+			Dir: DefaultLocalStorageDir,
 		},
 		R2: R2Config{
 			Prefix: DefaultR2Prefix,

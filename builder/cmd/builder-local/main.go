@@ -41,7 +41,7 @@ func main() {
 		GitCommitHash: *gitCommitHash,
 	}
 
-	store, err := storage.NewR2(cfg.R2)
+	store, err := storage.NewStore(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
