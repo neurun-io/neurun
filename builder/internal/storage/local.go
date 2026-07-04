@@ -16,8 +16,8 @@ type LocalStore struct {
 	root string
 }
 
-func NewLocal(cfg config.LocalStorageConfig) (*LocalStore, error) {
-	root := strings.TrimSpace(cfg.Dir)
+func NewLocal(dir string) (*LocalStore, error) {
+	root := strings.TrimSpace(dir)
 	if root == "" {
 		root = config.DefaultLocalStorageDir
 	}
@@ -45,7 +45,7 @@ func (s *LocalStore) PutFile(ctx context.Context, key, filePath, _ string) (doma
 	if err != nil {
 		return domain.UploadedArtifact{}, err
 	}
-	if !pathInside(s.root, target) {
+	if !pkg.PathInside(s.root, target) {
 		return domain.UploadedArtifact{}, fmt.Errorf("storage key escapes local storage root")
 	}
 
@@ -62,12 +62,4 @@ func (s *LocalStore) PutFile(ctx context.Context, key, filePath, _ string) (doma
 		Key:       filepath.ToSlash(rel),
 		SizeBytes: info.Size(),
 	}, nil
-}
-
-func pathInside(root, path string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
-	}
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel))
 }

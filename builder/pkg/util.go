@@ -2,8 +2,8 @@ package pkg
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -14,29 +14,6 @@ func NewBuildID() string {
 		return time.Now().UTC().Format("20060102T150405Z")
 	}
 	return time.Now().UTC().Format("20060102T150405Z") + "-" + hex.EncodeToString(random)
-}
-
-func NewUUID() string {
-	random := make([]byte, 16)
-	if _, err := rand.Read(random); err != nil {
-		return NewBuildID()
-	}
-
-	random[6] = (random[6] & 0x0f) | 0x40
-	random[8] = (random[8] & 0x3f) | 0x80
-
-	encoded := hex.EncodeToString(random)
-	return encoded[0:8] + "-" + encoded[8:12] + "-" + encoded[12:16] + "-" + encoded[16:20] + "-" + encoded[20:32]
-}
-
-func NewDeterministicUUID(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	random := append([]byte(nil), sum[:16]...)
-	random[6] = (random[6] & 0x0f) | 0x50
-	random[8] = (random[8] & 0x3f) | 0x80
-
-	encoded := hex.EncodeToString(random)
-	return encoded[0:8] + "-" + encoded[8:12] + "-" + encoded[12:16] + "-" + encoded[16:20] + "-" + encoded[20:32]
 }
 
 func SafeName(value string) string {
@@ -65,6 +42,14 @@ func SafeName(value string) string {
 		return "app"
 	}
 	return cleaned
+}
+
+func PathInside(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel))
 }
 
 func tail(value string, max int) string {

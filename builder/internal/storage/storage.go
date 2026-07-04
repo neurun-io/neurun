@@ -16,7 +16,7 @@ type Store interface {
 func NewStore(cfg config.Config) (Store, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.Storage.Driver)) {
 	case "", config.DefaultStorageDriver, "filesystem", "fs":
-		return NewLocal(cfg.LocalStorage)
+		return NewLocal(cfg.Storage.LocalDir)
 	case "r2":
 		return NewR2(cfg.R2)
 	default:

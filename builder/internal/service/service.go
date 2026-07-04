@@ -12,6 +12,7 @@ import (
 	"github.com/dagflows/builder/internal/domain"
 	"github.com/dagflows/builder/internal/storage"
 	"github.com/dagflows/builder/pkg"
+	"github.com/google/uuid"
 )
 
 type BuildService struct {
@@ -73,7 +74,6 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 
 	result := domain.BuildResult{BuildID: buildID}
 	for _, artifact := range artifacts {
-		artifactID := pkg.NewDeterministicUUID(req.AppID + "/" + buildID + "/" + string(artifact.Kind) + "/" + artifact.Name)
 		key := objectpath.Join(pkg.SafeName(req.AppID), buildID, artifact.Name)
 		uploaded, err := s.store.PutFile(ctx, key, artifact.Path, artifact.MediaType)
 		if err != nil {
@@ -81,7 +81,7 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 		}
 
 		result.Artifacts = append(result.Artifacts, domain.Artifact{
-			ID:        artifactID,
+			ID:        uuid.NewString(),
 			Kind:      artifact.Kind,
 			Name:      artifact.Name,
 			Bucket:    uploaded.Bucket,

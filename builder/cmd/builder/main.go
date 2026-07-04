@@ -11,7 +11,6 @@ import (
 	"github.com/dagflows/builder/internal/config"
 	listenersqs "github.com/dagflows/builder/internal/listener/sqs"
 	"github.com/dagflows/builder/internal/service"
-	"github.com/dagflows/builder/internal/storage"
 )
 
 func main() {
@@ -20,14 +19,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	store, err := storage.NewStore(cfg)
+	deploymentService, err := service.NewConfiguredDeploymentService(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	buildService := service.NewBuildService(store)
-	github := service.NewGitHubService(cfg.GitHub)
-	deploymentService := service.NewDeploymentService(buildService, github)
 	listener, err := listenersqs.NewListener(cfg, deploymentService)
 	if err != nil {
 		log.Fatal(err)

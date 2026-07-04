@@ -46,7 +46,7 @@ func (s *DeploymentService) BuildDeployment(ctx context.Context, req domain.Depl
 		return domain.DeploymentResponse{}, err
 	}
 
-	if err := s.buildPackage(ctx, req, checkout, nodes); err != nil {
+	if err := s.buildPackage(ctx, checkout, nodes); err != nil {
 		return domain.DeploymentResponse{}, err
 	}
 
@@ -160,7 +160,7 @@ func hasFileWithExt(root, ext string) bool {
 	return found
 }
 
-func (s *DeploymentService) buildPackage(ctx context.Context, req domain.DeploymentRequest, checkout GitHubCheckout, nodes []domain.WorkflowNode) error {
+func (s *DeploymentService) buildPackage(ctx context.Context, checkout GitHubCheckout, nodes []domain.WorkflowNode) error {
 	runtime, err := runtimeFromNodes(nodes)
 	if err != nil {
 		return err

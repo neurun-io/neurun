@@ -20,12 +20,11 @@ const (
 )
 
 type Config struct {
-	AWS          AWSConfig
-	SQS          SQSConfig
-	Storage      StorageConfig
-	LocalStorage LocalStorageConfig
-	R2           R2Config
-	GitHub       GitHubConfig
+	AWS     AWSConfig
+	SQS     SQSConfig
+	Storage StorageConfig
+	R2      R2Config
+	GitHub  GitHubConfig
 }
 
 type AWSConfig struct {
@@ -44,11 +43,8 @@ type SQSConfig struct {
 }
 
 type StorageConfig struct {
-	Driver string
-}
-
-type LocalStorageConfig struct {
-	Dir string
+	Driver   string
+	LocalDir string
 }
 
 type R2Config struct {
@@ -85,7 +81,7 @@ func Load(path string) (Config, error) {
 	}
 
 	cfg.Storage.Driver = strings.ToLower(envOr("STORAGE_DRIVER", cfg.Storage.Driver))
-	cfg.LocalStorage.Dir = envOr("LOCAL_STORAGE_DIR", cfg.LocalStorage.Dir)
+	cfg.Storage.LocalDir = envOr("LOCAL_STORAGE_DIR", cfg.Storage.LocalDir)
 
 	cfg.R2.AccountID = env("R2_ACCOUNT_ID")
 	cfg.R2.Endpoint = env("R2_ENDPOINT")
@@ -110,15 +106,12 @@ func Default() Config {
 			VisibilityTimeoutSeconds: DefaultSQSVisibilityTimeoutSeconds,
 		},
 		Storage: StorageConfig{
-			Driver: DefaultStorageDriver,
-		},
-		LocalStorage: LocalStorageConfig{
-			Dir: DefaultLocalStorageDir,
+			Driver:   DefaultStorageDriver,
+			LocalDir: DefaultLocalStorageDir,
 		},
 		R2: R2Config{
 			Prefix: DefaultR2Prefix,
 		},
-		GitHub: GitHubConfig{},
 	}
 }
 

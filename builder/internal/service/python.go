@@ -114,7 +114,7 @@ func rewriteEditableRequirement(line, baseDir, sourceRoot string) (string, error
 	if err != nil {
 		return "", err
 	}
-	if !isPathInside(sourceRoot, absolute) {
+	if !pkg.PathInside(sourceRoot, absolute) {
 		return "", fmt.Errorf("editable requirement %q resolves outside the checked-out source to %s; use a package name, a git URL, or a path inside the repository", spec, absolute)
 	}
 	return filepath.ToSlash(absolute), nil
@@ -142,12 +142,4 @@ func pythonTempEnv(workDir string) []string {
 		"TMP=" + tempDir,
 		"PIP_CACHE_DIR=" + cacheDir,
 	}
-}
-
-func isPathInside(root, path string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
-	}
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel))
 }

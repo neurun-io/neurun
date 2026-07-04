@@ -15,7 +15,6 @@ import (
 
 type GitHubService struct {
 	tempDir string
-	run     commandRunner
 }
 
 type GitHubCheckout struct {
@@ -32,12 +31,9 @@ func (c GitHubCheckout) Close() error {
 	return os.RemoveAll(c.workDir)
 }
 
-type commandRunner func(ctx context.Context, dir string, env []string, name string, args ...string) error
-
 func NewGitHubService(cfg config.GitHubConfig) *GitHubService {
 	return &GitHubService{
 		tempDir: cfg.TempDir,
-		run:     pkg.Run,
 	}
 }
 
@@ -61,7 +57,7 @@ func (s *GitHubService) FetchCode(ctx context.Context, req domain.DeploymentRequ
 		return GitHubCheckout{}, err
 	}
 	if commit := strings.TrimSpace(req.GitCommitHash); commit != "" {
-		if err := s.run(ctx, checkout.Path, nil, "git", "checkout", "--detach", commit); err != nil {
+		if err := pkg.Run(ctx, checkout.Path, nil, "git", "checkout", "--detach", commit); err != nil {
 			_ = checkout.Close()
 			return GitHubCheckout{}, fmt.Errorf("checkout commit %s: %w", commit, err)
 		}
@@ -83,7 +79,7 @@ func (s *GitHubService) clone(ctx context.Context, gitURL, branch, dst string) e
 		branch = config.DefaultGitBranch
 	}
 
-	if err := s.run(ctx, "", nil, "git", "clone", "--branch", branch, "--single-branch", gitURL, dst); err != nil {
+	if err := pkg.Run(ctx, "", nil, "git", "clone", "--branch", branch, "--single-branch", gitURL, dst); err != nil {
 		return fmt.Errorf("clone %s branch %s: %w", gitURL, branch, err)
 	}
 	return nil

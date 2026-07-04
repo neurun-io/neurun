@@ -11,7 +11,6 @@ import (
 	"github.com/dagflows/builder/internal/config"
 	"github.com/dagflows/builder/internal/domain"
 	"github.com/dagflows/builder/internal/service"
-	"github.com/dagflows/builder/internal/storage"
 )
 
 func main() {
@@ -41,14 +40,10 @@ func main() {
 		GitCommitHash: *gitCommitHash,
 	}
 
-	store, err := storage.NewStore(cfg)
+	deploymentService, err := service.NewConfiguredDeploymentService(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	buildService := service.NewBuildService(store)
-	github := service.NewGitHubService(cfg.GitHub)
-	deploymentService := service.NewDeploymentService(buildService, github)
 
 	response, err := deploymentService.BuildDeployment(context.Background(), request)
 	if err != nil {
