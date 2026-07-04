@@ -42,7 +42,7 @@ func installPythonRequirements(ctx context.Context, sourceDir, installDir, workD
 		return nil
 	}
 
-	prepared, err := preparePythonRequirements(requirements, workDir)
+	prepared, err := preparePythonRequirements(requirements, sourceDir, workDir)
 	if err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func installPythonRequirements(ctx context.Context, sourceDir, installDir, workD
 	return pkg.Run(ctx, sourceDir, pythonTempEnv(workDir), "python", "-m", "pip", "install", "-r", prepared, "-t", installDir)
 }
 
-func preparePythonRequirements(requirements, workDir string) (string, error) {
+func preparePythonRequirements(requirements, sourceDir, workDir string) (string, error) {
 	source, err := os.Open(requirements)
 	if err != nil {
 		return "", err
@@ -70,9 +70,13 @@ func preparePythonRequirements(requirements, workDir string) (string, error) {
 	defer target.Close()
 
 	baseDir := filepath.Dir(requirements)
+	sourceRoot, err := filepath.Abs(sourceDir)
+	if err != nil {
+		return "", err
+	}
 	scanner := bufio.NewScanner(source)
 	for scanner.Scan() {
-		line, err := rewriteEditableRequirement(scanner.Text(), baseDir)
+		line, err := rewriteEditableRequirement(scanner.Text(), baseDir, sourceRoot)
 		if err != nil {
 			return "", err
 		}
@@ -86,7 +90,7 @@ func preparePythonRequirements(requirements, workDir string) (string, error) {
 	return prepared, nil
 }
 
-func rewriteEditableRequirement(line, baseDir string) (string, error) {
+func rewriteEditableRequirement(line, baseDir, sourceRoot string) (string, error) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 		return line, nil
@@ -109,6 +113,9 @@ func rewriteEditableRequirement(line, baseDir string) (string, error) {
 	absolute, err := filepath.Abs(filepath.Join(baseDir, filepath.FromSlash(spec)))
 	if err != nil {
 		return "", err
+	}
+	if !isPathInside(sourceRoot, absolute) {
+		return "", fmt.Errorf("editable requirement %q resolves outside the checked-out source to %s; use a package name, a git URL, or a path inside the repository", spec, absolute)
 	}
 	return filepath.ToSlash(absolute), nil
 }
@@ -135,4 +142,12 @@ func pythonTempEnv(workDir string) []string {
 		"TMP=" + tempDir,
 		"PIP_CACHE_DIR=" + cacheDir,
 	}
+}
+
+func isPathInside(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel))
 }

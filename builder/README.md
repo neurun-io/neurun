@@ -101,4 +101,4 @@ Response messages are sent to `SQS_RESPONSE_QUEUE_URL`:
 }
 ```
 
-For each request, the worker clones `git_url`, checks out `git_commit_hash` when provided, then runs the build against the fetched checkout. Without `git_commit_hash`, the checkout stays on the latest commit from the selected branch. It checks for `dagflows.json`, `.dagflows.json`, `dagflows.workflow.json`, or `workflow.json`. If no manifest exists, it infers one `main` node from `package.json`, `go.mod`, `requirements.txt`, or Python source files.
+For each request, the worker clones `git_url`, checks out `git_commit_hash` when provided, then runs the build against the fetched checkout. Without `git_commit_hash`, the checkout stays on the latest commit from the selected branch. Python projects are inspected with `python -m dagflows inspect`, so the repo should expose a `Workflow` through the SDK CLI. Node and Go projects still use a single inferred `main` node from `package.json` or `go.mod`.
