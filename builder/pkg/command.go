@@ -10,6 +10,15 @@ import (
 )
 
 func Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
+	_, err := runCommand(ctx, dir, env, name, args...)
+	return err
+}
+
+func Output(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
+	return runCommand(ctx, dir, env, name, args...)
+}
+
+func runCommand(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	if len(env) > 0 {
@@ -20,7 +29,7 @@ func Run(ctx context.Context, dir string, env []string, name string, args ...str
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s %s: %w\n%s", name, strings.Join(args, " "), err, tail(output.String(), 4000))
+		return output.String(), fmt.Errorf("%s %s: %w\n%s", name, strings.Join(args, " "), err, tail(output.String(), 4000))
 	}
-	return nil
+	return output.String(), nil
 }

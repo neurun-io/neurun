@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -21,13 +19,6 @@ const (
 	defaultRetryCount     = 3
 	defaultTimeoutSeconds = 300
 )
-
-var manifestNames = []string{
-	"dagflows.json",
-	".dagflows.json",
-	"dagflows.workflow.json",
-	"workflow.json",
-}
 
 type DeploymentService struct {
 	buildService *BuildService
@@ -52,7 +43,7 @@ func (s *DeploymentService) BuildDeployment(ctx context.Context, req domain.Depl
 	}
 	defer checkout.Close()
 
-	nodes, err := resolveWorkflowNodes(checkout.Path)
+	nodes, err := s.resolveWorkflowNodes(ctx, checkout.Path)
 	if err != nil {
 		return domain.DeploymentResponse{}, err
 	}
@@ -84,18 +75,13 @@ func validateDeploymentRequest(req domain.DeploymentRequest) error {
 	}
 }
 
-func resolveWorkflowNodes(repoDir string) ([]domain.WorkflowNode, error) {
-	for _, name := range manifestNames {
-		nodes, err := readManifestNodes(filepath.Join(repoDir, name))
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
+func (s *DeploymentService) resolveWorkflowNodes(ctx context.Context, repoDir string) ([]domain.WorkflowNode, error) {
+	if isPythonProject(repoDir) {
+		nodes, err := inspectPythonWorkflow(ctx, repoDir)
 		if err != nil {
 			return nil, err
 		}
-		if len(nodes) > 0 {
-			return normalizeWorkflowNodes(repoDir, nodes)
-		}
+		return normalizeWorkflowNodes(repoDir, nodes)
 	}
 
 	node, err := inferWorkflowNode(repoDir)
@@ -103,34 +89,6 @@ func resolveWorkflowNodes(repoDir string) ([]domain.WorkflowNode, error) {
 		return nil, err
 	}
 	return normalizeWorkflowNodes(repoDir, []domain.WorkflowNode{node})
-}
-
-func readManifestNodes(path string) ([]domain.WorkflowNode, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var wrapped struct {
-		Nodes []domain.WorkflowNode `json:"nodes"`
-	}
-	if err := json.Unmarshal(data, &wrapped); err == nil && len(wrapped.Nodes) > 0 {
-		return wrapped.Nodes, nil
-	}
-
-	var nodes []domain.WorkflowNode
-	if err := json.Unmarshal(data, &nodes); err == nil && len(nodes) > 0 {
-		return nodes, nil
-	}
-
-	var node domain.WorkflowNode
-	if err := json.Unmarshal(data, &node); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", filepath.Base(path), err)
-	}
-	if strings.TrimSpace(node.Language) == "" {
-		return nil, fmt.Errorf("%s does not define workflow nodes", filepath.Base(path))
-	}
-	return []domain.WorkflowNode{node}, nil
 }
 
 func normalizeWorkflowNodes(repoDir string, nodes []domain.WorkflowNode) ([]domain.WorkflowNode, error) {
@@ -175,11 +133,16 @@ func inferWorkflowNode(repoDir string) (domain.WorkflowNode, error) {
 		return domain.WorkflowNode{Key: defaultNodeKey, Type: defaultNodeType, Language: string(domain.RuntimeNode)}, nil
 	case pkg.FileExists(filepath.Join(repoDir, "go.mod")):
 		return domain.WorkflowNode{Key: defaultNodeKey, Type: defaultNodeType, Language: string(domain.RuntimeGo)}, nil
-	case pkg.FileExists(filepath.Join(repoDir, "requirements.txt")) || pkg.FileExists(filepath.Join(repoDir, "main.py")) || hasFileWithExt(repoDir, ".py"):
-		return domain.WorkflowNode{Key: defaultNodeKey, Type: defaultNodeType, Language: string(domain.RuntimePython)}, nil
 	default:
-		return domain.WorkflowNode{}, fmt.Errorf("no workflow nodes found; add a dagflows.json manifest")
+		return domain.WorkflowNode{}, fmt.Errorf("no workflow nodes found")
 	}
+}
+
+func isPythonProject(repoDir string) bool {
+	return pkg.FileExists(filepath.Join(repoDir, "requirements.txt")) ||
+		pkg.FileExists(filepath.Join(repoDir, "pyproject.toml")) ||
+		pkg.FileExists(filepath.Join(repoDir, "main.py")) ||
+		hasFileWithExt(repoDir, ".py")
 }
 
 func hasFileWithExt(root, ext string) bool {

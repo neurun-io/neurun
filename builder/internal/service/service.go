@@ -58,7 +58,7 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 	var artifacts []pkg.Artifact
 	switch req.Runtime {
 	case domain.RuntimePython:
-		artifacts, err = s.buildPython(ctx, srcDir, outDir)
+		artifacts, err = s.buildPython(ctx, sourcePath, srcDir, outDir)
 	case domain.RuntimeNode:
 		artifacts, err = s.buildNode(ctx, srcDir, outDir)
 	case domain.RuntimeGo:
