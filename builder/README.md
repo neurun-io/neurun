@@ -24,7 +24,7 @@ github-com-dagflows-python-sdk/e97b87e.../code-layer.zip
 
 ## Run
 
-Copy `.env.example` to `.env` and edit what you need. Local storage is the default, so R2 is optional.
+Copy `.env.example` to `.env` and edit what you need.
 
 ```sh
 go run ./cmd/builder
@@ -48,15 +48,15 @@ Optional:
 
 ## Storage
 
-```sh
-STORAGE_DRIVER=local
-LOCAL_STORAGE_DIR=.dagflows-artifacts
-```
-
-Use R2 later with:
+Artifacts are uploaded to R2.
 
 ```sh
-STORAGE_DRIVER=r2
+R2_ACCOUNT_ID=<account-id>
+R2_ENDPOINT=
+R2_BUCKET=<bucket>
+R2_ACCESS_KEY_ID=<access-key-id>
+R2_SECRET_ACCESS_KEY=<secret-access-key>
+R2_PREFIX=builds
 ```
 
 ## SQS
