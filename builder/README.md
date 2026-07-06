@@ -30,21 +30,7 @@ Copy `.env.example` to `.env` and edit what you need.
 go run ./cmd/builder
 ```
 
-Run one build without SQS:
-
-```sh
-go run ./cmd/builder-local \
-  --deployment-id local-deployment \
-  --workflow-id local-workflow \
-  --git-url file:///D:/path/to/project
-```
-
-Optional:
-
-```sh
---git-branch main
---git-commit-hash abc1234
-```
+For local development, point the SQS env vars at ministack.
 
 ## Storage
 
