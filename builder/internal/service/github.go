@@ -13,9 +13,7 @@ import (
 	"github.com/dagflows/builder/pkg"
 )
 
-type GitHubService struct {
-	tempDir string
-}
+type GitHubService struct{}
 
 type GitHubCheckout struct {
 	Path         string
@@ -31,10 +29,8 @@ func (c GitHubCheckout) Close() error {
 	return os.RemoveAll(c.workDir)
 }
 
-func NewGitHubService(cfg config.GitHubConfig) *GitHubService {
-	return &GitHubService{
-		tempDir: cfg.TempDir,
-	}
+func NewGitHubService() *GitHubService {
+	return &GitHubService{}
 }
 
 func (s *GitHubService) FetchCode(ctx context.Context, req domain.DeploymentRequest) (GitHubCheckout, error) {
@@ -43,7 +39,7 @@ func (s *GitHubService) FetchCode(ctx context.Context, req domain.DeploymentRequ
 		return GitHubCheckout{}, fmt.Errorf("git_url is required")
 	}
 
-	workDir, err := os.MkdirTemp(s.tempDir, "dagflows-github-*")
+	workDir, err := os.MkdirTemp("", "dagflows-github-*")
 	if err != nil {
 		return GitHubCheckout{}, fmt.Errorf("create github checkout dir: %w", err)
 	}

@@ -19,7 +19,6 @@ import (
 
 const (
 	cloudflareR2HostSuffix = ".r2.cloudflarestorage.com"
-	awsRegion              = "auto"
 	awsService             = "s3"
 )
 
@@ -27,6 +26,7 @@ type R2Store struct {
 	endpoint  *url.URL
 	client    *http.Client
 	bucket    string
+	region    string
 	prefix    string
 	accessKey string
 	secretKey string
@@ -39,9 +39,13 @@ func NewR2(cfg config.R2Config) (*R2Store, error) {
 	}
 
 	bucket := strings.TrimSpace(cfg.Bucket)
+	region := strings.TrimSpace(cfg.Region)
 	accessKey := strings.TrimSpace(cfg.AccessKeyID)
 	secretKey := strings.TrimSpace(cfg.SecretAccessKey)
 	prefix := strings.Trim(cfg.Prefix, "/")
+	if region == "" {
+		region = config.DefaultR2Region
+	}
 
 	if bucket == "" || accessKey == "" || secretKey == "" {
 		return nil, fmt.Errorf("R2_BUCKET, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY are required")
@@ -51,6 +55,7 @@ func NewR2(cfg config.R2Config) (*R2Store, error) {
 		endpoint:  endpoint,
 		client:    http.DefaultClient,
 		bucket:    bucket,
+		region:    region,
 		prefix:    prefix,
 		accessKey: accessKey,
 		secretKey: secretKey,
@@ -144,7 +149,7 @@ func (s *R2Store) sign(req *http.Request, canonicalURI, payloadHash string, now 
 	req.Header.Set("X-Amz-Date", amzDate)
 	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
 
-	credentialScope := shortDate + "/" + awsRegion + "/" + awsService + "/aws4_request"
+	credentialScope := shortDate + "/" + s.region + "/" + awsService + "/aws4_request"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
 	canonicalHeaders := "host:" + req.URL.Host + "\n" +
 		"x-amz-content-sha256:" + payloadHash + "\n" +
@@ -166,7 +171,7 @@ func (s *R2Store) sign(req *http.Request, canonicalURI, payloadHash string, now 
 	}, "\n")
 
 	signingKey := hmacSHA256([]byte("AWS4"+s.secretKey), shortDate)
-	signingKey = hmacSHA256(signingKey, awsRegion)
+	signingKey = hmacSHA256(signingKey, s.region)
 	signingKey = hmacSHA256(signingKey, awsService)
 	signingKey = hmacSHA256(signingKey, "aws4_request")
 	signature := hex.EncodeToString(hmacSHA256(signingKey, stringToSign))

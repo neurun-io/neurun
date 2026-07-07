@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	objectpath "path"
 	"path/filepath"
@@ -42,22 +43,31 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 	if buildID == "" {
 		buildID = pkg.NewBuildID()
 	}
+	log.Printf("build app=%s build=%s runtime=%s started", req.AppID, buildID, req.Runtime)
+
 	workDir, err := os.MkdirTemp("", "dagflows-build-*")
 	if err != nil {
+		log.Printf("build app=%s build=%s stage=create_work_dir failed reason=%s", req.AppID, buildID, err)
 		return domain.BuildResult{}, fmt.Errorf("create work dir: %w", err)
 	}
 	defer os.RemoveAll(workDir)
 
 	srcDir := filepath.Join(workDir, "src")
 	outDir := filepath.Join(workDir, "out")
+	log.Printf("build app=%s build=%s stage=copy_source started", req.AppID, buildID)
 	if err := pkg.CopyDir(sourcePath, srcDir, skipSourceEntry); err != nil {
+		log.Printf("build app=%s build=%s stage=copy_source failed reason=%s", req.AppID, buildID, err)
 		return domain.BuildResult{}, fmt.Errorf("copy source: %w", err)
 	}
+	log.Printf("build app=%s build=%s stage=copy_source completed", req.AppID, buildID)
+
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		log.Printf("build app=%s build=%s stage=create_output_dir failed reason=%s", req.AppID, buildID, err)
 		return domain.BuildResult{}, fmt.Errorf("create output dir: %w", err)
 	}
 
 	var artifacts []pkg.Artifact
+	log.Printf("build app=%s build=%s stage=compile_runtime started runtime=%s", req.AppID, buildID, req.Runtime)
 	switch req.Runtime {
 	case domain.RuntimePython:
 		artifacts, err = s.buildPython(ctx, sourcePath, srcDir, outDir)
@@ -66,19 +76,25 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 	case domain.RuntimeGo:
 		artifacts, err = s.buildGo(ctx, srcDir, outDir, req.EntryPoint, req.AppID)
 	default:
+		log.Printf("build app=%s build=%s stage=compile_runtime failed reason=unsupported runtime %q", req.AppID, buildID, req.Runtime)
 		return domain.BuildResult{}, fmt.Errorf("unsupported runtime %q", req.Runtime)
 	}
 	if err != nil {
+		log.Printf("build app=%s build=%s stage=compile_runtime failed reason=%s", req.AppID, buildID, err)
 		return domain.BuildResult{}, fmt.Errorf("build failed: %w", err)
 	}
+	log.Printf("build app=%s build=%s stage=compile_runtime completed artifacts=%d", req.AppID, buildID, len(artifacts))
 
 	result := domain.BuildResult{BuildID: buildID}
 	for _, artifact := range artifacts {
 		key := objectpath.Join(pkg.SafeName(req.AppID), buildID, artifact.Name)
+		log.Printf("build app=%s build=%s stage=upload_artifact started artifact=%s key=%s", req.AppID, buildID, artifact.Name, key)
 		uploaded, err := s.store.PutFile(ctx, key, artifact.Path, artifact.MediaType)
 		if err != nil {
+			log.Printf("build app=%s build=%s stage=upload_artifact failed artifact=%s reason=%s", req.AppID, buildID, artifact.Name, err)
 			return domain.BuildResult{}, fmt.Errorf("upload %s: %w", artifact.Name, err)
 		}
+		log.Printf("build app=%s build=%s stage=upload_artifact completed artifact=%s bucket=%s key=%s", req.AppID, buildID, artifact.Name, uploaded.Bucket, uploaded.Key)
 
 		result.Artifacts = append(result.Artifacts, domain.Artifact{
 			ID:        uuid.NewString(),
@@ -92,6 +108,7 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 		})
 	}
 
+	log.Printf("build app=%s build=%s completed artifacts=%d", req.AppID, buildID, len(result.Artifacts))
 	return result, nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -32,23 +33,36 @@ func NewDeploymentService(buildService *BuildService, github *GitHubService) *De
 
 func (s *DeploymentService) BuildDeployment(ctx context.Context, req domain.DeploymentRequest) (domain.DeploymentResponse, error) {
 	if err := validateDeploymentRequest(req); err != nil {
+		log.Printf("deployment %s validation failed reason=%s", req.DeploymentID, err)
 		return domain.DeploymentResponse{}, err
 	}
 
+	log.Printf("deployment %s started workflow=%s", req.DeploymentID, req.WorkflowID)
+	log.Printf("deployment %s stage=fetch_code started", req.DeploymentID)
 	checkout, err := s.github.FetchCode(ctx, req)
 	if err != nil {
-		return domain.DeploymentResponse{}, fmt.Errorf("fetch code: %w", err)
+		stageErr := fmt.Errorf("fetch code: %w", err)
+		log.Printf("deployment %s stage=fetch_code failed reason=%s", req.DeploymentID, stageErr)
+		return domain.DeploymentResponse{}, stageErr
 	}
 	defer checkout.Close()
+	log.Printf("deployment %s stage=fetch_code completed repo=%s commit=%s", req.DeploymentID, checkout.RepoSequence, checkout.CommitHash)
 
+	log.Printf("deployment %s stage=resolve_nodes started", req.DeploymentID)
 	nodes, err := s.resolveWorkflowNodes(ctx, checkout.Path)
 	if err != nil {
+		log.Printf("deployment %s stage=resolve_nodes failed reason=%s", req.DeploymentID, err)
 		return domain.DeploymentResponse{}, err
 	}
+	log.Printf("deployment %s stage=resolve_nodes completed nodes=%d runtimes=%s", req.DeploymentID, len(nodes), nodeRuntimes(nodes))
 
+	log.Printf("deployment %s stage=build_package started", req.DeploymentID)
 	if err := s.buildPackage(ctx, checkout, nodes); err != nil {
+		log.Printf("deployment %s stage=build_package failed reason=%s", req.DeploymentID, err)
 		return domain.DeploymentResponse{}, err
 	}
+	log.Printf("deployment %s stage=build_package completed", req.DeploymentID)
+	log.Printf("deployment %s completed workflow=%s", req.DeploymentID, req.WorkflowID)
 
 	return domain.DeploymentResponse{
 		DeploymentID: req.DeploymentID,
@@ -56,6 +70,26 @@ func (s *DeploymentService) BuildDeployment(ctx context.Context, req domain.Depl
 		ErrorMessage: "",
 		Nodes:        nodes,
 	}, nil
+}
+
+func nodeRuntimes(nodes []domain.WorkflowNode) string {
+	seen := map[string]struct{}{}
+	var runtimes []string
+	for _, node := range nodes {
+		runtime := strings.TrimSpace(node.Language)
+		if runtime == "" {
+			continue
+		}
+		if _, ok := seen[runtime]; ok {
+			continue
+		}
+		seen[runtime] = struct{}{}
+		runtimes = append(runtimes, runtime)
+	}
+	if len(runtimes) == 0 {
+		return "unknown"
+	}
+	return strings.Join(runtimes, ",")
 }
 
 func validateDeploymentRequest(req domain.DeploymentRequest) error {

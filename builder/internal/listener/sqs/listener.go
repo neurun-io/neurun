@@ -85,6 +85,7 @@ func (l *Listener) Listen(ctx context.Context) error {
 		}
 
 		for _, message := range output.Messages {
+			log.Printf("received SQS message id=%s", aws.ToString(message.MessageId))
 			if err := l.processReceivedMessage(ctx, message); err != nil {
 				log.Printf("process SQS message %s: %v", aws.ToString(message.MessageId), err)
 			}
@@ -93,38 +94,56 @@ func (l *Listener) Listen(ctx context.Context) error {
 }
 
 func (l *Listener) processReceivedMessage(ctx context.Context, message types.Message) error {
-	response := l.processMessage(ctx, aws.ToString(message.Body))
+	messageID := aws.ToString(message.MessageId)
+	response := l.processMessage(ctx, messageID, aws.ToString(message.Body))
 	responseBody, err := json.Marshal(response)
 	if err != nil {
+		log.Printf("deployment %s stage=encode_response failed reason=%s", response.DeploymentID, err)
 		return fmt.Errorf("encode response: %w", err)
 	}
 
+	log.Printf("deployment %s stage=send_response started status=%s", response.DeploymentID, response.Status)
 	if _, err := l.client.SendMessage(ctx, &awssqs.SendMessageInput{
 		QueueUrl:    aws.String(l.responseQueue),
 		MessageBody: aws.String(string(responseBody)),
 	}); err != nil {
+		log.Printf("deployment %s stage=send_response failed reason=%s", response.DeploymentID, err)
 		return fmt.Errorf("send response: %w", err)
 	}
+	log.Printf("deployment %s stage=send_response completed", response.DeploymentID)
+
+	log.Printf("deployment %s stage=delete_request started message=%s", response.DeploymentID, messageID)
 	if _, err := l.client.DeleteMessage(ctx, &awssqs.DeleteMessageInput{
 		QueueUrl:      aws.String(l.requestQueue),
 		ReceiptHandle: message.ReceiptHandle,
 	}); err != nil {
+		log.Printf("deployment %s stage=delete_request failed reason=%s", response.DeploymentID, err)
 		return fmt.Errorf("delete request: %w", err)
 	}
+	log.Printf("deployment %s stage=delete_request completed message=%s", response.DeploymentID, messageID)
 
-	log.Printf("deployment %s finished with status %s", response.DeploymentID, response.Status)
+	if response.Status == domain.DeploymentStatusFailed {
+		log.Printf("deployment %s finished status=%s reason=%s", response.DeploymentID, response.Status, response.ErrorMessage)
+	} else {
+		log.Printf("deployment %s finished status=%s", response.DeploymentID, response.Status)
+	}
 	return nil
 }
 
-func (l *Listener) processMessage(ctx context.Context, body string) domain.DeploymentResponse {
+func (l *Listener) processMessage(ctx context.Context, messageID, body string) domain.DeploymentResponse {
 	var req domain.DeploymentRequest
 	if err := json.Unmarshal([]byte(body), &req); err != nil {
-		return failedResponse(extractDeploymentID(body), fmt.Errorf("decode request: %w", err))
+		response := failedResponse(extractDeploymentID(body), fmt.Errorf("decode request: %w", err))
+		log.Printf("SQS message id=%s decode failed reason=%s", messageID, response.ErrorMessage)
+		return response
 	}
+	log.Printf("decoded SQS message id=%s deployment=%s workflow=%s", messageID, req.DeploymentID, req.WorkflowID)
 
 	response, err := l.deploymentService.BuildDeployment(ctx, req)
 	if err != nil {
-		return failedResponse(req.DeploymentID, err)
+		response := failedResponse(req.DeploymentID, err)
+		log.Printf("deployment %s failed reason=%s", response.DeploymentID, response.ErrorMessage)
+		return response
 	}
 	return response
 }

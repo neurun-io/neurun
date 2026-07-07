@@ -13,15 +13,15 @@ const (
 	DefaultSQSMaxMessages              = int32(1)
 	DefaultSQSWaitTimeSeconds          = int32(20)
 	DefaultSQSVisibilityTimeoutSeconds = int32(900)
+	DefaultR2Region                    = "auto"
 	DefaultR2Prefix                    = "builds"
 	DefaultGitBranch                   = "main"
 )
 
 type Config struct {
-	AWS    AWSConfig
-	SQS    SQSConfig
-	R2     R2Config
-	GitHub GitHubConfig
+	AWS AWSConfig
+	SQS SQSConfig
+	R2  R2Config
 }
 
 type AWSConfig struct {
@@ -42,14 +42,11 @@ type SQSConfig struct {
 type R2Config struct {
 	AccountID       string
 	Endpoint        string
+	Region          string
 	Bucket          string
 	AccessKeyID     string
 	SecretAccessKey string
 	Prefix          string
-}
-
-type GitHubConfig struct {
-	TempDir string
 }
 
 func Load(path string) (Config, error) {
@@ -74,12 +71,11 @@ func Load(path string) (Config, error) {
 
 	cfg.R2.AccountID = env("R2_ACCOUNT_ID")
 	cfg.R2.Endpoint = env("R2_ENDPOINT")
+	cfg.R2.Region = envOr("R2_REGION", cfg.R2.Region)
 	cfg.R2.Bucket = env("R2_BUCKET")
 	cfg.R2.AccessKeyID = env("R2_ACCESS_KEY_ID")
 	cfg.R2.SecretAccessKey = env("R2_SECRET_ACCESS_KEY")
 	cfg.R2.Prefix = strings.Trim(envOr("R2_PREFIX", cfg.R2.Prefix), "/")
-
-	cfg.GitHub.TempDir = env("GIT_TEMP_DIR")
 
 	return cfg, nil
 }
@@ -95,6 +91,7 @@ func Default() Config {
 			VisibilityTimeoutSeconds: DefaultSQSVisibilityTimeoutSeconds,
 		},
 		R2: R2Config{
+			Region: DefaultR2Region,
 			Prefix: DefaultR2Prefix,
 		},
 	}

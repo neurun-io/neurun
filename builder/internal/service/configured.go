@@ -10,5 +10,5 @@ func NewConfiguredDeploymentService(cfg config.Config) (*DeploymentService, erro
 	if err != nil {
 		return nil, err
 	}
-	return NewDeploymentService(NewBuildService(store), NewGitHubService(cfg.GitHub)), nil
+	return NewDeploymentService(NewBuildService(store), NewGitHubService()), nil
 }

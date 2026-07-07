@@ -30,20 +30,29 @@ Copy `.env.example` to `.env` and edit what you need.
 go run ./cmd/builder
 ```
 
-For local development, point the SQS env vars at ministack.
+For local development with Ministack, keep `AWS_ENDPOINT_URL_SQS` and both
+`SQS_*_QUEUE_URL` values pointed at the Ministack SQS endpoint. The example uses
+`http://localhost:4566`, account `000000000000`, and queues `builder-requests`
+and `builder-responses`.
 
 ## Storage
 
-Artifacts are uploaded to R2.
+Artifacts are uploaded to an S3-compatible object store. For local development,
+the example points at Ministack S3 on `http://localhost:4566` with bucket
+`dagflows-builds`.
 
 ```sh
-R2_ACCOUNT_ID=<account-id>
-R2_ENDPOINT=
-R2_BUCKET=<bucket>
-R2_ACCESS_KEY_ID=<access-key-id>
-R2_SECRET_ACCESS_KEY=<secret-access-key>
+R2_ACCOUNT_ID=
+R2_ENDPOINT=http://localhost:4566
+R2_REGION=us-east-1
+R2_BUCKET=dagflows-builds
+R2_ACCESS_KEY_ID=test
+R2_SECRET_ACCESS_KEY=test
 R2_PREFIX=builds
 ```
+
+For Cloudflare R2, leave `R2_ENDPOINT` empty, set `R2_ACCOUNT_ID`, and use
+`R2_REGION=auto`.
 
 ## SQS
 
