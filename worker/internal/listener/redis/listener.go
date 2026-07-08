@@ -21,8 +21,8 @@ type Listener struct {
 	requests    *streamConsumer
 	responses   *streamPublisher
 	nodeService *service.NodeRunService
-	workers     int
 	capacity    hostCapacityGate
+	active      activeTracker
 }
 
 func NewListener(cfg config.Config, nodeService *service.NodeRunService) (*Listener, error) {
@@ -62,61 +62,58 @@ func NewListener(cfg config.Config, nodeService *service.NodeRunService) (*Liste
 		requests:    requests,
 		responses:   newStreamPublisher(client, cfg.Streams.ResponseStream, cfg.Streams.MaxLen),
 		nodeService: nodeService,
-		workers:     cfg.Worker.MaxConcurrency,
 		capacity:    newHostCapacityGate(cfg.Worker.MinFreeMemoryMB),
 	}, nil
 }
 
 func (l *Listener) Listen(ctx context.Context) error {
 	defer l.client.Close()
-	log.Printf("worker listening stream=%s group=%s workers=%d", l.requests.stream, l.requests.group, l.workers)
+	log.Printf("worker listening stream=%s group=%s runtime=firecracker concurrency=capacity-gated", l.requests.stream, l.requests.group)
 
 	var wg sync.WaitGroup
-	for i := 0; i < l.workers; i++ {
-		workerID := i + 1
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			l.workerLoop(ctx, workerID)
-		}()
-	}
-
-	<-ctx.Done()
-	wg.Wait()
-	return nil
-}
-
-func (l *Listener) workerLoop(ctx context.Context, workerID int) {
 	for {
 		if err := ctx.Err(); err != nil {
-			return
+			break
 		}
 		if err := l.capacity.Wait(ctx); err != nil {
-			return
+			break
 		}
 
 		msg, err := l.requests.ReadOne(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				return
+				break
 			}
-			log.Printf("worker=%d read request failed: %v", workerID, err)
+			log.Printf("read request failed: %v", err)
 			if err := sleep(ctx, 2*time.Second); err != nil {
-				return
+				break
 			}
 			continue
 		}
 
-		if err := l.processMessage(ctx, workerID, msg); err != nil {
-			log.Printf("worker=%d process request id=%s failed: %v", workerID, msg.ID, err)
+		if !l.active.Mark(msg.ID) {
+			log.Printf("request id=%s is already active locally; skipping duplicate delivery", msg.ID)
+			continue
 		}
+
+		wg.Add(1)
+		go func(msg streamMessage) {
+			defer wg.Done()
+			defer l.active.Unmark(msg.ID)
+			if err := l.processMessage(ctx, msg); err != nil {
+				log.Printf("process request id=%s failed: %v", msg.ID, err)
+			}
+		}(msg)
 	}
+
+	wg.Wait()
+	return nil
 }
 
-func (l *Listener) processMessage(ctx context.Context, workerID int, msg streamMessage) error {
+func (l *Listener) processMessage(ctx context.Context, msg streamMessage) error {
 	var req domain.WorkflowNodeRunRequest
 	if err := json.Unmarshal(msg.Data, &req); err != nil {
-		log.Printf("worker=%d request id=%s decode failed: %v", workerID, msg.ID, err)
+		log.Printf("request id=%s decode failed: %v", msg.ID, err)
 		return l.requests.Ack(ctx, msg.ID)
 	}
 

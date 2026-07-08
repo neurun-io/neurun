@@ -1,26 +1,21 @@
 package service
 
 import (
-	"fmt"
-
 	"github.com/dagflows/worker/internal/config"
+	"github.com/dagflows/worker/internal/storage"
 	"github.com/dagflows/worker/internal/vm"
 )
 
 func NewConfiguredNodeRunService(cfg config.Config) (*NodeRunService, error) {
-	var runner vm.Runner
-	switch cfg.Worker.RuntimeMode {
-	case "host":
-		runner = vm.NewHostRunner(cfg.Worker.HostPythonBinary)
-	case "firecracker", "":
-		firecracker, err := vm.NewFirecrackerRunner(cfg.Firecracker.RunnerCommand)
-		if err != nil {
-			return nil, err
-		}
-		runner = firecracker
-	default:
-		return nil, fmt.Errorf("unsupported WORKER_RUNTIME_MODE %q", cfg.Worker.RuntimeMode)
+	fetcher, err := storage.NewFetcher(cfg)
+	if err != nil {
+		return nil, err
 	}
 
-	return NewNodeRunService(runner, cfg.Worker.WorkDir, cfg.Worker.OutputInlineMaxBytes), nil
+	runner, err := vm.NewFirecrackerRunner(cfg.Firecracker.RunnerCommand)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewNodeRunService(runner, fetcher, cfg.Worker.WorkDir, cfg.Worker.OutputInlineMaxBytes), nil
 }

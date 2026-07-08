@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,9 +58,16 @@ type ManifestPaths struct {
 	ManifestPath string `json:"manifest_path"`
 }
 
-func Prepare(ctx context.Context, baseDir string, req domain.WorkflowNodeRunRequest) (*PreparedWorkload, func(), error) {
-	if strings.TrimSpace(req.ArtifactURL) == "" {
-		return nil, nil, fmt.Errorf("artifact_url is required")
+type Fetcher interface {
+	Fetch(ctx context.Context, ref, path string) error
+}
+
+func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req domain.WorkflowNodeRunRequest) (*PreparedWorkload, func(), error) {
+	if fetcher == nil {
+		return nil, nil, fmt.Errorf("artifact fetcher is required")
+	}
+	if strings.TrimSpace(req.CodeArtifactRef()) == "" {
+		return nil, nil, fmt.Errorf("artifact_key or artifact_url is required")
 	}
 	if baseDir == "" {
 		baseDir = os.TempDir()
@@ -93,11 +99,11 @@ func Prepare(ctx context.Context, baseDir string, req domain.WorkflowNodeRunRequ
 		return nil, nil, err
 	}
 
-	if req.DepsArtifactURL != "" {
+	if depsRef := req.DepsArtifactRef(); depsRef != "" {
 		depsArtifact := filepath.Join(workDir, "deps.artifact")
-		if err := Download(ctx, req.DepsArtifactURL, depsArtifact); err != nil {
+		if err := fetcher.Fetch(ctx, depsRef, depsArtifact); err != nil {
 			cleanup()
-			return nil, nil, fmt.Errorf("download deps artifact: %w", err)
+			return nil, nil, fmt.Errorf("fetch deps artifact: %w", err)
 		}
 		if err := ExpandArtifact(depsArtifact, prepared.DepsDir, "deps"); err != nil {
 			cleanup()
@@ -106,9 +112,9 @@ func Prepare(ctx context.Context, baseDir string, req domain.WorkflowNodeRunRequ
 	}
 
 	codeArtifact := filepath.Join(workDir, "code.artifact")
-	if err := Download(ctx, req.ArtifactURL, codeArtifact); err != nil {
+	if err := fetcher.Fetch(ctx, req.CodeArtifactRef(), codeArtifact); err != nil {
 		cleanup()
-		return nil, nil, fmt.Errorf("download code artifact: %w", err)
+		return nil, nil, fmt.Errorf("fetch code artifact: %w", err)
 	}
 	if err := ExpandArtifact(codeArtifact, prepared.CodeDir, "deployable"); err != nil {
 		cleanup()
@@ -130,33 +136,6 @@ func Prepare(ctx context.Context, baseDir string, req domain.WorkflowNodeRunRequ
 	}
 
 	return prepared, cleanup, nil
-}
-
-func Download(ctx context.Context, rawURL, path string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("download failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	_, err = io.Copy(file, resp.Body)
-	return err
 }
 
 func ExpandArtifact(path, destDir, rawName string) error {

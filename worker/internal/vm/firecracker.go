@@ -20,7 +20,7 @@ type FirecrackerRunner struct {
 func NewFirecrackerRunner(command string) (*FirecrackerRunner, error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
-		return nil, fmt.Errorf("FIRECRACKER_RUNNER_COMMAND is required when WORKER_RUNTIME_MODE=firecracker")
+		return nil, fmt.Errorf("FIRECRACKER_RUNNER_COMMAND is required")
 	}
 	return &FirecrackerRunner{command: command}, nil
 }

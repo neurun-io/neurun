@@ -1,0 +1,10 @@
+.env
+.gocache/
+.gotelemetry/
+bin/
+dist/
+tmp/
+*.exe
+*.test
+*.out
+*.log

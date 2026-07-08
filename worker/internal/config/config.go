@@ -16,14 +16,14 @@ const (
 	DefaultResponseStream = "goflow:node_run_responses"
 	DefaultMinIdle        = 2 * time.Minute
 	DefaultBlockDuration  = 2 * time.Second
-	DefaultMaxConcurrency = 2
-	DefaultRuntimeMode    = "firecracker"
 	DefaultInlineMaxBytes = int64(256 * 1024)
+	DefaultR2Region       = "auto"
 )
 
 type Config struct {
 	Redis       RedisConfig
 	Streams     StreamConfig
+	R2          R2Config
 	Worker      WorkerConfig
 	Firecracker FirecrackerConfig
 }
@@ -43,13 +43,20 @@ type StreamConfig struct {
 	MaxLen         int64
 }
 
+type R2Config struct {
+	AccountID       string
+	Endpoint        string
+	Region          string
+	Bucket          string
+	AccessKeyID     string
+	SecretAccessKey string
+	Prefix          string
+}
+
 type WorkerConfig struct {
 	ID                   string
-	MaxConcurrency       int
 	WorkDir              string
 	MinFreeMemoryMB      int64
-	RuntimeMode          string
-	HostPythonBinary     string
 	OutputInlineMaxBytes int64
 }
 
@@ -74,18 +81,20 @@ func Load(path string) (Config, error) {
 	cfg.Streams.BlockDuration = envDurationOr("WORKER_BLOCKING_READ_TIMEOUT", cfg.Streams.BlockDuration)
 	cfg.Streams.MaxLen = envInt64Or("WORKER_RESPONSE_MAX_LEN", cfg.Streams.MaxLen)
 
+	cfg.R2.AccountID = firstEnv("WORKER_R2_ACCOUNT_ID", "R2_ACCOUNT_ID")
+	cfg.R2.Endpoint = firstEnv("WORKER_R2_ENDPOINT", "R2_ENDPOINT")
+	cfg.R2.Region = firstEnvOr(cfg.R2.Region, "WORKER_R2_REGION", "R2_REGION")
+	cfg.R2.Bucket = firstEnv("WORKER_R2_BUCKET", "R2_BUCKET")
+	cfg.R2.AccessKeyID = firstEnv("WORKER_R2_ACCESS_KEY_ID", "R2_ACCESS_KEY_ID")
+	cfg.R2.SecretAccessKey = firstEnv("WORKER_R2_SECRET_ACCESS_KEY", "R2_SECRET_ACCESS_KEY")
+	cfg.R2.Prefix = strings.Trim(firstEnvOr(cfg.R2.Prefix, "WORKER_R2_PREFIX", "R2_PREFIX"), "/")
+
 	cfg.Worker.ID = firstEnvOr(cfg.Worker.ID, "WORKER_ID")
-	cfg.Worker.MaxConcurrency = envIntOr("WORKER_MAX_CONCURRENCY", cfg.Worker.MaxConcurrency)
 	cfg.Worker.WorkDir = firstEnvOr(cfg.Worker.WorkDir, "WORKER_WORK_DIR")
 	cfg.Worker.MinFreeMemoryMB = envInt64Or("WORKER_MIN_FREE_MEMORY_MB", cfg.Worker.MinFreeMemoryMB)
-	cfg.Worker.RuntimeMode = strings.ToLower(firstEnvOr(cfg.Worker.RuntimeMode, "WORKER_RUNTIME_MODE"))
-	cfg.Worker.HostPythonBinary = firstEnvOr(cfg.Worker.HostPythonBinary, "WORKER_HOST_PYTHON", "PYTHON")
 	cfg.Worker.OutputInlineMaxBytes = envInt64Or("WORKER_OUTPUT_INLINE_MAX_BYTES", cfg.Worker.OutputInlineMaxBytes)
 
 	cfg.Firecracker.RunnerCommand = firstEnv("FIRECRACKER_RUNNER_COMMAND", "WORKER_FIRECRACKER_RUNNER_COMMAND")
-	if cfg.Worker.MaxConcurrency <= 0 {
-		cfg.Worker.MaxConcurrency = DefaultMaxConcurrency
-	}
 	if cfg.Worker.OutputInlineMaxBytes <= 0 {
 		cfg.Worker.OutputInlineMaxBytes = DefaultInlineMaxBytes
 	}
@@ -105,10 +114,10 @@ func Default() Config {
 			BlockDuration:  DefaultBlockDuration,
 			MaxLen:         10000,
 		},
+		R2: R2Config{
+			Region: DefaultR2Region,
+		},
 		Worker: WorkerConfig{
-			MaxConcurrency:       DefaultMaxConcurrency,
-			RuntimeMode:          DefaultRuntimeMode,
-			HostPythonBinary:     "python",
 			OutputInlineMaxBytes: DefaultInlineMaxBytes,
 		},
 	}

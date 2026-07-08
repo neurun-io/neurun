@@ -9,18 +9,21 @@ import (
 
 	"github.com/dagflows/worker/internal/artifact"
 	"github.com/dagflows/worker/internal/domain"
+	"github.com/dagflows/worker/internal/storage"
 	"github.com/dagflows/worker/internal/vm"
 )
 
 type NodeRunService struct {
 	runner               vm.Runner
+	fetcher              storage.Fetcher
 	workDir              string
 	outputInlineMaxBytes int64
 }
 
-func NewNodeRunService(runner vm.Runner, workDir string, outputInlineMaxBytes int64) *NodeRunService {
+func NewNodeRunService(runner vm.Runner, fetcher storage.Fetcher, workDir string, outputInlineMaxBytes int64) *NodeRunService {
 	return &NodeRunService{
 		runner:               runner,
+		fetcher:              fetcher,
 		workDir:              workDir,
 		outputInlineMaxBytes: outputInlineMaxBytes,
 	}
@@ -39,7 +42,7 @@ func (s *NodeRunService) Execute(ctx context.Context, req domain.WorkflowNodeRun
 	}
 
 	log.Printf("node run stage=prepare run=%s node=%s", req.WorkflowRunID, req.NodeKey)
-	prepared, cleanup, err := artifact.Prepare(ctx, s.workDir, req)
+	prepared, cleanup, err := artifact.Prepare(ctx, s.workDir, s.fetcher, req)
 	if err != nil {
 		return failedResponse(base, infrastructure(err.Error()), time.Since(start))
 	}
@@ -84,8 +87,8 @@ func validateRequest(req domain.WorkflowNodeRunRequest) error {
 		return permanent("node_key is required")
 	case strings.TrimSpace(req.Language) == "":
 		return permanent("language is required")
-	case strings.TrimSpace(req.ArtifactURL) == "":
-		return permanent("artifact_url is required")
+	case strings.TrimSpace(req.CodeArtifactRef()) == "":
+		return permanent("artifact_key or artifact_url is required")
 	default:
 		return nil
 	}

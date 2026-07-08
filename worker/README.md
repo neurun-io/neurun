@@ -1,7 +1,7 @@
 # Dagflows Worker
 
-Executes workflow node-run requests from Redis Streams and publishes node-run
-responses for the scheduler.
+Executes workflow node-run requests from Redis Streams, fetches code/dependency
+artifacts from R2, and publishes node-run responses for the scheduler.
 
 The service mirrors the builder layout: `cmd/worker` wires config, listener, and
 service; `internal/listener/redis` owns stream consumption; `internal/service`
@@ -10,10 +10,21 @@ executes a node; `internal/artifact` prepares code/dependency layers; and
 
 ## Layer Model
 
-The builder already emits two layers for Python/Node and one deployable for Go:
+The builder already emits two layers for Python/Node and one deployable for Go.
+The worker expects the scheduler to send R2 object keys:
 
-- `deps_artifact_url` is unpacked into `deps/`.
-- `artifact_url` is unpacked into `code/`.
+```json
+{
+  "artifact_key": "builds/repo/commit/code-layer.zip",
+  "deps_artifact_key": "builds/repo/commit/install-layer.zip"
+}
+```
+
+`artifact_url` and `deps_artifact_url` are still accepted as a compatibility
+fallback, but the normal path should be direct R2 fetch by key.
+
+- `deps_artifact_key` is fetched from R2 and unpacked into `deps/`.
+- `artifact_key` is fetched from R2 and unpacked into `code/`.
 - The worker writes `input.json` and `manifest.json` beside those directories.
 
 Inside the VM, mount or copy them as:
@@ -34,10 +45,9 @@ paths:
 
 ## Firecracker
 
-Set `WORKER_RUNTIME_MODE=firecracker` and provide
-`FIRECRACKER_RUNNER_COMMAND`. The command is expected to launch Firecracker,
-attach the prepared workload to the guest, wait for the guest runner to finish,
-and write JSON to the path passed by `--output`.
+Provide `FIRECRACKER_RUNNER_COMMAND`. The command is expected to launch
+Firecracker, attach the prepared workload to the guest, wait for the guest
+runner to finish, and write JSON to the path passed by `--output`.
 
 The command receives:
 
@@ -50,20 +60,17 @@ The command receives:
 --output <dir>/output.json
 ```
 
-For local development, `WORKER_RUNTIME_MODE=host` currently supports Python via:
-
-```sh
-python -m dagflows invoke --node <node>
-```
-
 ## Redis Defaults
 
 ```txt
 WORKER_REQUEST_STREAM=goflow:node_run_requests
 WORKER_REQUEST_GROUP=goflow:node_run_requests:group
 WORKER_RESPONSE_STREAM=goflow:node_run_responses
-WORKER_MAX_CONCURRENCY=2
 ```
+
+The worker has no fixed max concurrency setting. It dispatches Firecracker
+executions as messages arrive, gated by `WORKER_MIN_FREE_MEMORY_MB` so it stops
+claiming new work when the host is below the configured free-memory floor.
 
 ACK happens only after the response is published. If the process crashes before
 ACK, Redis pending-entry reclaim redelivers the request.
