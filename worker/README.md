@@ -49,6 +49,19 @@ Provide `FIRECRACKER_RUNNER_COMMAND`. The command is expected to launch
 Firecracker, attach the prepared workload to the guest, wait for the guest
 runner to finish, and write JSON to the path passed by `--output`.
 
+Use the Makefile to prepare the local Firecracker environment. It does not
+install or configure Redis:
+
+```sh
+make setup
+```
+
+For a demo kernel/rootfs from Firecracker CI:
+
+```sh
+make vm-assets
+```
+
 The command receives:
 
 ```txt

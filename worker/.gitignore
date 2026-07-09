@@ -1,4 +1,5 @@
 .env
+.local/
 .gocache/
 .gotelemetry/
 bin/
