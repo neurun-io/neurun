@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/dagflows/builder/internal/config"
 	"github.com/dagflows/builder/internal/domain"
 )
@@ -23,13 +24,13 @@ const (
 )
 
 type R2Store struct {
-	endpoint  *url.URL
-	client    *http.Client
-	bucket    string
-	region    string
-	prefix    string
-	accessKey string
-	secretKey string
+	endpoint    *url.URL
+	client      *http.Client
+	bucket      string
+	region      string
+	prefix      string
+	credentials aws.Credentials
+	signer      *v4.Signer
 }
 
 func NewR2(cfg config.R2Config) (*R2Store, error) {
@@ -52,13 +53,13 @@ func NewR2(cfg config.R2Config) (*R2Store, error) {
 	}
 
 	return &R2Store{
-		endpoint:  endpoint,
-		client:    http.DefaultClient,
-		bucket:    bucket,
-		region:    region,
-		prefix:    prefix,
-		accessKey: accessKey,
-		secretKey: secretKey,
+		endpoint:    endpoint,
+		client:      &http.Client{Timeout: 15 * time.Minute},
+		bucket:      bucket,
+		region:      region,
+		prefix:      prefix,
+		credentials: aws.Credentials{AccessKeyID: accessKey, SecretAccessKey: secretKey},
+		signer:      v4.NewSigner(),
 	}, nil
 }
 
@@ -97,14 +98,17 @@ func (s *R2Store) PutFile(ctx context.Context, key, filePath, mediaType string) 
 		return domain.UploadedArtifact{}, err
 	}
 
-	objectURL, canonicalURI := s.objectURL(key)
+	objectURL := s.objectURL(key)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, objectURL.String(), file)
 	if err != nil {
 		return domain.UploadedArtifact{}, err
 	}
 	req.ContentLength = info.Size()
 	req.Header.Set("Content-Type", mediaType)
-	s.sign(req, canonicalURI, payloadHash, time.Now().UTC())
+	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	if err := s.signer.SignHTTP(ctx, s.credentials, req, payloadHash, awsService, s.region, time.Now().UTC()); err != nil {
+		return domain.UploadedArtifact{}, err
+	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -124,11 +128,8 @@ func (s *R2Store) PutFile(ctx context.Context, key, filePath, mediaType string) 
 	}, nil
 }
 
-func (s *R2Store) objectURL(key string) (*url.URL, string) {
-	segments := pathSegments(s.endpoint.Path)
-	if len(segments) == 0 {
-		segments = append(segments, s.bucket)
-	}
+func (s *R2Store) objectURL(key string) *url.URL {
+	segments := append(pathSegments(s.endpoint.Path), s.bucket)
 	segments = append(segments, pathSegments(key)...)
 
 	path := "/" + strings.Join(segments, "/")
@@ -139,44 +140,7 @@ func (s *R2Store) objectURL(key string) (*url.URL, string) {
 	objectURL.RawPath = escapedPath
 	objectURL.RawQuery = ""
 	objectURL.Fragment = ""
-	return &objectURL, escapedPath
-}
-
-func (s *R2Store) sign(req *http.Request, canonicalURI, payloadHash string, now time.Time) {
-	amzDate := now.Format("20060102T150405Z")
-	shortDate := now.Format("20060102")
-
-	req.Header.Set("X-Amz-Date", amzDate)
-	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
-
-	credentialScope := shortDate + "/" + s.region + "/" + awsService + "/aws4_request"
-	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
-	canonicalHeaders := "host:" + req.URL.Host + "\n" +
-		"x-amz-content-sha256:" + payloadHash + "\n" +
-		"x-amz-date:" + amzDate + "\n"
-	canonicalRequest := strings.Join([]string{
-		req.Method,
-		canonicalURI,
-		req.URL.RawQuery,
-		canonicalHeaders,
-		signedHeaders,
-		payloadHash,
-	}, "\n")
-
-	stringToSign := strings.Join([]string{
-		"AWS4-HMAC-SHA256",
-		amzDate,
-		credentialScope,
-		hexSHA256(canonicalRequest),
-	}, "\n")
-
-	signingKey := hmacSHA256([]byte("AWS4"+s.secretKey), shortDate)
-	signingKey = hmacSHA256(signingKey, s.region)
-	signingKey = hmacSHA256(signingKey, awsService)
-	signingKey = hmacSHA256(signingKey, "aws4_request")
-	signature := hex.EncodeToString(hmacSHA256(signingKey, stringToSign))
-
-	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+s.accessKey+"/"+credentialScope+", SignedHeaders="+signedHeaders+", Signature="+signature)
+	return &objectURL
 }
 
 func normalizeEndpoint(raw string) (*url.URL, error) {
@@ -211,17 +175,6 @@ func hashPayload(reader io.Reader) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
-}
-
-func hexSHA256(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:])
-}
-
-func hmacSHA256(key []byte, value string) []byte {
-	hash := hmac.New(sha256.New, key)
-	hash.Write([]byte(value))
-	return hash.Sum(nil)
 }
 
 func pathSegments(value string) []string {

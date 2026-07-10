@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -61,13 +60,8 @@ func Load(path string) (Config, error) {
 
 	cfg.SQS.RequestQueueURL = firstEnv("SQS_REQUEST_QUEUE_URL", "SQS_QUEUE_URL")
 	cfg.SQS.ResponseQueueURL = firstEnv("SQS_RESPONSE_QUEUE_URL", "SQS_RESULT_QUEUE_URL")
-	var err error
-	if cfg.SQS.WaitTimeSeconds, err = envInt32("SQS_WAIT_TIME_SECONDS", cfg.SQS.WaitTimeSeconds, 20); err != nil {
-		return Config{}, err
-	}
-	if cfg.SQS.VisibilityTimeoutSeconds, err = envInt32("SQS_VISIBILITY_TIMEOUT_SECONDS", cfg.SQS.VisibilityTimeoutSeconds, 43200); err != nil {
-		return Config{}, err
-	}
+	cfg.SQS.WaitTimeSeconds = envInt32Or("SQS_WAIT_TIME_SECONDS", cfg.SQS.WaitTimeSeconds)
+	cfg.SQS.VisibilityTimeoutSeconds = envInt32Or("SQS_VISIBILITY_TIMEOUT_SECONDS", cfg.SQS.VisibilityTimeoutSeconds)
 
 	cfg.R2.AccountID = env("R2_ACCOUNT_ID")
 	cfg.R2.Endpoint = env("R2_ENDPOINT")
@@ -120,14 +114,14 @@ func env(name string) string {
 	return strings.TrimSpace(os.Getenv(name))
 }
 
-func envInt32(name string, fallback, max int32) (int32, error) {
+func envInt32Or(name string, fallback int32) int32 {
 	value := env(name)
 	if value == "" {
-		return fallback, nil
+		return fallback
 	}
-	parsed, err := strconv.ParseInt(value, 10, 32)
-	if err != nil || parsed < 0 || parsed > int64(max) {
-		return 0, fmt.Errorf("%s must be an integer between 0 and %d", name, max)
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
 	}
-	return int32(parsed), nil
+	return int32(parsed)
 }

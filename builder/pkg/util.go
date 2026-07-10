@@ -51,10 +51,3 @@ func PathInside(root, path string) bool {
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel))
 }
-
-func tail(value string, max int) string {
-	if len(value) <= max {
-		return value
-	}
-	return value[len(value)-max:]
-}

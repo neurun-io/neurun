@@ -12,6 +12,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	awssqs "github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/dagflows/builder/internal/config"
 	"github.com/dagflows/builder/internal/domain"
 	"github.com/dagflows/builder/internal/service"
@@ -36,7 +37,6 @@ func NewListener(cfg config.Config, deploymentService *service.DeploymentService
 	if cfg.SQS.RequestQueueURL == cfg.SQS.ResponseQueueURL {
 		return nil, fmt.Errorf("SQS request and response queues must be different")
 	}
-
 	awsCfg, err := loadAWSConfig(context.Background(), cfg)
 	if err != nil {
 		return nil, err

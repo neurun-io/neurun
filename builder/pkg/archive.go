@@ -25,16 +25,17 @@ func ZipDirectory(kind domain.ArtifactKind, name, srcDir, outDir string) (Artifa
 		if path == srcDir {
 			return nil
 		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
 		rel, err := filepath.Rel(srcDir, path)
 		if err != nil {
 			return err
 		}
+		zipName := filepath.ToSlash(rel)
 		if entry.IsDir() {
-			_, err := zipWriter.Create(filepath.ToSlash(rel) + "/")
-			return err
-		}
-		info, err := entry.Info()
-		if err != nil {
+			_, err := zipWriter.Create(zipName + "/")
 			return err
 		}
 		if !info.Mode().IsRegular() {
@@ -45,7 +46,7 @@ func ZipDirectory(kind domain.ArtifactKind, name, srcDir, outDir string) (Artifa
 		if err != nil {
 			return err
 		}
-		header.Name = filepath.ToSlash(rel)
+		header.Name = zipName
 		header.Method = zip.Deflate
 
 		writer, err := zipWriter.CreateHeader(header)

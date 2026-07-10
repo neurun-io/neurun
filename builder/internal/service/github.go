@@ -39,8 +39,8 @@ func (s *GitHubService) FetchCode(ctx context.Context, req domain.DeploymentRequ
 		return GitHubCheckout{}, fmt.Errorf("git_url is required")
 	}
 	commit := strings.TrimSpace(req.GitCommitHash)
-	if commit != "" && !isCommitHash(commit) {
-		return GitHubCheckout{}, fmt.Errorf("git_commit_hash must be a 7 to 64 character hexadecimal hash")
+	if strings.HasPrefix(commit, "-") {
+		return GitHubCheckout{}, fmt.Errorf("git_commit_hash cannot start with a dash")
 	}
 
 	workDir, err := os.MkdirTemp("", "dagflows-github-*")
@@ -83,18 +83,6 @@ func (s *GitHubService) clone(ctx context.Context, gitURL, branch, dst string) e
 		return fmt.Errorf("clone repository: %w", err)
 	}
 	return nil
-}
-
-func isCommitHash(value string) bool {
-	if len(value) < 7 || len(value) > 64 {
-		return false
-	}
-	for _, r := range value {
-		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
-			return false
-		}
-	}
-	return true
 }
 
 func repoSequence(gitURL string) string {

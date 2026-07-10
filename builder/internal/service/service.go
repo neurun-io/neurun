@@ -44,7 +44,7 @@ func (s *BuildService) Build(ctx context.Context, req domain.BuildRequest) (doma
 		buildID = pkg.NewBuildID()
 	}
 	if pkg.SafeName(buildID) != buildID {
-		return domain.BuildResult{}, fmt.Errorf("build_id must contain only letters, numbers, dots, dashes, or underscores")
+		return domain.BuildResult{}, fmt.Errorf("build_id contains invalid characters")
 	}
 	log.Printf("build app=%s build=%s runtime=%s started", req.AppID, buildID, req.Runtime)
 
