@@ -11,14 +11,14 @@ import (
 	"github.com/dagflows/builder/internal/config"
 	listenersqs "github.com/dagflows/builder/internal/listener/sqs"
 	"github.com/dagflows/builder/internal/service"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	cfg, err := config.Load(".env")
-	if err != nil {
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Fatal(err)
 	}
-
+	cfg := config.Load()
 	deploymentService, err := service.NewConfiguredDeploymentService(cfg)
 	if err != nil {
 		log.Fatal(err)

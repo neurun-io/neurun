@@ -4,8 +4,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/dagflows/builder/pkg"
 )
 
 const (
@@ -47,11 +45,7 @@ type R2Config struct {
 	Prefix          string
 }
 
-func Load(path string) (Config, error) {
-	if err := pkg.LoadDotEnv(path); err != nil {
-		return Config{}, err
-	}
-
+func Load() Config {
 	cfg := Default()
 	cfg.AWS.Region = firstEnvOr(cfg.AWS.Region, "SQS_REGION", "AWS_REGION", "AWS_DEFAULT_REGION")
 	cfg.AWS.AccessKeyID = env("AWS_ACCESS_KEY_ID")
@@ -71,7 +65,7 @@ func Load(path string) (Config, error) {
 	cfg.R2.SecretAccessKey = env("R2_SECRET_ACCESS_KEY")
 	cfg.R2.Prefix = strings.Trim(envOr("R2_PREFIX", cfg.R2.Prefix), "/")
 
-	return cfg, nil
+	return cfg
 }
 
 func Default() Config {
