@@ -12,22 +12,16 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	awssqs "github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/dagflows/builder/internal/config"
 	"github.com/dagflows/builder/internal/domain"
 	"github.com/dagflows/builder/internal/service"
 )
 
 type Listener struct {
-	client            *awssqs.Client
-	deploymentService *service.DeploymentService
-	requestQueue      string
-	responseQueue     string
-	options           receiveOptions
-}
-
-type receiveOptions struct {
-	maxMessages              int32
+	client                   *awssqs.Client
+	deploymentService        *service.DeploymentService
+	requestQueue             string
+	responseQueue            string
 	waitTimeSeconds          int32
 	visibilityTimeoutSeconds int32
 }
@@ -39,6 +33,9 @@ func NewListener(cfg config.Config, deploymentService *service.DeploymentService
 	if cfg.SQS.ResponseQueueURL == "" {
 		return nil, fmt.Errorf("SQS_RESPONSE_QUEUE_URL or SQS_RESULT_QUEUE_URL is required")
 	}
+	if cfg.SQS.RequestQueueURL == cfg.SQS.ResponseQueueURL {
+		return nil, fmt.Errorf("SQS request and response queues must be different")
+	}
 
 	awsCfg, err := loadAWSConfig(context.Background(), cfg)
 	if err != nil {
@@ -46,15 +43,12 @@ func NewListener(cfg config.Config, deploymentService *service.DeploymentService
 	}
 
 	return &Listener{
-		client:            awssqs.NewFromConfig(awsCfg),
-		deploymentService: deploymentService,
-		requestQueue:      cfg.SQS.RequestQueueURL,
-		responseQueue:     cfg.SQS.ResponseQueueURL,
-		options: receiveOptions{
-			maxMessages:              cfg.SQS.MaxMessages,
-			waitTimeSeconds:          cfg.SQS.WaitTimeSeconds,
-			visibilityTimeoutSeconds: cfg.SQS.VisibilityTimeoutSeconds,
-		},
+		client:                   awssqs.NewFromConfig(awsCfg),
+		deploymentService:        deploymentService,
+		requestQueue:             cfg.SQS.RequestQueueURL,
+		responseQueue:            cfg.SQS.ResponseQueueURL,
+		waitTimeSeconds:          cfg.SQS.WaitTimeSeconds,
+		visibilityTimeoutSeconds: cfg.SQS.VisibilityTimeoutSeconds,
 	}, nil
 }
 
@@ -66,12 +60,10 @@ func (l *Listener) Listen(ctx context.Context) error {
 		}
 
 		output, err := l.client.ReceiveMessage(ctx, &awssqs.ReceiveMessageInput{
-			QueueUrl:              aws.String(l.requestQueue),
-			MaxNumberOfMessages:   l.options.maxMessages,
-			WaitTimeSeconds:       l.options.waitTimeSeconds,
-			VisibilityTimeout:     l.options.visibilityTimeoutSeconds,
-			AttributeNames:        []types.QueueAttributeName{types.QueueAttributeNameAll},
-			MessageAttributeNames: []string{"All"},
+			QueueUrl:            aws.String(l.requestQueue),
+			MaxNumberOfMessages: 1,
+			WaitTimeSeconds:     l.waitTimeSeconds,
+			VisibilityTimeout:   l.visibilityTimeoutSeconds,
 		})
 		if err != nil {
 			if errors.Is(err, context.Canceled) {

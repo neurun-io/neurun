@@ -20,23 +20,62 @@ SQS, storage, and local test-message setup.
 
 ```json
 {
-  "deployment_id": "uuid",
-  "workflow_id": "uuid",
-  "git_url": "https://github.com/owner/repo.git",
+  "deployment_id": "dep_20260708_001",
+  "workflow_id": "wf_branching_demo",
+  "git_url": "https://github.com/Dagflows/sample-workflow.git",
   "git_branch": "main",
-  "git_commit_hash": "abc1234"
+  "git_commit_hash": "e97b87e884588e0b6e2cfb0bd093279b5618c888"
 }
 ```
 
-`git_branch` and `git_commit_hash` are optional.
+`git_branch` and `git_commit_hash` are optional. Missing branch means `main`;
+missing commit means the latest commit on that branch.
 
 ## Response
 
 ```json
 {
-  "deployment_id": "uuid",
+  "deployment_id": "dep_20260708_001",
   "status": "SUCCESS",
   "error_message": "",
+  "nodes": [
+    {
+      "key": "step_1",
+      "type": "task",
+      "language": "python",
+      "entrypoint": "workflow.py:step_1",
+      "artifact_id": "51efb0e8-7b9a-48d1-a071-6b6f7fbe1782",
+      "deps_artifact_id": "f55e6ed1-b65f-4d64-90ac-97ddae0fe4f2",
+      "config": {},
+      "depends": [],
+      "retry_count": 0,
+      "timeout_seconds": 300,
+      "memory_limit_mb": 512
+    },
+    {
+      "key": "step_2",
+      "type": "task",
+      "language": "python",
+      "entrypoint": "workflow.py:step_2",
+      "artifact_id": "51efb0e8-7b9a-48d1-a071-6b6f7fbe1782",
+      "deps_artifact_id": "f55e6ed1-b65f-4d64-90ac-97ddae0fe4f2",
+      "config": {},
+      "depends": ["step_1"],
+      "retry_count": 0,
+      "timeout_seconds": 30,
+      "memory_limit_mb": 512
+    }
+  ]
+}
+```
+
+Failed builds return the same deployment ID with an empty node list:
+
+```json
+{
+  "deployment_id": "dep_20260708_001",
+  "status": "FAILED",
+  "error_message": "fetch code: clone repository: exit status 128",
   "nodes": []
 }
 ```

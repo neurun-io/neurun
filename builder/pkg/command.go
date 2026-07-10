@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -9,27 +8,64 @@ import (
 	"strings"
 )
 
+const maxCommandOutput = 1 << 20
+
 func Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
-	_, err := runCommand(ctx, dir, env, name, args...)
+	_, err := runCommand(ctx, dir, env, false, name, args...)
 	return err
 }
 
 func Output(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
-	return runCommand(ctx, dir, env, name, args...)
+	return runCommand(ctx, dir, env, true, name, args...)
 }
 
-func runCommand(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
+func runCommand(ctx context.Context, dir string, env []string, capture bool, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
-	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), env...)
-	}
+	cmd.Env = commandEnv(env)
 
-	var output bytes.Buffer
-	cmd.Stdout = &output
-	cmd.Stderr = &output
-	if err := cmd.Run(); err != nil {
-		return output.String(), fmt.Errorf("%s %s: %w\n%s", name, strings.Join(args, " "), err, tail(output.String(), 4000))
+	var stdout cappedOutput
+	if capture {
+		cmd.Stdout = &stdout
 	}
-	return output.String(), nil
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return stdout.String(), fmt.Errorf("%s failed: %w", name, err)
+	}
+	if len(stdout) > maxCommandOutput {
+		return stdout.String(), fmt.Errorf("command output exceeded %d bytes", maxCommandOutput)
+	}
+	return stdout.String(), nil
 }
+
+func commandEnv(overrides []string) []string {
+	all := append(os.Environ(), overrides...)
+	result := all[:0]
+	for _, entry := range all {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok || sensitiveEnv(name) {
+			continue
+		}
+		result = append(result, entry)
+	}
+	return result
+}
+
+func sensitiveEnv(name string) bool {
+	name = strings.ToUpper(name)
+	return strings.HasPrefix(name, "AWS_") || strings.HasPrefix(name, "R2_") || strings.HasPrefix(name, "SQS_")
+}
+
+type cappedOutput []byte
+
+func (b *cappedOutput) Write(p []byte) (int, error) {
+	n := len(p)
+	if remaining := maxCommandOutput + 1 - len(*b); remaining > 0 {
+		*b = append(*b, p[:min(remaining, n)]...)
+	}
+	return n, nil
+}
+
+func (b cappedOutput) String() string { return string(b[:min(len(b), maxCommandOutput)]) }

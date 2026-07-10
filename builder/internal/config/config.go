@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -10,7 +11,6 @@ import (
 
 const (
 	DefaultAWSRegion                   = "us-east-1"
-	DefaultSQSMaxMessages              = int32(1)
 	DefaultSQSWaitTimeSeconds          = int32(20)
 	DefaultSQSVisibilityTimeoutSeconds = int32(900)
 	DefaultR2Region                    = "auto"
@@ -34,7 +34,6 @@ type AWSConfig struct {
 type SQSConfig struct {
 	RequestQueueURL          string
 	ResponseQueueURL         string
-	MaxMessages              int32
 	WaitTimeSeconds          int32
 	VisibilityTimeoutSeconds int32
 }
@@ -62,11 +61,12 @@ func Load(path string) (Config, error) {
 
 	cfg.SQS.RequestQueueURL = firstEnv("SQS_REQUEST_QUEUE_URL", "SQS_QUEUE_URL")
 	cfg.SQS.ResponseQueueURL = firstEnv("SQS_RESPONSE_QUEUE_URL", "SQS_RESULT_QUEUE_URL")
-	cfg.SQS.MaxMessages = envInt32Or("SQS_MAX_MESSAGES", cfg.SQS.MaxMessages)
-	cfg.SQS.WaitTimeSeconds = envInt32Or("SQS_WAIT_TIME_SECONDS", cfg.SQS.WaitTimeSeconds)
-	cfg.SQS.VisibilityTimeoutSeconds = envInt32Or("SQS_VISIBILITY_TIMEOUT_SECONDS", cfg.SQS.VisibilityTimeoutSeconds)
-	if cfg.SQS.MaxMessages > 10 {
-		cfg.SQS.MaxMessages = 10
+	var err error
+	if cfg.SQS.WaitTimeSeconds, err = envInt32("SQS_WAIT_TIME_SECONDS", cfg.SQS.WaitTimeSeconds, 20); err != nil {
+		return Config{}, err
+	}
+	if cfg.SQS.VisibilityTimeoutSeconds, err = envInt32("SQS_VISIBILITY_TIMEOUT_SECONDS", cfg.SQS.VisibilityTimeoutSeconds, 43200); err != nil {
+		return Config{}, err
 	}
 
 	cfg.R2.AccountID = env("R2_ACCOUNT_ID")
@@ -86,7 +86,6 @@ func Default() Config {
 			Region: DefaultAWSRegion,
 		},
 		SQS: SQSConfig{
-			MaxMessages:              DefaultSQSMaxMessages,
 			WaitTimeSeconds:          DefaultSQSWaitTimeSeconds,
 			VisibilityTimeoutSeconds: DefaultSQSVisibilityTimeoutSeconds,
 		},
@@ -121,14 +120,14 @@ func env(name string) string {
 	return strings.TrimSpace(os.Getenv(name))
 }
 
-func envInt32Or(name string, fallback int32) int32 {
+func envInt32(name string, fallback, max int32) (int32, error) {
 	value := env(name)
 	if value == "" {
-		return fallback
+		return fallback, nil
 	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed <= 0 {
-		return fallback
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil || parsed < 0 || parsed > int64(max) {
+		return 0, fmt.Errorf("%s must be an integer between 0 and %d", name, max)
 	}
-	return int32(parsed)
+	return int32(parsed), nil
 }

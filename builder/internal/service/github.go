@@ -38,6 +38,10 @@ func (s *GitHubService) FetchCode(ctx context.Context, req domain.DeploymentRequ
 	if gitURL == "" {
 		return GitHubCheckout{}, fmt.Errorf("git_url is required")
 	}
+	commit := strings.TrimSpace(req.GitCommitHash)
+	if commit != "" && !isCommitHash(commit) {
+		return GitHubCheckout{}, fmt.Errorf("git_commit_hash must be a 7 to 64 character hexadecimal hash")
+	}
 
 	workDir, err := os.MkdirTemp("", "dagflows-github-*")
 	if err != nil {
@@ -52,10 +56,10 @@ func (s *GitHubService) FetchCode(ctx context.Context, req domain.DeploymentRequ
 		_ = checkout.Close()
 		return GitHubCheckout{}, err
 	}
-	if commit := strings.TrimSpace(req.GitCommitHash); commit != "" {
+	if commit != "" {
 		if err := pkg.Run(ctx, checkout.Path, nil, "git", "checkout", "--detach", commit); err != nil {
 			_ = checkout.Close()
-			return GitHubCheckout{}, fmt.Errorf("checkout commit %s: %w", commit, err)
+			return GitHubCheckout{}, fmt.Errorf("checkout commit: %w", err)
 		}
 	}
 	resolvedCommit, err := pkg.Output(ctx, checkout.Path, nil, "git", "rev-parse", "HEAD")
@@ -75,10 +79,22 @@ func (s *GitHubService) clone(ctx context.Context, gitURL, branch, dst string) e
 		branch = config.DefaultGitBranch
 	}
 
-	if err := pkg.Run(ctx, "", nil, "git", "clone", "--branch", branch, "--single-branch", gitURL, dst); err != nil {
-		return fmt.Errorf("clone %s branch %s: %w", gitURL, branch, err)
+	if err := pkg.Run(ctx, "", []string{"GIT_TERMINAL_PROMPT=0"}, "git", "clone", "--branch", branch, "--single-branch", "--", gitURL, dst); err != nil {
+		return fmt.Errorf("clone repository: %w", err)
 	}
 	return nil
+}
+
+func isCommitHash(value string) bool {
+	if len(value) < 7 || len(value) > 64 {
+		return false
+	}
+	for _, r := range value {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+			return false
+		}
+	}
+	return true
 }
 
 func repoSequence(gitURL string) string {
