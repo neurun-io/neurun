@@ -55,6 +55,52 @@ The scheduler sends the builder's code-layer key:
 
 The dependency key is inferred as `builds/repo/commit/install-layer.zip`.
 
+## Redis Contract
+
+Requests go to `dagflows:worker:requests` in the stream entry's `data` field:
+
+```json
+{
+  "workflow_run_id": "run-001",
+  "node_key": "step_1",
+  "artifact_key": "builds/d-documents-m-workspace-dagflows-python-sdk-examples-branching-demo/90b22ff306c442a866e619734ca9b3b3ae087f59/code-layer.zip",
+  "config": {},
+  "memory_limit_mb": 256,
+  "timeout_seconds": 30,
+  "input_data": {}
+}
+```
+
+Successful responses are published to `dagflows:worker:responses`:
+
+```json
+{
+  "workflow_run_id": "run-001",
+  "node_key": "step_1",
+  "status": "SUCCESS",
+  "route_to": ["step_2"],
+  "output_type": "INLINE",
+  "output_size": 15,
+  "inline_output": {"path": "fast"},
+  "retryable": false,
+  "duration_ms": 120
+}
+```
+
+Failed responses have this shape:
+
+```json
+{
+  "workflow_run_id": "run-001",
+  "node_key": "step_1",
+  "status": "FAILED",
+  "error_message": "failure description",
+  "error_category": "infrastructure",
+  "retryable": true,
+  "duration_ms": 12
+}
+```
+
 ## Resources
 
 `WORKER_MAX_CONCURRENCY` defaults to `1`. Before work starts, the worker reserves
