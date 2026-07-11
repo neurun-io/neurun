@@ -26,14 +26,11 @@ embedded in `rootfs.ext4`.
 Run from the repository root:
 
 ```sh
-set -a
-. ./.env
-set +a
 go run ./cmd
 ```
 
-The service reads process environment variables directly; it does not load
-`.env` itself.
+The service loads `.env` when present. Existing process environment variables
+take precedence.
 
 Use `make kvm-check` if `/dev/kvm` is inaccessible. It prints group and ACL
 options without changing host permissions.

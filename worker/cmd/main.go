@@ -16,7 +16,11 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load(".env")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	nodeService, err := service.NewConfiguredNodeRunService(cfg)
 	if err != nil {
 		log.Fatal(err)

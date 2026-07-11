@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.42.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.24
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.105.0
+	github.com/joho/godotenv v1.5.1
 	github.com/mdlayher/vsock v1.3.0
 	github.com/redis/go-redis/v9 v9.21.0
 	golang.org/x/sys v0.45.0

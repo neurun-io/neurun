@@ -1,10 +1,13 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -54,7 +57,11 @@ type WorkerConfig struct {
 	OutputInlineMaxBytes int64
 }
 
-func Load() Config {
+func Load(path string) (Config, error) {
+	if err := godotenv.Load(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return Config{}, err
+	}
+
 	cfg := Default()
 	cfg.Redis.Addr = envOr("REDIS_ADDR", cfg.Redis.Addr)
 	cfg.Redis.Password = env("REDIS_PASSWORD")
@@ -83,7 +90,7 @@ func Load() Config {
 	if cfg.Worker.MaxConcurrency <= 0 {
 		cfg.Worker.MaxConcurrency = DefaultMaxConcurrency
 	}
-	return cfg
+	return cfg, nil
 }
 
 func Default() Config {
