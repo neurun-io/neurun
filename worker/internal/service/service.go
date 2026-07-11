@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/dagflows/worker/internal/artifact"
 	"github.com/dagflows/worker/internal/domain"
+	"github.com/dagflows/worker/internal/dto"
 	"github.com/dagflows/worker/internal/storage"
 	"github.com/dagflows/worker/internal/vm"
 )
@@ -29,9 +31,9 @@ func NewNodeRunService(runner vm.Runner, fetcher storage.Fetcher, workDir string
 	}
 }
 
-func (s *NodeRunService) Execute(ctx context.Context, req domain.WorkflowNodeRunRequest) domain.WorkflowNodeRunResponse {
+func (s *NodeRunService) Execute(ctx context.Context, req dto.WorkflowNodeRunRequest) dto.WorkflowNodeRunResponse {
 	start := time.Now()
-	base := domain.WorkflowNodeRunResponse{
+	base := dto.WorkflowNodeRunResponse{
 		WorkflowRunID:  req.WorkflowRunID,
 		NodeKey:        req.NodeKey,
 		ExecutionToken: req.ExecutionToken,
@@ -79,7 +81,8 @@ func (s *NodeRunService) Execute(ctx context.Context, req domain.WorkflowNodeRun
 	return resp
 }
 
-func validateRequest(req domain.WorkflowNodeRunRequest) error {
+func validateRequest(req dto.WorkflowNodeRunRequest) error {
+	language := strings.ToLower(strings.TrimSpace(req.Language))
 	switch {
 	case strings.TrimSpace(req.WorkflowRunID) == "":
 		return permanent("workflow_run_id is required")
@@ -89,19 +92,29 @@ func validateRequest(req domain.WorkflowNodeRunRequest) error {
 		return permanent("language is required")
 	case strings.TrimSpace(req.CodeArtifactRef()) == "":
 		return permanent("artifact_key or artifact_url is required")
-	default:
+	}
+	switch language {
+	case "python", "py", "go", "golang":
 		return nil
+	case "node", "nodejs", "javascript", "typescript", "js", "ts":
+		entrypoint := strings.ReplaceAll(strings.TrimSpace(req.Entrypoint), "\\", "/")
+		if entrypoint == "" || path.IsAbs(entrypoint) || path.Clean(entrypoint) == ".." || strings.HasPrefix(path.Clean(entrypoint), "../") {
+			return permanent("a relative entrypoint is required for Node")
+		}
+		return nil
+	default:
+		return permanent(fmt.Sprintf("unsupported language %q", req.Language))
 	}
 }
 
-func failedResponse(base domain.WorkflowNodeRunResponse, err error, duration time.Duration) domain.WorkflowNodeRunResponse {
+func failedResponse(base dto.WorkflowNodeRunResponse, err error, duration time.Duration) dto.WorkflowNodeRunResponse {
 	category := "permanent"
 	retryable := false
 	if execErr, ok := err.(executionError); ok {
 		category = execErr.category
 		retryable = execErr.retryable
 	}
-	return domain.WorkflowNodeRunResponse{
+	return dto.WorkflowNodeRunResponse{
 		WorkflowRunID:  base.WorkflowRunID,
 		NodeKey:        base.NodeKey,
 		ExecutionToken: base.ExecutionToken,

@@ -13,6 +13,7 @@ import (
 
 	"github.com/dagflows/worker/internal/config"
 	"github.com/dagflows/worker/internal/domain"
+	"github.com/dagflows/worker/internal/dto"
 	"github.com/dagflows/worker/internal/service"
 )
 
@@ -21,8 +22,9 @@ type Listener struct {
 	requests    *streamConsumer
 	responses   *streamPublisher
 	nodeService *service.NodeRunService
-	capacity    hostCapacityGate
 	active      activeTracker
+	resources   memoryGate
+	slots       chan struct{}
 }
 
 func NewListener(cfg config.Config, nodeService *service.NodeRunService) (*Listener, error) {
@@ -62,25 +64,29 @@ func NewListener(cfg config.Config, nodeService *service.NodeRunService) (*Liste
 		requests:    requests,
 		responses:   newStreamPublisher(client, cfg.Streams.ResponseStream, cfg.Streams.MaxLen),
 		nodeService: nodeService,
-		capacity:    newHostCapacityGate(cfg.Worker.MinFreeMemoryMB),
+		slots:       make(chan struct{}, max(1, cfg.Worker.MaxConcurrency)),
 	}, nil
 }
 
 func (l *Listener) Listen(ctx context.Context) error {
 	defer l.client.Close()
-	log.Printf("worker listening stream=%s group=%s runtime=firecracker concurrency=capacity-gated", l.requests.stream, l.requests.group)
+	log.Printf("agent listening stream=%s group=%s runtime=firecracker max_concurrency=%d", l.requests.stream, l.requests.group, cap(l.slots))
 
 	var wg sync.WaitGroup
+
+listen:
 	for {
 		if err := ctx.Err(); err != nil {
 			break
 		}
-		if err := l.capacity.Wait(ctx); err != nil {
-			break
+		select {
+		case l.slots <- struct{}{}:
+		case <-ctx.Done():
+			break listen
 		}
-
 		msg, err := l.requests.ReadOne(ctx)
 		if err != nil {
+			<-l.slots
 			if errors.Is(err, context.Canceled) {
 				break
 			}
@@ -92,6 +98,7 @@ func (l *Listener) Listen(ctx context.Context) error {
 		}
 
 		if !l.active.Mark(msg.ID) {
+			<-l.slots
 			log.Printf("request id=%s is already active locally; skipping duplicate delivery", msg.ID)
 			continue
 		}
@@ -99,6 +106,7 @@ func (l *Listener) Listen(ctx context.Context) error {
 		wg.Add(1)
 		go func(msg streamMessage) {
 			defer wg.Done()
+			defer func() { <-l.slots }()
 			defer l.active.Unmark(msg.ID)
 			if err := l.processMessage(ctx, msg); err != nil {
 				log.Printf("process request id=%s failed: %v", msg.ID, err)
@@ -111,14 +119,38 @@ func (l *Listener) Listen(ctx context.Context) error {
 }
 
 func (l *Listener) processMessage(ctx context.Context, msg streamMessage) error {
-	var req domain.WorkflowNodeRunRequest
+	var req dto.WorkflowNodeRunRequest
 	if err := json.Unmarshal(msg.Data, &req); err != nil {
 		log.Printf("request id=%s decode failed: %v", msg.ID, err)
 		return l.requests.Ack(ctx, msg.ID)
 	}
 
 	log.Printf("node run received id=%s run=%s node=%s token=%d", msg.ID, req.WorkflowRunID, req.NodeKey, req.ExecutionToken)
+	release, err := l.resources.Reserve(req.RequiredMemoryMB())
+	if err != nil {
+		log.Printf("node run blocked id=%s run=%s node=%s: %v", msg.ID, req.WorkflowRunID, req.NodeKey, err)
+		return l.publishResponse(ctx, msg.ID, dto.WorkflowNodeRunResponse{
+			WorkflowRunID:  req.WorkflowRunID,
+			NodeKey:        req.NodeKey,
+			ExecutionToken: req.ExecutionToken,
+			Status:         domain.WorkflowNodeRunAttemptStatusFailed,
+			ErrorMessage:   err.Error(),
+			ErrorCategory:  "infrastructure",
+			Retryable:      true,
+		})
+	}
+	defer release()
+
 	resp := l.nodeService.Execute(ctx, req)
+	if err := l.publishResponse(ctx, msg.ID, resp); err != nil {
+		return err
+	}
+
+	log.Printf("node run completed id=%s run=%s node=%s status=%s duration_ms=%d", msg.ID, resp.WorkflowRunID, resp.NodeKey, resp.Status, resp.DurationMs)
+	return nil
+}
+
+func (l *Listener) publishResponse(ctx context.Context, id string, resp dto.WorkflowNodeRunResponse) error {
 	body, err := json.Marshal(resp)
 	if err != nil {
 		return fmt.Errorf("marshal response: %w", err)
@@ -127,11 +159,9 @@ func (l *Listener) processMessage(ctx context.Context, msg streamMessage) error 
 	if err := l.responses.Publish(ctx, body); err != nil {
 		return fmt.Errorf("publish response: %w", err)
 	}
-	if err := l.requests.Ack(ctx, msg.ID); err != nil {
+	if err := l.requests.Ack(ctx, id); err != nil {
 		return fmt.Errorf("ack request: %w", err)
 	}
-
-	log.Printf("node run completed id=%s run=%s node=%s status=%s duration_ms=%d", msg.ID, resp.WorkflowRunID, resp.NodeKey, resp.Status, resp.DurationMs)
 	return nil
 }
 

@@ -1,12 +1,13 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/dagflows/worker/pkg"
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -18,14 +19,14 @@ const (
 	DefaultBlockDuration  = 2 * time.Second
 	DefaultInlineMaxBytes = int64(256 * 1024)
 	DefaultR2Region       = "auto"
+	DefaultMaxConcurrency = 1
 )
 
 type Config struct {
-	Redis       RedisConfig
-	Streams     StreamConfig
-	R2          R2Config
-	Worker      WorkerConfig
-	Firecracker FirecrackerConfig
+	Redis   RedisConfig
+	Streams StreamConfig
+	R2      R2Config
+	Worker  WorkerConfig
 }
 
 type RedisConfig struct {
@@ -56,47 +57,45 @@ type R2Config struct {
 type WorkerConfig struct {
 	ID                   string
 	WorkDir              string
-	MinFreeMemoryMB      int64
+	MaxConcurrency       int
 	OutputInlineMaxBytes int64
 }
 
-type FirecrackerConfig struct {
-	RunnerCommand string
-}
-
 func Load(path string) (Config, error) {
-	if err := pkg.LoadDotEnv(path); err != nil {
+	if err := godotenv.Load(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Config{}, err
 	}
 
 	cfg := Default()
-	cfg.Redis.Addr = firstEnvOr(cfg.Redis.Addr, "WORKER_REDIS_ADDR", "REDIS_ADDR", "GOFLOW_REDIS_ADDR")
-	cfg.Redis.Password = firstEnv("WORKER_REDIS_PASSWORD", "REDIS_PASSWORD", "GOFLOW_REDIS_PASSWORD")
-	cfg.Redis.DB = envIntOr("WORKER_REDIS_DB", cfg.Redis.DB)
+	cfg.Redis.Addr = envOr("REDIS_ADDR", cfg.Redis.Addr)
+	cfg.Redis.Password = env("REDIS_PASSWORD")
+	cfg.Redis.DB = envIntOr("REDIS_DB", cfg.Redis.DB)
 
-	cfg.Streams.RequestStream = firstEnvOr(cfg.Streams.RequestStream, "WORKER_REQUEST_STREAM", "REDIS_REQUEST_STREAM")
-	cfg.Streams.RequestGroup = firstEnvOr(cfg.Streams.RequestGroup, "WORKER_REQUEST_GROUP", "REDIS_REQUEST_GROUP")
-	cfg.Streams.ResponseStream = firstEnvOr(cfg.Streams.ResponseStream, "WORKER_RESPONSE_STREAM", "REDIS_RESPONSE_STREAM")
+	cfg.Streams.RequestStream = envOr("WORKER_REQUEST_STREAM", cfg.Streams.RequestStream)
+	cfg.Streams.RequestGroup = envOr("WORKER_REQUEST_GROUP", cfg.Streams.RequestGroup)
+	cfg.Streams.ResponseStream = envOr("WORKER_RESPONSE_STREAM", cfg.Streams.ResponseStream)
 	cfg.Streams.MinIdle = envDurationOr("WORKER_STALE_ENTRY_RECLAIM_THRESHOLD", cfg.Streams.MinIdle)
 	cfg.Streams.BlockDuration = envDurationOr("WORKER_BLOCKING_READ_TIMEOUT", cfg.Streams.BlockDuration)
 	cfg.Streams.MaxLen = envInt64Or("WORKER_RESPONSE_MAX_LEN", cfg.Streams.MaxLen)
 
-	cfg.R2.AccountID = firstEnv("WORKER_R2_ACCOUNT_ID", "R2_ACCOUNT_ID")
-	cfg.R2.Endpoint = firstEnv("WORKER_R2_ENDPOINT", "R2_ENDPOINT")
-	cfg.R2.Region = firstEnvOr(cfg.R2.Region, "WORKER_R2_REGION", "R2_REGION")
-	cfg.R2.Bucket = firstEnv("WORKER_R2_BUCKET", "R2_BUCKET")
-	cfg.R2.AccessKeyID = firstEnv("WORKER_R2_ACCESS_KEY_ID", "R2_ACCESS_KEY_ID")
-	cfg.R2.SecretAccessKey = firstEnv("WORKER_R2_SECRET_ACCESS_KEY", "R2_SECRET_ACCESS_KEY")
-	cfg.R2.Prefix = strings.Trim(firstEnvOr(cfg.R2.Prefix, "WORKER_R2_PREFIX", "R2_PREFIX"), "/")
+	cfg.R2.AccountID = env("R2_ACCOUNT_ID")
+	cfg.R2.Endpoint = env("R2_ENDPOINT")
+	cfg.R2.Region = envOr("R2_REGION", cfg.R2.Region)
+	cfg.R2.Bucket = env("R2_BUCKET")
+	cfg.R2.AccessKeyID = env("R2_ACCESS_KEY_ID")
+	cfg.R2.SecretAccessKey = env("R2_SECRET_ACCESS_KEY")
+	cfg.R2.Prefix = strings.Trim(env("R2_PREFIX"), "/")
 
-	cfg.Worker.ID = firstEnvOr(cfg.Worker.ID, "WORKER_ID")
-	cfg.Worker.WorkDir = firstEnvOr(cfg.Worker.WorkDir, "WORKER_WORK_DIR")
-	cfg.Worker.MinFreeMemoryMB = envInt64Or("WORKER_MIN_FREE_MEMORY_MB", cfg.Worker.MinFreeMemoryMB)
+	cfg.Worker.ID = env("WORKER_ID")
+	cfg.Worker.WorkDir = env("WORKER_WORK_DIR")
+	cfg.Worker.MaxConcurrency = envIntOr("WORKER_MAX_CONCURRENCY", cfg.Worker.MaxConcurrency)
 	cfg.Worker.OutputInlineMaxBytes = envInt64Or("WORKER_OUTPUT_INLINE_MAX_BYTES", cfg.Worker.OutputInlineMaxBytes)
 
-	cfg.Firecracker.RunnerCommand = firstEnv("FIRECRACKER_RUNNER_COMMAND", "WORKER_FIRECRACKER_RUNNER_COMMAND")
 	if cfg.Worker.OutputInlineMaxBytes <= 0 {
 		cfg.Worker.OutputInlineMaxBytes = DefaultInlineMaxBytes
+	}
+	if cfg.Worker.MaxConcurrency <= 0 {
+		cfg.Worker.MaxConcurrency = DefaultMaxConcurrency
 	}
 	return cfg, nil
 }
@@ -118,20 +117,15 @@ func Default() Config {
 			Region: DefaultR2Region,
 		},
 		Worker: WorkerConfig{
+			MaxConcurrency:       DefaultMaxConcurrency,
 			OutputInlineMaxBytes: DefaultInlineMaxBytes,
 		},
 	}
 }
 
-func firstEnv(names ...string) string {
-	return firstEnvOr("", names...)
-}
-
-func firstEnvOr(fallback string, names ...string) string {
-	for _, name := range names {
-		if value := env(name); value != "" {
-			return value
-		}
+func envOr(name, fallback string) string {
+	if value := env(name); value != "" {
+		return value
 	}
 	return fallback
 }

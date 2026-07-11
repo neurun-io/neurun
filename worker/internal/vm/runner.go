@@ -32,10 +32,3 @@ func timeoutFor(timeoutSeconds int) time.Duration {
 	}
 	return time.Duration(timeoutSeconds+30) * time.Second
 }
-
-func tail(value string, max int) string {
-	if len(value) <= max {
-		return value
-	}
-	return value[len(value)-max:]
-}

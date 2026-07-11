@@ -2,40 +2,42 @@ package redis
 
 import (
 	"bufio"
-	"context"
-	"log"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
-	"time"
+	"sync"
 )
 
-type hostCapacityGate struct {
-	minFreeMemoryMB int64
+const firecrackerOverheadMB int64 = 128
+
+type memoryGate struct {
+	mu       sync.Mutex
+	reserved int64
 }
 
-func newHostCapacityGate(minFreeMemoryMB int64) hostCapacityGate {
-	return hostCapacityGate{minFreeMemoryMB: minFreeMemoryMB}
-}
+func (g *memoryGate) Reserve(memoryMB int64) (func(), error) {
+	if memoryMB <= 0 || memoryMB > (1<<63-1)-firecrackerOverheadMB {
+		return nil, fmt.Errorf("invalid node memory limit: %d MB", memoryMB)
+	}
+	required := memoryMB + firecrackerOverheadMB
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
-func (g hostCapacityGate) Wait(ctx context.Context) error {
-	if g.minFreeMemoryMB <= 0 {
-		return nil
+	available, ok := freeMemoryMB()
+	if !ok {
+		return nil, fmt.Errorf("cannot determine available host memory")
 	}
-	for {
-		free, ok := freeMemoryMB()
-		if !ok || free >= g.minFreeMemoryMB {
-			return nil
-		}
-		log.Printf("host capacity gate waiting free_memory_mb=%d min_free_memory_mb=%d", free, g.minFreeMemoryMB)
-		timer := time.NewTimer(2 * time.Second)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
+	remaining := max(int64(0), available-g.reserved)
+	if required > remaining {
+		return nil, fmt.Errorf("insufficient host memory: need %d MB, available %d MB", required, remaining)
 	}
+	g.reserved += required
+	return func() {
+		g.mu.Lock()
+		g.reserved -= required
+		g.mu.Unlock()
+	}, nil
 }
 
 func freeMemoryMB() (int64, bool) {
@@ -47,19 +49,12 @@ func freeMemoryMB() (int64, bool) {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "MemAvailable:") {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 2 || fields[0] != "MemAvailable:" {
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			return 0, false
-		}
 		kb, err := strconv.ParseInt(fields[1], 10, 64)
-		if err != nil {
-			return 0, false
-		}
-		return kb / 1024, true
+		return kb / 1024, err == nil
 	}
 	return 0, false
 }

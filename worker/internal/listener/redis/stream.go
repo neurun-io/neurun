@@ -127,7 +127,7 @@ func parseStreamEntry(msg goredis.XMessage) (streamMessage, error) {
 func consumerName() string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
-		return "dagflows-worker"
+		host = "agent"
 	}
-	return host
+	return fmt.Sprintf("%s-%d", host, os.Getpid())
 }

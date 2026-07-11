@@ -1,3 +1,5 @@
+//go:build linux
+
 package service
 
 import (
@@ -12,7 +14,7 @@ func NewConfiguredNodeRunService(cfg config.Config) (*NodeRunService, error) {
 		return nil, err
 	}
 
-	runner, err := vm.NewFirecrackerRunner(cfg.Firecracker.RunnerCommand)
+	runner, err := vm.NewFirecrackerRunner()
 	if err != nil {
 		return nil, err
 	}

@@ -1,17 +1,46 @@
-# Dagflows Worker
+# Agent
 
-Executes workflow node-run requests from Redis Streams, fetches code/dependency
-artifacts from R2, and publishes node-run responses for the scheduler.
+Linux-only service that consumes node-run requests from Redis, fetches code and
+dependency artifacts from R2, runs them in Firecracker, and publishes results.
 
-The service mirrors the builder layout: `cmd/worker` wires config, listener, and
-service; `internal/listener/redis` owns stream consumption; `internal/service`
-executes a node; `internal/artifact` prepares code/dependency layers; and
-`internal/vm` isolates the runtime backend.
+## Setup
 
-## Layer Model
+```sh
+make setup
+```
 
-The builder already emits two layers for Python/Node and one deployable for Go.
-The worker expects the scheduler to send R2 object keys:
+Setup builds:
+
+```txt
+.local/bin/agent
+.local/bin/firecracker
+.local/vm/vmlinux
+.local/vm/rootfs.ext4
+```
+
+It also builds `cmd/guest` as `/usr/local/bin/agent` inside the VM. Downloads and extraction use
+OS temporary directories; only final assets stay in `.local`.
+
+Run from the repository root:
+
+```sh
+.local/bin/agent
+```
+
+Use `make kvm-check` if `/dev/kvm` is inaccessible. It prints group and ACL
+options without changing host permissions.
+
+## Execution
+
+The host agent and VM agent share only `internal/protocol`.
+
+1. Code and dependency artifacts are expanded under OS temp.
+2. Each becomes a read-only ext4 drive.
+3. The guest mounts both and combines them with an ephemeral OverlayFS.
+4. Request and result JSON are exchanged over vsock.
+5. The Firecracker process and temporary files are removed after the request.
+
+The scheduler normally sends R2 keys:
 
 ```json
 {
@@ -20,70 +49,11 @@ The worker expects the scheduler to send R2 object keys:
 }
 ```
 
-`artifact_url` and `deps_artifact_url` are still accepted as a compatibility
-fallback, but the normal path should be direct R2 fetch by key.
+## Resources
 
-- `deps_artifact_key` is fetched from R2 and unpacked into `deps/`.
-- `artifact_key` is fetched from R2 and unpacked into `code/`.
-- The worker writes `input.json` and `manifest.json` beside those directories.
+`WORKER_MAX_CONCURRENCY` defaults to `1`. Before work starts, the agent reserves
+`memory_limit_mb` plus 128 MB against Linux `MemAvailable`. Missing limits
+default to 512 MB. Insufficient memory returns a retryable failure without
+starting a VM.
 
-Inside the VM, mount or copy them as:
-
-- `/srv/dagflows/deps`
-- `/srv/dagflows/code`
-- `/srv/dagflows/input.json`
-- `/srv/dagflows/manifest.json`
-
-Do not permanently merge dependency and code layers in storage. Keep deps and
-code as separate artifacts so dependency layers can be cached by hash and reused
-across code-only deploys. At execution time, combine them with runtime search
-paths:
-
-- Python: `PYTHONPATH=/srv/dagflows/code:/srv/dagflows/deps`
-- Node: `NODE_PATH=/srv/dagflows/deps/node_modules`
-- Go: execute the deployable from `/srv/dagflows/code/deployable`
-
-## Firecracker
-
-Provide `FIRECRACKER_RUNNER_COMMAND`. The command is expected to launch
-Firecracker, attach the prepared workload to the guest, wait for the guest
-runner to finish, and write JSON to the path passed by `--output`.
-
-Use the Makefile to prepare the local Firecracker environment. It does not
-install or configure Redis:
-
-```sh
-make setup
-```
-
-For a demo kernel/rootfs from Firecracker CI:
-
-```sh
-make vm-assets
-```
-
-The command receives:
-
-```txt
---work-dir <dir>
---manifest <dir>/manifest.json
---input <dir>/input.json
---code-dir <dir>/code
---deps-dir <dir>/deps
---output <dir>/output.json
-```
-
-## Redis Defaults
-
-```txt
-WORKER_REQUEST_STREAM=goflow:node_run_requests
-WORKER_REQUEST_GROUP=goflow:node_run_requests:group
-WORKER_RESPONSE_STREAM=goflow:node_run_responses
-```
-
-The worker has no fixed max concurrency setting. It dispatches Firecracker
-executions as messages arrive, gated by `WORKER_MIN_FREE_MEMORY_MB` so it stops
-claiming new work when the host is below the configured free-memory floor.
-
-ACK happens only after the response is published. If the process crashes before
-ACK, Redis pending-entry reclaim redelivers the request.
+Redis requests are acknowledged only after their response is published.

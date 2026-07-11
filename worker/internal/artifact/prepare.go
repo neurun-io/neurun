@@ -4,26 +4,29 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
-	"github.com/dagflows/worker/internal/domain"
-	"github.com/dagflows/worker/pkg"
+	"github.com/dagflows/worker/internal/dto"
+	"github.com/dagflows/worker/internal/protocol"
 )
 
 const (
 	guestRoot     = "/srv/dagflows"
 	guestCodeDir  = guestRoot + "/code"
 	guestDepsDir  = guestRoot + "/deps"
+	guestRuntime  = guestRoot + "/runtime"
 	guestInput    = guestRoot + "/input.json"
 	guestManifest = guestRoot + "/manifest.json"
 )
 
 type PreparedWorkload struct {
-	Request      domain.WorkflowNodeRunRequest
+	Request      dto.WorkflowNodeRunRequest
 	WorkDir      string
 	CodeDir      string
 	DepsDir      string
@@ -31,38 +34,11 @@ type PreparedWorkload struct {
 	ManifestPath string
 }
 
-type RuntimePayload struct {
-	Ctx       map[string]any    `json:"ctx"`
-	Inputs    map[string]any    `json:"inputs"`
-	InputRefs map[string]string `json:"input_refs,omitempty"`
-}
-
-type Manifest struct {
-	WorkflowRunID  string            `json:"workflow_run_id"`
-	NodeKey        string            `json:"node_key"`
-	ExecutionToken int64             `json:"execution_token"`
-	Language       string            `json:"language"`
-	Entrypoint     string            `json:"entrypoint"`
-	TimeoutSeconds int               `json:"timeout_seconds"`
-	Host           ManifestPaths     `json:"host"`
-	Guest          ManifestPaths     `json:"guest"`
-	Env            map[string]string `json:"env,omitempty"`
-	Command        []string          `json:"command,omitempty"`
-}
-
-type ManifestPaths struct {
-	WorkDir      string `json:"work_dir"`
-	CodeDir      string `json:"code_dir"`
-	DepsDir      string `json:"deps_dir"`
-	InputPath    string `json:"input_path"`
-	ManifestPath string `json:"manifest_path"`
-}
-
 type Fetcher interface {
 	Fetch(ctx context.Context, ref, path string) error
 }
 
-func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req domain.WorkflowNodeRunRequest) (*PreparedWorkload, func(), error) {
+func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req dto.WorkflowNodeRunRequest) (*PreparedWorkload, func(), error) {
 	if fetcher == nil {
 		return nil, nil, fmt.Errorf("artifact fetcher is required")
 	}
@@ -71,6 +47,9 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req domain.Wo
 	}
 	if baseDir == "" {
 		baseDir = os.TempDir()
+	}
+	if err := os.MkdirAll(baseDir, 0o700); err != nil {
+		return nil, nil, fmt.Errorf("create work root: %w", err)
 	}
 
 	workDir, err := os.MkdirTemp(baseDir, "dagflows-node-*")
@@ -105,7 +84,7 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req domain.Wo
 			cleanup()
 			return nil, nil, fmt.Errorf("fetch deps artifact: %w", err)
 		}
-		if err := ExpandArtifact(depsArtifact, prepared.DepsDir, "deps"); err != nil {
+		if err := expandArtifact(depsArtifact, prepared.DepsDir, "deps"); err != nil {
 			cleanup()
 			return nil, nil, fmt.Errorf("expand deps artifact: %w", err)
 		}
@@ -116,7 +95,7 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req domain.Wo
 		cleanup()
 		return nil, nil, fmt.Errorf("fetch code artifact: %w", err)
 	}
-	if err := ExpandArtifact(codeArtifact, prepared.CodeDir, "deployable"); err != nil {
+	if err := expandArtifact(codeArtifact, prepared.CodeDir, "deployable"); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("expand code artifact: %w", err)
 	}
@@ -138,23 +117,26 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req domain.Wo
 	return prepared, cleanup, nil
 }
 
-func ExpandArtifact(path, destDir, rawName string) error {
+func expandArtifact(path, destDir, rawName string) error {
 	if isZip(path) {
-		return Unzip(path, destDir)
+		return unzip(path, destDir)
 	}
 
-	name := pkg.SafeName(rawName)
-	if name == "" {
-		name = "artifact"
-	}
-	target := filepath.Join(destDir, name)
-	if err := pkg.CopyFile(path, target); err != nil {
+	target := filepath.Join(destDir, rawName)
+	source, err := os.Open(path)
+	if err != nil {
 		return err
 	}
-	return os.Chmod(target, 0o755)
+	defer source.Close()
+	dest, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(dest, source)
+	return errors.Join(copyErr, dest.Close())
 }
 
-func Unzip(path, destDir string) error {
+func unzip(path, destDir string) error {
 	reader, err := zip.OpenReader(path)
 	if err != nil {
 		return err
@@ -175,10 +157,6 @@ func Unzip(path, destDir string) error {
 			return fmt.Errorf("unsafe zip entry %q", file.Name)
 		}
 		target := filepath.Join(destRoot, name)
-		if !pkg.PathInside(destRoot, target) {
-			return fmt.Errorf("unsafe zip entry %q", file.Name)
-		}
-
 		mode := file.FileInfo().Mode()
 		if mode&os.ModeSymlink != 0 {
 			return fmt.Errorf("zip symlink entries are not supported: %q", file.Name)
@@ -220,19 +198,19 @@ func Unzip(path, destDir string) error {
 	return nil
 }
 
-func RuntimeInput(req domain.WorkflowNodeRunRequest) (RuntimePayload, error) {
+func RuntimeInput(req dto.WorkflowNodeRunRequest) (dto.RuntimePayload, error) {
 	inputs := make(map[string]any, len(req.InputData))
 	for key, raw := range req.InputData {
 		var value any
 		if len(raw) > 0 {
 			if err := json.Unmarshal(raw, &value); err != nil {
-				return RuntimePayload{}, fmt.Errorf("decode input %s: %w", key, err)
+				return dto.RuntimePayload{}, fmt.Errorf("decode input %s: %w", key, err)
 			}
 		}
 		inputs[key] = value
 	}
 
-	return RuntimePayload{
+	return dto.RuntimePayload{
 		Ctx: map[string]any{
 			"workflow_run_id": req.WorkflowRunID,
 			"node_key":        req.NodeKey,
@@ -247,38 +225,33 @@ func RuntimeInput(req domain.WorkflowNodeRunRequest) (RuntimePayload, error) {
 	}, nil
 }
 
-func BuildManifest(workload *PreparedWorkload) Manifest {
+func BuildManifest(workload *PreparedWorkload) protocol.Manifest {
 	req := workload.Request
 	env := map[string]string{}
 	command := []string{}
 
 	switch strings.ToLower(strings.TrimSpace(req.Language)) {
 	case "python", "py":
-		env["PYTHONPATH"] = guestCodeDir + ":" + guestDepsDir
-		command = []string{"python", "-m", "dagflows", "invoke", "--node", req.NodeKey}
+		env["PYTHONPATH"] = guestRuntime + ":" + guestCodeDir + ":" + guestDepsDir
+		command = []string{"python3", "-m", "dagflows", "invoke", "--node", req.NodeKey}
 	case "node", "nodejs", "javascript", "typescript", "js", "ts":
-		env["NODE_PATH"] = guestDepsDir + "/node_modules"
-		command = []string{"node", "/opt/dagflows-node-runner.js", "--entrypoint", req.Entrypoint}
+		env["NODE_PATH"] = guestRuntime + "/node_modules:" + guestDepsDir + "/node_modules"
+		entrypoint := strings.ReplaceAll(strings.TrimSpace(req.Entrypoint), "\\", "/")
+		command = []string{"node", path.Join(guestRuntime, entrypoint)}
 	case "go", "golang":
-		command = []string{guestCodeDir + "/deployable"}
+		command = []string{guestRuntime + "/deployable"}
 	}
 
-	return Manifest{
+	return protocol.Manifest{
 		WorkflowRunID:  req.WorkflowRunID,
 		NodeKey:        req.NodeKey,
 		ExecutionToken: req.ExecutionToken,
 		Language:       req.Language,
 		Entrypoint:     req.Entrypoint,
 		TimeoutSeconds: req.TimeoutSeconds,
-		Host: ManifestPaths{
-			WorkDir:      workload.WorkDir,
-			CodeDir:      workload.CodeDir,
-			DepsDir:      workload.DepsDir,
-			InputPath:    workload.InputPath,
-			ManifestPath: workload.ManifestPath,
-		},
-		Guest: ManifestPaths{
-			WorkDir:      guestRoot,
+		MemoryLimitMB:  req.RequiredMemoryMB(),
+		Guest: protocol.Paths{
+			WorkDir:      guestRuntime,
 			CodeDir:      guestCodeDir,
 			DepsDir:      guestDepsDir,
 			InputPath:    guestInput,
@@ -302,7 +275,7 @@ func writeJSON(path string, value any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	file, err := os.Create(path)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
