@@ -22,13 +22,11 @@ import (
 )
 
 const (
-	root         = "/srv/dagflows"
-	codeDir      = root + "/code"
-	depsDir      = root + "/deps"
-	runtimeDir   = root + "/runtime"
-	inputPath    = root + "/input.json"
-	manifestPath = root + "/manifest.json"
-	overlayDir   = "/run/dagflows-overlay"
+	root       = "/srv/dagflows"
+	codeDir    = root + "/code"
+	depsDir    = root + "/deps"
+	runtimeDir = root + "/runtime"
+	overlayDir = "/run/dagflows-overlay"
 )
 
 func main() {
@@ -44,9 +42,6 @@ func run() error {
 	}
 	defer conn.Close()
 
-	if err := json.NewEncoder(conn).Encode(protocol.Ready{Type: "ready"}); err != nil {
-		return err
-	}
 	var request protocol.RunRequest
 	if err := json.NewDecoder(conn).Decode(&request); err != nil {
 		return err
@@ -56,31 +51,29 @@ func run() error {
 
 func execute(request protocol.RunRequest) protocol.RunResult {
 	start := time.Now()
-	result := protocol.RunResult{Type: "result", ID: request.ID}
+	result := protocol.RunResult{}
 	fail := func(err error, category string, retryable bool) protocol.RunResult {
 		result.Error, result.Category, result.Retryable = err.Error(), category, retryable
 		result.DurationMS = time.Since(start).Milliseconds()
 		return result
 	}
 
-	var manifest protocol.Manifest
-	if request.Type != "run" || json.Unmarshal(request.Manifest, &manifest) != nil || len(manifest.Command) == 0 {
+	if request.NodeKey == "" || !json.Valid(request.Input) {
 		return fail(errors.New("invalid run request"), "infrastructure", true)
 	}
-	if err := mountWorkload(request); err != nil {
+	if err := mountWorkload(); err != nil {
 		return fail(err, "infrastructure", true)
 	}
 
-	timeout := time.Duration(manifest.TimeoutSeconds) * time.Second
+	timeout := time.Duration(request.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, manifest.Command[0], manifest.Command[1:]...)
+	cmd := exec.CommandContext(ctx, "python3", "-m", "dagflows", "invoke", "--node", request.NodeKey)
 	cmd.Dir = runtimeDir
-	cmd.Env = append(os.Environ(), environment(manifest.Env)...)
 	cmd.Stdin = bytes.NewReader(request.Input)
 	output, err := cmd.Output()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -104,7 +97,7 @@ func execute(request protocol.RunRequest) protocol.RunResult {
 	return result
 }
 
-func mountWorkload(request protocol.RunRequest) error {
+func mountWorkload() error {
 	for _, path := range []string{root, codeDir, depsDir, runtimeDir, overlayDir} {
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			return err
@@ -130,22 +123,5 @@ func mountWorkload(request protocol.RunRequest) error {
 	if err := unix.Mount("overlay", runtimeDir, "overlay", 0, options); err != nil {
 		return err
 	}
-	if err := os.WriteFile(inputPath, request.Input, 0o600); err != nil {
-		return err
-	}
-	return os.WriteFile(manifestPath, request.Manifest, 0o600)
-}
-
-func environment(extra map[string]string) []string {
-	env := []string{
-		"DAGFLOWS_WORK_DIR=" + runtimeDir,
-		"DAGFLOWS_CODE_DIR=" + codeDir,
-		"DAGFLOWS_DEPS_DIR=" + depsDir,
-		"DAGFLOWS_INPUT=" + inputPath,
-		"DAGFLOWS_MANIFEST=" + manifestPath,
-	}
-	for key, value := range extra {
-		env = append(env, key+"="+value)
-	}
-	return env
+	return nil
 }

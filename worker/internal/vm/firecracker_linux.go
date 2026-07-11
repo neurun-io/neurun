@@ -62,7 +62,7 @@ func (r *FirecrackerRunner) Run(ctx context.Context, workload *artifact.Prepared
 	ctx, cancel := context.WithTimeout(ctx, timeoutFor(workload.Request.TimeoutSeconds))
 	defer cancel()
 
-	runDir, err := os.MkdirTemp("/tmp", "agent-vm-")
+	runDir, err := os.MkdirTemp("/tmp", "dagflows-vm-")
 	if err != nil {
 		return Result{}, infrastructure("create VM directory", err)
 	}
@@ -117,7 +117,7 @@ func (r *FirecrackerRunner) Run(ctx context.Context, workload *artifact.Prepared
 		_ = conn.SetDeadline(deadline)
 	}
 
-	output, duration, err := transact(conn, filepath.Base(runDir), workload)
+	output, duration, err := transact(conn, workload)
 	if err != nil {
 		return Result{Duration: duration}, err
 	}
@@ -255,22 +255,11 @@ func waitForGuest(ctx context.Context, listener net.Listener, done <-chan error)
 	}
 }
 
-func transact(conn net.Conn, id string, workload *artifact.PreparedWorkload) ([]byte, time.Duration, error) {
-	var ready protocol.Ready
-	if err := json.NewDecoder(conn).Decode(&ready); err != nil || ready.Type != "ready" {
-		return nil, 0, errors.New("guest did not become ready")
-	}
-	manifest, err := os.ReadFile(workload.ManifestPath)
-	if err != nil {
-		return nil, 0, err
-	}
-	input, err := os.ReadFile(workload.InputPath)
-	if err != nil {
-		return nil, 0, err
-	}
+func transact(conn net.Conn, workload *artifact.PreparedWorkload) ([]byte, time.Duration, error) {
 	if err := json.NewEncoder(conn).Encode(protocol.RunRequest{
-		Type: "run", ID: id,
-		Manifest: manifest, Input: input,
+		NodeKey:        workload.Request.NodeKey,
+		TimeoutSeconds: workload.Request.TimeoutSeconds,
+		Input:          workload.Input,
 	}); err != nil {
 		return nil, 0, err
 	}
@@ -279,9 +268,6 @@ func transact(conn net.Conn, id string, workload *artifact.PreparedWorkload) ([]
 		return nil, 0, err
 	}
 	duration := time.Duration(result.DurationMS) * time.Millisecond
-	if result.ID != id {
-		return nil, duration, infrastructure("read guest result", errors.New("correlation failed"))
-	}
 	if result.Error != "" {
 		return nil, duration, RunError{Message: result.Error, Category: result.Category, Retryable: result.Retryable}
 	}

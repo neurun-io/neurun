@@ -16,15 +16,13 @@ import (
 type NodeRunService struct {
 	runner               vm.Runner
 	fetcher              artifact.Fetcher
-	workDir              string
 	outputInlineMaxBytes int64
 }
 
-func NewNodeRunService(runner vm.Runner, fetcher artifact.Fetcher, workDir string, outputInlineMaxBytes int64) *NodeRunService {
+func NewNodeRunService(runner vm.Runner, fetcher artifact.Fetcher, outputInlineMaxBytes int64) *NodeRunService {
 	return &NodeRunService{
 		runner:               runner,
 		fetcher:              fetcher,
-		workDir:              workDir,
 		outputInlineMaxBytes: outputInlineMaxBytes,
 	}
 }
@@ -41,13 +39,13 @@ func (s *NodeRunService) Execute(ctx context.Context, req dto.WorkflowNodeRunReq
 	}
 
 	log.Printf("node run stage=prepare run=%s node=%s", req.WorkflowRunID, req.NodeKey)
-	prepared, cleanup, err := artifact.Prepare(ctx, s.workDir, s.fetcher, req)
+	prepared, cleanup, err := artifact.Prepare(ctx, s.fetcher, req)
 	if err != nil {
 		return failedResponse(base, infrastructure(err.Error()), time.Since(start))
 	}
 	defer cleanup()
 
-	log.Printf("node run stage=vm_start run=%s node=%s language=%s", req.WorkflowRunID, req.NodeKey, req.Language)
+	log.Printf("node run stage=vm_start run=%s node=%s", req.WorkflowRunID, req.NodeKey)
 	result, err := s.runner.Run(ctx, prepared)
 	if err != nil {
 		return failedResponse(base, classifyRunError(err), time.Since(start))
@@ -79,19 +77,13 @@ func (s *NodeRunService) Execute(ctx context.Context, req dto.WorkflowNodeRunReq
 }
 
 func validateRequest(req dto.WorkflowNodeRunRequest) error {
-	language := strings.ToLower(strings.TrimSpace(req.Language))
 	switch {
 	case strings.TrimSpace(req.WorkflowRunID) == "":
 		return permanent("workflow_run_id is required")
 	case strings.TrimSpace(req.NodeKey) == "":
 		return permanent("node_key is required")
-	case strings.TrimSpace(req.Language) == "":
-		return permanent("language is required")
 	case strings.TrimSpace(req.ArtifactKey) == "":
 		return permanent("artifact_key is required")
-	}
-	if language != "python" && language != "py" {
-		return permanent(fmt.Sprintf("unsupported language %q; only Python is supported", req.Language))
 	}
 	return nil
 }

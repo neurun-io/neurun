@@ -4,54 +4,40 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
+	objectpath "path"
 	"path/filepath"
 	"strings"
 
 	"github.com/dagflows/worker/internal/dto"
-	"github.com/dagflows/worker/internal/protocol"
-)
-
-const (
-	guestRoot     = "/srv/dagflows"
-	guestCodeDir  = guestRoot + "/code"
-	guestDepsDir  = guestRoot + "/deps"
-	guestRuntime  = guestRoot + "/runtime"
-	guestInput    = guestRoot + "/input.json"
-	guestManifest = guestRoot + "/manifest.json"
 )
 
 type PreparedWorkload struct {
-	Request      dto.WorkflowNodeRunRequest
-	WorkDir      string
-	CodeDir      string
-	DepsDir      string
-	InputPath    string
-	ManifestPath string
+	Request dto.WorkflowNodeRunRequest
+	CodeDir string
+	DepsDir string
+	Input   json.RawMessage
 }
 
 type Fetcher interface {
 	Fetch(ctx context.Context, ref, path string) error
 }
 
-func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req dto.WorkflowNodeRunRequest) (*PreparedWorkload, func(), error) {
+func Prepare(ctx context.Context, fetcher Fetcher, req dto.WorkflowNodeRunRequest) (*PreparedWorkload, func(), error) {
 	if fetcher == nil {
 		return nil, nil, fmt.Errorf("artifact fetcher is required")
 	}
-	if strings.TrimSpace(req.ArtifactKey) == "" {
+	codeKey := strings.Join(strings.Fields(req.ArtifactKey), "")
+	if codeKey == "" {
 		return nil, nil, fmt.Errorf("artifact_key is required")
 	}
-	if baseDir == "" {
-		baseDir = os.TempDir()
+	if objectpath.Base(codeKey) != "code-layer.zip" {
+		return nil, nil, fmt.Errorf("artifact_key must point to code-layer.zip")
 	}
-	if err := os.MkdirAll(baseDir, 0o700); err != nil {
-		return nil, nil, fmt.Errorf("create work root: %w", err)
-	}
-
-	workDir, err := os.MkdirTemp(baseDir, "dagflows-node-*")
+	req.ArtifactKey = codeKey
+	workDir, err := os.MkdirTemp("", "dagflows-node-*")
 	if err != nil {
 		return nil, nil, fmt.Errorf("create work dir: %w", err)
 	}
@@ -60,12 +46,9 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req dto.Workf
 	}
 
 	prepared := &PreparedWorkload{
-		Request:      req,
-		WorkDir:      workDir,
-		CodeDir:      filepath.Join(workDir, "code"),
-		DepsDir:      filepath.Join(workDir, "deps"),
-		InputPath:    filepath.Join(workDir, "input.json"),
-		ManifestPath: filepath.Join(workDir, "manifest.json"),
+		Request: req,
+		CodeDir: filepath.Join(workDir, "code"),
+		DepsDir: filepath.Join(workDir, "deps"),
 	}
 
 	if err := os.MkdirAll(prepared.CodeDir, 0o755); err != nil {
@@ -77,26 +60,25 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req dto.Workf
 		return nil, nil, err
 	}
 
-	if depsRef := strings.TrimSpace(req.DepsArtifactKey); depsRef != "" {
-		depsArtifact := filepath.Join(workDir, "deps.artifact")
-		if err := fetcher.Fetch(ctx, depsRef, depsArtifact); err != nil {
-			cleanup()
-			return nil, nil, fmt.Errorf("fetch deps artifact: %w", err)
-		}
-		if err := expandArtifact(depsArtifact, prepared.DepsDir, "deps"); err != nil {
-			cleanup()
-			return nil, nil, fmt.Errorf("expand deps artifact: %w", err)
-		}
-	}
-
 	codeArtifact := filepath.Join(workDir, "code.artifact")
-	if err := fetcher.Fetch(ctx, req.ArtifactKey, codeArtifact); err != nil {
+	if err := fetcher.Fetch(ctx, codeKey, codeArtifact); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("fetch code artifact: %w", err)
 	}
-	if err := expandArtifact(codeArtifact, prepared.CodeDir, "deployable"); err != nil {
+	if err := unzip(codeArtifact, prepared.CodeDir); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("expand code artifact: %w", err)
+	}
+
+	depsArtifact := filepath.Join(workDir, "deps.artifact")
+	depsKey := objectpath.Join(objectpath.Dir(codeKey), "install-layer.zip")
+	if err := fetcher.Fetch(ctx, depsKey, depsArtifact); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("fetch deps artifact: %w", err)
+	}
+	if err := unzip(depsArtifact, prepared.DepsDir); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("expand deps artifact: %w", err)
 	}
 
 	payload, err := RuntimeInput(req)
@@ -104,35 +86,13 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req dto.Workf
 		cleanup()
 		return nil, nil, fmt.Errorf("prepare runtime input: %w", err)
 	}
-	if err := writeJSON(prepared.InputPath, payload); err != nil {
+	prepared.Input, err = json.Marshal(payload)
+	if err != nil {
 		cleanup()
-		return nil, nil, fmt.Errorf("write input: %w", err)
-	}
-	if err := writeJSON(prepared.ManifestPath, BuildManifest(prepared)); err != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("write manifest: %w", err)
+		return nil, nil, fmt.Errorf("encode runtime input: %w", err)
 	}
 
 	return prepared, cleanup, nil
-}
-
-func expandArtifact(path, destDir, rawName string) error {
-	if isZip(path) {
-		return unzip(path, destDir)
-	}
-
-	target := filepath.Join(destDir, rawName)
-	source, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-	dest, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		return err
-	}
-	_, copyErr := io.Copy(dest, source)
-	return errors.Join(copyErr, dest.Close())
 }
 
 func unzip(path, destDir string) error {
@@ -214,54 +174,8 @@ func RuntimeInput(req dto.WorkflowNodeRunRequest) (dto.RuntimePayload, error) {
 			"workflow_run_id": req.WorkflowRunID,
 			"node_key":        req.NodeKey,
 			"config":          req.Config,
-			"language":        req.Language,
 			"timeout_seconds": req.TimeoutSeconds,
 		},
 		Inputs: inputs,
 	}, nil
-}
-
-func BuildManifest(workload *PreparedWorkload) protocol.Manifest {
-	req := workload.Request
-	return protocol.Manifest{
-		WorkflowRunID:  req.WorkflowRunID,
-		NodeKey:        req.NodeKey,
-		Language:       req.Language,
-		TimeoutSeconds: req.TimeoutSeconds,
-		MemoryLimitMB:  req.RequiredMemoryMB(),
-		Guest: protocol.Paths{
-			WorkDir:      guestRuntime,
-			CodeDir:      guestCodeDir,
-			DepsDir:      guestDepsDir,
-			InputPath:    guestInput,
-			ManifestPath: guestManifest,
-		},
-		Env: map[string]string{
-			"PYTHONPATH": guestRuntime + ":" + guestCodeDir + ":" + guestDepsDir,
-		},
-		Command: []string{"python3", "-m", "dagflows", "invoke", "--node", req.NodeKey},
-	}
-}
-
-func isZip(path string) bool {
-	reader, err := zip.OpenReader(path)
-	if err != nil {
-		return false
-	}
-	_ = reader.Close()
-	return true
-}
-
-func writeJSON(path string, value any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(value)
 }

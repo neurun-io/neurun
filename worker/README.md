@@ -1,7 +1,7 @@
-# Agent
+# Worker
 
-Linux-only service that consumes node-run requests from Redis, fetches code and
-dependency artifacts from R2, runs them in Firecracker, and publishes results.
+Linux-only service that consumes Python node-run requests from Redis, fetches
+builder artifacts from R2, runs them in Firecracker, and publishes results.
 
 ## Setup
 
@@ -12,27 +12,35 @@ make setup
 Setup builds:
 
 ```txt
-.local/bin/agent
 .local/bin/firecracker
 .local/vm/vmlinux
 .local/vm/rootfs.ext4
 ```
 
-It also builds `internal/agent` as `/usr/local/bin/agent` inside the VM. Downloads and extraction use
+It builds `internal/agent` as `/usr/local/bin/agent` inside the VM. Downloads and extraction use
 OS temporary directories; only final assets stay in `.local`.
+
+Run `make vm-assets` after changing `internal/agent`; the VM executable is
+embedded in `rootfs.ext4`.
 
 Run from the repository root:
 
 ```sh
-.local/bin/agent
+set -a
+. ./.env
+set +a
+go run ./cmd
 ```
+
+The service reads process environment variables directly; it does not load
+`.env` itself.
 
 Use `make kvm-check` if `/dev/kvm` is inaccessible. It prints group and ACL
 options without changing host permissions.
 
 ## Execution
 
-The host agent and VM agent share only `internal/protocol`.
+The worker service and VM agent share only `internal/protocol`.
 
 1. Code and dependency artifacts are expanded under OS temp.
 2. Each becomes a read-only ext4 drive.
@@ -40,18 +48,19 @@ The host agent and VM agent share only `internal/protocol`.
 4. Request and result JSON are exchanged over vsock.
 5. The Firecracker process and temporary files are removed after the request.
 
-The scheduler normally sends R2 keys:
+The scheduler sends the builder's code-layer key:
 
 ```json
 {
-  "artifact_key": "builds/repo/commit/code-layer.zip",
-  "deps_artifact_key": "builds/repo/commit/install-layer.zip"
+  "artifact_key": "builds/repo/commit/code-layer.zip"
 }
 ```
 
+The dependency key is inferred as `builds/repo/commit/install-layer.zip`.
+
 ## Resources
 
-`WORKER_MAX_CONCURRENCY` defaults to `1`. Before work starts, the agent reserves
+`WORKER_MAX_CONCURRENCY` defaults to `1`. Before work starts, the worker reserves
 `memory_limit_mb` plus 128 MB against Linux `MemAvailable`. Missing limits
 default to 512 MB. Insufficient memory returns a retryable failure without
 starting a VM.

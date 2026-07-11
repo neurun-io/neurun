@@ -19,5 +19,5 @@ func NewConfiguredNodeRunService(cfg config.Config) (*NodeRunService, error) {
 		return nil, err
 	}
 
-	return NewNodeRunService(runner, fetcher, cfg.Worker.WorkDir, cfg.Worker.OutputInlineMaxBytes), nil
+	return NewNodeRunService(runner, fetcher, cfg.Worker.OutputInlineMaxBytes), nil
 }

@@ -9,31 +9,26 @@ FIRECRACKER_RELEASES_URL ?= https://github.com/firecracker-microvm/firecracker/r
 FIRECRACKER_VERSION ?= latest
 FIRECRACKER_ARCH ?= x86_64
 FIRECRACKER_BIN := $(BIN_DIR)/firecracker
-AGENT_BIN := $(BIN_DIR)/agent
 
 FIRECRACKER_CI_S3 ?= https://s3.amazonaws.com/spec.ccfc.min
 ROOTFS_SIZE ?= 1G
 
-.PHONY: help setup dirs build-agent firecracker vm-assets check-linux check-tools check-vm-tools kvm-check
+.PHONY: help setup dirs firecracker vm-assets check-linux check-tools check-vm-tools kvm-check
 
 help:
 	@printf '%s\n' \
 		'Targets:' \
-		'  make setup       Build the worker agent and Firecracker assets' \
-		'  make build-agent  Build .local/bin/agent' \
+		'  make setup       Prepare Firecracker assets' \
 		'  make firecracker Download Firecracker into .local/bin' \
 		'  make vm-assets   Build the agent rootfs in .local/vm (requires sudo)' \
 		'  make kvm-check   Verify /dev/kvm access and show suggested fixes' \
 		'' 
 
-setup: check-linux kvm-check check-tools check-vm-tools dirs build-agent firecracker vm-assets
-	@printf 'Agent ready: %s\n' "$(abspath $(AGENT_BIN))"
+setup: check-linux kvm-check check-tools check-vm-tools dirs firecracker vm-assets
+	@printf 'Firecracker assets ready\n'
 
 dirs:
 	@mkdir -p "$(BIN_DIR)" "$(VM_DIR)"
-
-build-agent: check-linux dirs
-	@CGO_ENABLED=0 go build -trimpath -o "$(AGENT_BIN)" ./cmd
 
 firecracker: check-linux check-tools dirs
 	@latest="$(FIRECRACKER_VERSION)"; \

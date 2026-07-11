@@ -1,13 +1,10 @@
 package config
 
 import (
-	"errors"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/joho/godotenv"
 )
 
 const (
@@ -15,7 +12,6 @@ const (
 	DefaultRequestStream  = "dagflows:worker:requests"
 	DefaultRequestGroup   = "workers"
 	DefaultResponseStream = "dagflows:worker:responses"
-	DefaultMinIdle        = 2 * time.Minute
 	DefaultBlockDuration  = 2 * time.Second
 	DefaultInlineMaxBytes = int64(256 * 1024)
 	DefaultR2Region       = "auto"
@@ -39,7 +35,6 @@ type StreamConfig struct {
 	RequestStream  string
 	RequestGroup   string
 	ResponseStream string
-	MinIdle        time.Duration
 	BlockDuration  time.Duration
 	MaxLen         int64
 }
@@ -55,17 +50,11 @@ type R2Config struct {
 }
 
 type WorkerConfig struct {
-	ID                   string
-	WorkDir              string
 	MaxConcurrency       int
 	OutputInlineMaxBytes int64
 }
 
-func Load(path string) (Config, error) {
-	if err := godotenv.Load(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return Config{}, err
-	}
-
+func Load() Config {
 	cfg := Default()
 	cfg.Redis.Addr = envOr("REDIS_ADDR", cfg.Redis.Addr)
 	cfg.Redis.Password = env("REDIS_PASSWORD")
@@ -74,7 +63,6 @@ func Load(path string) (Config, error) {
 	cfg.Streams.RequestStream = envOr("WORKER_REQUEST_STREAM", cfg.Streams.RequestStream)
 	cfg.Streams.RequestGroup = envOr("WORKER_REQUEST_GROUP", cfg.Streams.RequestGroup)
 	cfg.Streams.ResponseStream = envOr("WORKER_RESPONSE_STREAM", cfg.Streams.ResponseStream)
-	cfg.Streams.MinIdle = envDurationOr("WORKER_STALE_ENTRY_RECLAIM_THRESHOLD", cfg.Streams.MinIdle)
 	cfg.Streams.BlockDuration = envDurationOr("WORKER_BLOCKING_READ_TIMEOUT", cfg.Streams.BlockDuration)
 	cfg.Streams.MaxLen = envInt64Or("WORKER_RESPONSE_MAX_LEN", cfg.Streams.MaxLen)
 
@@ -86,8 +74,6 @@ func Load(path string) (Config, error) {
 	cfg.R2.SecretAccessKey = env("R2_SECRET_ACCESS_KEY")
 	cfg.R2.Prefix = strings.Trim(env("R2_PREFIX"), "/")
 
-	cfg.Worker.ID = env("WORKER_ID")
-	cfg.Worker.WorkDir = env("WORKER_WORK_DIR")
 	cfg.Worker.MaxConcurrency = envIntOr("WORKER_MAX_CONCURRENCY", cfg.Worker.MaxConcurrency)
 	cfg.Worker.OutputInlineMaxBytes = envInt64Or("WORKER_OUTPUT_INLINE_MAX_BYTES", cfg.Worker.OutputInlineMaxBytes)
 
@@ -97,7 +83,7 @@ func Load(path string) (Config, error) {
 	if cfg.Worker.MaxConcurrency <= 0 {
 		cfg.Worker.MaxConcurrency = DefaultMaxConcurrency
 	}
-	return cfg, nil
+	return cfg
 }
 
 func Default() Config {
@@ -109,7 +95,6 @@ func Default() Config {
 			RequestStream:  DefaultRequestStream,
 			RequestGroup:   DefaultRequestGroup,
 			ResponseStream: DefaultResponseStream,
-			MinIdle:        DefaultMinIdle,
 			BlockDuration:  DefaultBlockDuration,
 			MaxLen:         10000,
 		},

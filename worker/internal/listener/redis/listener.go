@@ -22,7 +22,6 @@ type Listener struct {
 	requests    *streamConsumer
 	responses   *streamPublisher
 	nodeService *service.NodeRunService
-	active      activeTracker
 	resources   memoryGate
 	slots       chan struct{}
 }
@@ -48,12 +47,7 @@ func NewListener(cfg config.Config, nodeService *service.NodeRunService) (*Liste
 		return nil, fmt.Errorf("connect redis: %w", err)
 	}
 
-	consumer := cfg.Worker.ID
-	if consumer == "" {
-		consumer = consumerName()
-	}
-
-	requests, err := newStreamConsumer(client, cfg.Streams.RequestStream, cfg.Streams.RequestGroup, consumer, cfg.Streams.MinIdle, cfg.Streams.BlockDuration)
+	requests, err := newStreamConsumer(client, cfg.Streams.RequestStream, cfg.Streams.RequestGroup, consumerName(), cfg.Streams.BlockDuration)
 	if err != nil {
 		_ = client.Close()
 		return nil, err
@@ -70,7 +64,7 @@ func NewListener(cfg config.Config, nodeService *service.NodeRunService) (*Liste
 
 func (l *Listener) Listen(ctx context.Context) error {
 	defer l.client.Close()
-	log.Printf("agent listening stream=%s group=%s runtime=firecracker max_concurrency=%d", l.requests.stream, l.requests.group, cap(l.slots))
+	log.Printf("worker listening stream=%s group=%s runtime=firecracker max_concurrency=%d", l.requests.stream, l.requests.group, cap(l.slots))
 
 	var wg sync.WaitGroup
 
@@ -97,17 +91,10 @@ listen:
 			continue
 		}
 
-		if !l.active.Mark(msg.ID) {
-			<-l.slots
-			log.Printf("request id=%s is already active locally; skipping duplicate delivery", msg.ID)
-			continue
-		}
-
 		wg.Add(1)
 		go func(msg streamMessage) {
 			defer wg.Done()
 			defer func() { <-l.slots }()
-			defer l.active.Unmark(msg.ID)
 			if err := l.processMessage(ctx, msg); err != nil {
 				log.Printf("process request id=%s failed: %v", msg.ID, err)
 			}

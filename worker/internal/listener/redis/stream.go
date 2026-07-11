@@ -20,7 +20,6 @@ type streamConsumer struct {
 	stream        string
 	group         string
 	consumer      string
-	minIdle       time.Duration
 	blockDuration time.Duration
 }
 
@@ -30,8 +29,8 @@ type streamPublisher struct {
 	maxLen int64
 }
 
-func newStreamConsumer(client *goredis.Client, stream, group, consumer string, minIdle, blockDuration time.Duration) (*streamConsumer, error) {
-	if err := client.XGroupCreateMkStream(context.Background(), stream, group, "$").Err(); err != nil {
+func newStreamConsumer(client *goredis.Client, stream, group, consumer string, blockDuration time.Duration) (*streamConsumer, error) {
+	if err := client.XGroupCreateMkStream(context.Background(), stream, group, "0").Err(); err != nil {
 		if !strings.Contains(err.Error(), "BUSYGROUP") {
 			return nil, fmt.Errorf("create redis stream group %q on %q: %w", group, stream, err)
 		}
@@ -41,7 +40,6 @@ func newStreamConsumer(client *goredis.Client, stream, group, consumer string, m
 		stream:        stream,
 		group:         group,
 		consumer:      consumer,
-		minIdle:       minIdle,
 		blockDuration: blockDuration,
 	}, nil
 }
@@ -56,21 +54,6 @@ func (s *streamConsumer) ReadOne(ctx context.Context) (streamMessage, error) {
 		case <-ctx.Done():
 			return streamMessage{}, ctx.Err()
 		default:
-		}
-
-		claimed, _, err := s.client.XAutoClaim(ctx, &goredis.XAutoClaimArgs{
-			Stream:   s.stream,
-			Group:    s.group,
-			Consumer: s.consumer,
-			MinIdle:  s.minIdle,
-			Start:    "0",
-			Count:    1,
-		}).Result()
-		if err != nil && err != goredis.Nil {
-			return streamMessage{}, fmt.Errorf("xautoclaim from %s: %w", s.stream, err)
-		}
-		if len(claimed) > 0 {
-			return parseStreamEntry(claimed[0])
 		}
 
 		results, err := s.client.XReadGroup(ctx, &goredis.XReadGroupArgs{
@@ -127,7 +110,7 @@ func parseStreamEntry(msg goredis.XMessage) (streamMessage, error) {
 func consumerName() string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
-		host = "agent"
+		host = "worker"
 	}
 	return fmt.Sprintf("%s-%d", host, os.Getpid())
 }
