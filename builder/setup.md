@@ -71,9 +71,11 @@ reasons.
 PowerShell:
 
 ```powershell
+# TODO: Move python-sdk/examples/branching-demo into its own GitHub repository
+# and use that repository's clone URL here.
 aws --endpoint-url http://localhost:4566 sqs send-message `
   --queue-url http://localhost:4566/000000000000/builder-requests `
-  --message-body '{"deployment_id":"local-deployment","workflow_id":"local-workflow","git_url":"D:\\Documents\\m-workspace\\dagflows\\python-sdk"}'
+  --message-body '{"deployment_id":"local-deployment","workflow_id":"local-workflow","git_url":"D:\\Documents\\m-workspace\\dagflows\\python-sdk\\examples\\branching-demo"}'
 ```
 
 Use a cloneable Git repo path or URL for `git_url`.

@@ -1,7 +1,9 @@
 package pkg
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,8 +12,11 @@ import (
 )
 
 func Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
-	if err := command(ctx, dir, env, name, args...).Run(); err != nil {
-		return fmt.Errorf("%s failed: %w", name, err)
+	cmd := command(ctx, dir, env, name, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return commandError(name, err, stderr.String())
 	}
 	return nil
 }
@@ -19,9 +24,21 @@ func Run(ctx context.Context, dir string, env []string, name string, args ...str
 func Output(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
 	output, err := command(ctx, dir, env, name, args...).Output()
 	if err != nil {
-		return "", fmt.Errorf("%s failed: %w", name, err)
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return "", commandError(name, err, string(exitErr.Stderr))
+		}
+		return "", commandError(name, err, "")
 	}
 	return string(output), nil
+}
+
+func commandError(name string, err error, stderr string) error {
+	detail := strings.TrimSpace(stderr)
+	if detail == "" {
+		return fmt.Errorf("%s failed: %w", name, err)
+	}
+	return fmt.Errorf("%s failed: %w: %s", name, err, detail)
 }
 
 func command(ctx context.Context, dir string, env []string, name string, args ...string) *exec.Cmd {
