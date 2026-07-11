@@ -18,7 +18,7 @@ Setup builds:
 .local/vm/rootfs.ext4
 ```
 
-It also builds `cmd/guest` as `/usr/local/bin/agent` inside the VM. Downloads and extraction use
+It also builds `internal/agent` as `/usr/local/bin/agent` inside the VM. Downloads and extraction use
 OS temporary directories; only final assets stay in `.local`.
 
 Run from the repository root:

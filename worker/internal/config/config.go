@@ -12,9 +12,9 @@ import (
 
 const (
 	DefaultRedisAddr      = "localhost:6379"
-	DefaultRequestStream  = "goflow:node_run_requests"
-	DefaultRequestGroup   = "goflow:node_run_requests:group"
-	DefaultResponseStream = "goflow:node_run_responses"
+	DefaultRequestStream  = "dagflows:worker:requests"
+	DefaultRequestGroup   = "workers"
+	DefaultResponseStream = "dagflows:worker:responses"
 	DefaultMinIdle        = 2 * time.Minute
 	DefaultBlockDuration  = 2 * time.Second
 	DefaultInlineMaxBytes = int64(256 * 1024)

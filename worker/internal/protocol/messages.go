@@ -9,30 +9,26 @@ type Ready struct {
 }
 
 type RunRequest struct {
-	Type           string          `json:"type"`
-	ID             string          `json:"id"`
-	ExecutionToken int64           `json:"execution_token"`
-	Manifest       json.RawMessage `json:"manifest"`
-	Input          json.RawMessage `json:"input"`
+	Type     string          `json:"type"`
+	ID       string          `json:"id"`
+	Manifest json.RawMessage `json:"manifest"`
+	Input    json.RawMessage `json:"input"`
 }
 
 type RunResult struct {
-	Type           string          `json:"type"`
-	ID             string          `json:"id"`
-	ExecutionToken int64           `json:"execution_token"`
-	Output         json.RawMessage `json:"output,omitempty"`
-	Error          string          `json:"error,omitempty"`
-	Category       string          `json:"category,omitempty"`
-	Retryable      bool            `json:"retryable,omitempty"`
-	DurationMS     int64           `json:"duration_ms"`
+	Type       string          `json:"type"`
+	ID         string          `json:"id"`
+	Output     json.RawMessage `json:"output,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	Category   string          `json:"category,omitempty"`
+	Retryable  bool            `json:"retryable,omitempty"`
+	DurationMS int64           `json:"duration_ms"`
 }
 
 type Manifest struct {
 	WorkflowRunID  string            `json:"workflow_run_id"`
 	NodeKey        string            `json:"node_key"`
-	ExecutionToken int64             `json:"execution_token"`
 	Language       string            `json:"language"`
-	Entrypoint     string            `json:"entrypoint"`
 	TimeoutSeconds int               `json:"timeout_seconds"`
 	MemoryLimitMB  int64             `json:"memory_limit_mb"`
 	Guest          Paths             `json:"guest"`

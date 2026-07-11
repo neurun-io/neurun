@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -214,4 +216,25 @@ func escapePathSegments(segments []string) []string {
 		escaped = append(escaped, url.PathEscape(segment))
 	}
 	return escaped
+}
+
+func writeResponse(path string, body io.Reader) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = io.Copy(file, body)
+	return err
+}
+
+func isR2Configured(cfg config.R2Config) bool {
+	return strings.TrimSpace(cfg.Bucket) != "" ||
+		strings.TrimSpace(cfg.AccessKeyID) != "" ||
+		strings.TrimSpace(cfg.SecretAccessKey) != "" ||
+		strings.TrimSpace(cfg.Endpoint) != "" ||
+		strings.TrimSpace(cfg.AccountID) != ""
 }

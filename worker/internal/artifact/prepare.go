@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -42,8 +41,8 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req dto.Workf
 	if fetcher == nil {
 		return nil, nil, fmt.Errorf("artifact fetcher is required")
 	}
-	if strings.TrimSpace(req.CodeArtifactRef()) == "" {
-		return nil, nil, fmt.Errorf("artifact_key or artifact_url is required")
+	if strings.TrimSpace(req.ArtifactKey) == "" {
+		return nil, nil, fmt.Errorf("artifact_key is required")
 	}
 	if baseDir == "" {
 		baseDir = os.TempDir()
@@ -78,7 +77,7 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req dto.Workf
 		return nil, nil, err
 	}
 
-	if depsRef := req.DepsArtifactRef(); depsRef != "" {
+	if depsRef := strings.TrimSpace(req.DepsArtifactKey); depsRef != "" {
 		depsArtifact := filepath.Join(workDir, "deps.artifact")
 		if err := fetcher.Fetch(ctx, depsRef, depsArtifact); err != nil {
 			cleanup()
@@ -91,7 +90,7 @@ func Prepare(ctx context.Context, baseDir string, fetcher Fetcher, req dto.Workf
 	}
 
 	codeArtifact := filepath.Join(workDir, "code.artifact")
-	if err := fetcher.Fetch(ctx, req.CodeArtifactRef(), codeArtifact); err != nil {
+	if err := fetcher.Fetch(ctx, req.ArtifactKey, codeArtifact); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("fetch code artifact: %w", err)
 	}
@@ -214,40 +213,20 @@ func RuntimeInput(req dto.WorkflowNodeRunRequest) (dto.RuntimePayload, error) {
 		Ctx: map[string]any{
 			"workflow_run_id": req.WorkflowRunID,
 			"node_key":        req.NodeKey,
-			"execution_token": req.ExecutionToken,
 			"config":          req.Config,
-			"entrypoint":      req.Entrypoint,
 			"language":        req.Language,
 			"timeout_seconds": req.TimeoutSeconds,
 		},
-		Inputs:    inputs,
-		InputRefs: req.InputRefs,
+		Inputs: inputs,
 	}, nil
 }
 
 func BuildManifest(workload *PreparedWorkload) protocol.Manifest {
 	req := workload.Request
-	env := map[string]string{}
-	command := []string{}
-
-	switch strings.ToLower(strings.TrimSpace(req.Language)) {
-	case "python", "py":
-		env["PYTHONPATH"] = guestRuntime + ":" + guestCodeDir + ":" + guestDepsDir
-		command = []string{"python3", "-m", "dagflows", "invoke", "--node", req.NodeKey}
-	case "node", "nodejs", "javascript", "typescript", "js", "ts":
-		env["NODE_PATH"] = guestRuntime + "/node_modules:" + guestDepsDir + "/node_modules"
-		entrypoint := strings.ReplaceAll(strings.TrimSpace(req.Entrypoint), "\\", "/")
-		command = []string{"node", path.Join(guestRuntime, entrypoint)}
-	case "go", "golang":
-		command = []string{guestRuntime + "/deployable"}
-	}
-
 	return protocol.Manifest{
 		WorkflowRunID:  req.WorkflowRunID,
 		NodeKey:        req.NodeKey,
-		ExecutionToken: req.ExecutionToken,
 		Language:       req.Language,
-		Entrypoint:     req.Entrypoint,
 		TimeoutSeconds: req.TimeoutSeconds,
 		MemoryLimitMB:  req.RequiredMemoryMB(),
 		Guest: protocol.Paths{
@@ -257,8 +236,10 @@ func BuildManifest(workload *PreparedWorkload) protocol.Manifest {
 			InputPath:    guestInput,
 			ManifestPath: guestManifest,
 		},
-		Env:     env,
-		Command: command,
+		Env: map[string]string{
+			"PYTHONPATH": guestRuntime + ":" + guestCodeDir + ":" + guestDepsDir,
+		},
+		Command: []string{"python3", "-m", "dagflows", "invoke", "--node", req.NodeKey},
 	}
 }
 

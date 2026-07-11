@@ -27,7 +27,6 @@ const (
 	localFirecracker = ".local/bin/firecracker"
 	localKernel      = ".local/vm/vmlinux"
 	localRootFS      = ".local/vm/rootfs.ext4"
-	localGuestMarker = ".local/vm/agent.version"
 )
 
 type FirecrackerRunner struct {
@@ -45,9 +44,6 @@ func NewFirecrackerRunner() (*FirecrackerRunner, error) {
 		if err != nil {
 			return nil, err
 		}
-	}
-	if _, err := requiredAsset(localGuestMarker, false); err != nil {
-		return nil, fmt.Errorf("VM agent is missing; run make vm-assets: %w", err)
 	}
 	if err := unix.Access("/dev/kvm", unix.R_OK|unix.W_OK); err != nil {
 		return nil, fmt.Errorf("/dev/kvm is not readable/writable: %w", err)
@@ -273,7 +269,7 @@ func transact(conn net.Conn, id string, workload *artifact.PreparedWorkload) ([]
 		return nil, 0, err
 	}
 	if err := json.NewEncoder(conn).Encode(protocol.RunRequest{
-		Type: "run", ID: id, ExecutionToken: workload.Request.ExecutionToken,
+		Type: "run", ID: id,
 		Manifest: manifest, Input: input,
 	}); err != nil {
 		return nil, 0, err
@@ -283,7 +279,7 @@ func transact(conn net.Conn, id string, workload *artifact.PreparedWorkload) ([]
 		return nil, 0, err
 	}
 	duration := time.Duration(result.DurationMS) * time.Millisecond
-	if result.ID != id || result.ExecutionToken != workload.Request.ExecutionToken {
+	if result.ID != id {
 		return nil, duration, infrastructure("read guest result", errors.New("correlation failed"))
 	}
 	if result.Error != "" {

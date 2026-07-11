@@ -33,7 +33,7 @@ dirs:
 	@mkdir -p "$(BIN_DIR)" "$(VM_DIR)"
 
 build-agent: check-linux dirs
-	@CGO_ENABLED=0 go build -trimpath -o "$(AGENT_BIN)" ./cmd/agent
+	@CGO_ENABLED=0 go build -trimpath -o "$(AGENT_BIN)" ./cmd
 
 firecracker: check-linux check-tools dirs
 	@latest="$(FIRECRACKER_VERSION)"; \
@@ -69,9 +69,8 @@ vm-assets: check-linux check-vm-tools dirs
 	curl -fL "$$S3/$$latest_ubuntu_key" -o "$$stage/rootfs.squashfs" && \
 	unsquashfs -f -d "$$stage/rootfs" "$$stage/rootfs.squashfs" >/dev/null && \
 	mkdir -p "$$stage/rootfs/usr/local/bin" "$$stage/rootfs/etc/systemd/system/multi-user.target.wants" && \
-	CGO_ENABLED=0 GOOS=linux GOARCH="$$goarch" go build -C "$$project_dir" -trimpath -o "$$stage/rootfs/usr/local/bin/agent" ./cmd/guest && \
+	CGO_ENABLED=0 GOOS=linux GOARCH="$$goarch" go build -C "$$project_dir" -trimpath -o "$$stage/rootfs/usr/local/bin/agent" ./internal/agent && \
 	install -m 0644 "$$project_dir/internal/agent/agent.service" "$$stage/rootfs/etc/systemd/system/agent.service" && \
-	install -m 0644 "$$project_dir/internal/agent/version" "$$stage/rootfs/etc/agent.version" && \
 	ln -sfn ../agent.service "$$stage/rootfs/etc/systemd/system/multi-user.target.wants/agent.service" && \
 	sudo chown -R root:root "$$stage/rootfs" && \
 	truncate -s "$(ROOTFS_SIZE)" "$$stage/$$rootfs_file" && \
@@ -81,7 +80,6 @@ vm-assets: check-linux check-vm-tools dirs
 	install -m 0644 "$$stage/$$kernel_file" "$$kernel_file" && \
 	cp --sparse=always "$$stage/$$rootfs_file" "$$rootfs_file" && \
 	chmod 0644 "$$rootfs_file" && \
-	install -m 0644 "$$project_dir/internal/agent/version" agent.version && \
 	ln -sfn "$$kernel_file" vmlinux && \
 	ln -sfn "$$rootfs_file" rootfs.ext4 && \
 	printf 'Kernel: %s\nRootfs: %s\n' "$$(readlink vmlinux)" "$$(readlink rootfs.ext4)"

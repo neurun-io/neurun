@@ -4,25 +4,23 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"path"
 	"strings"
 	"time"
 
 	"github.com/dagflows/worker/internal/artifact"
 	"github.com/dagflows/worker/internal/domain"
 	"github.com/dagflows/worker/internal/dto"
-	"github.com/dagflows/worker/internal/storage"
 	"github.com/dagflows/worker/internal/vm"
 )
 
 type NodeRunService struct {
 	runner               vm.Runner
-	fetcher              storage.Fetcher
+	fetcher              artifact.Fetcher
 	workDir              string
 	outputInlineMaxBytes int64
 }
 
-func NewNodeRunService(runner vm.Runner, fetcher storage.Fetcher, workDir string, outputInlineMaxBytes int64) *NodeRunService {
+func NewNodeRunService(runner vm.Runner, fetcher artifact.Fetcher, workDir string, outputInlineMaxBytes int64) *NodeRunService {
 	return &NodeRunService{
 		runner:               runner,
 		fetcher:              fetcher,
@@ -34,9 +32,8 @@ func NewNodeRunService(runner vm.Runner, fetcher storage.Fetcher, workDir string
 func (s *NodeRunService) Execute(ctx context.Context, req dto.WorkflowNodeRunRequest) dto.WorkflowNodeRunResponse {
 	start := time.Now()
 	base := dto.WorkflowNodeRunResponse{
-		WorkflowRunID:  req.WorkflowRunID,
-		NodeKey:        req.NodeKey,
-		ExecutionToken: req.ExecutionToken,
+		WorkflowRunID: req.WorkflowRunID,
+		NodeKey:       req.NodeKey,
 	}
 
 	if err := validateRequest(req); err != nil {
@@ -90,21 +87,13 @@ func validateRequest(req dto.WorkflowNodeRunRequest) error {
 		return permanent("node_key is required")
 	case strings.TrimSpace(req.Language) == "":
 		return permanent("language is required")
-	case strings.TrimSpace(req.CodeArtifactRef()) == "":
-		return permanent("artifact_key or artifact_url is required")
+	case strings.TrimSpace(req.ArtifactKey) == "":
+		return permanent("artifact_key is required")
 	}
-	switch language {
-	case "python", "py", "go", "golang":
-		return nil
-	case "node", "nodejs", "javascript", "typescript", "js", "ts":
-		entrypoint := strings.ReplaceAll(strings.TrimSpace(req.Entrypoint), "\\", "/")
-		if entrypoint == "" || path.IsAbs(entrypoint) || path.Clean(entrypoint) == ".." || strings.HasPrefix(path.Clean(entrypoint), "../") {
-			return permanent("a relative entrypoint is required for Node")
-		}
-		return nil
-	default:
-		return permanent(fmt.Sprintf("unsupported language %q", req.Language))
+	if language != "python" && language != "py" {
+		return permanent(fmt.Sprintf("unsupported language %q; only Python is supported", req.Language))
 	}
+	return nil
 }
 
 func failedResponse(base dto.WorkflowNodeRunResponse, err error, duration time.Duration) dto.WorkflowNodeRunResponse {
@@ -115,14 +104,13 @@ func failedResponse(base dto.WorkflowNodeRunResponse, err error, duration time.D
 		retryable = execErr.retryable
 	}
 	return dto.WorkflowNodeRunResponse{
-		WorkflowRunID:  base.WorkflowRunID,
-		NodeKey:        base.NodeKey,
-		ExecutionToken: base.ExecutionToken,
-		Status:         domain.WorkflowNodeRunAttemptStatusFailed,
-		ErrorMessage:   err.Error(),
-		ErrorCategory:  category,
-		Retryable:      retryable,
-		DurationMs:     int(duration / time.Millisecond),
+		WorkflowRunID: base.WorkflowRunID,
+		NodeKey:       base.NodeKey,
+		Status:        domain.WorkflowNodeRunAttemptStatusFailed,
+		ErrorMessage:  err.Error(),
+		ErrorCategory: category,
+		Retryable:     retryable,
+		DurationMs:    int(duration / time.Millisecond),
 	}
 }
 

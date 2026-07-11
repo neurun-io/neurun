@@ -1,6 +1,6 @@
 //go:build linux
 
-package agent
+package main
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,7 +31,13 @@ const (
 	overlayDir   = "/run/dagflows-overlay"
 )
 
-func Run() error {
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	conn, err := vsock.Dial(vsock.Host, protocol.Port, nil)
 	if err != nil {
 		return err
@@ -49,7 +56,7 @@ func Run() error {
 
 func execute(request protocol.RunRequest) protocol.RunResult {
 	start := time.Now()
-	result := protocol.RunResult{Type: "result", ID: request.ID, ExecutionToken: request.ExecutionToken}
+	result := protocol.RunResult{Type: "result", ID: request.ID}
 	fail := func(err error, category string, retryable bool) protocol.RunResult {
 		result.Error, result.Category, result.Retryable = err.Error(), category, retryable
 		result.DurationMS = time.Since(start).Milliseconds()

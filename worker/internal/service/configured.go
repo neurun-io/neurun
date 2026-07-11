@@ -9,7 +9,7 @@ import (
 )
 
 func NewConfiguredNodeRunService(cfg config.Config) (*NodeRunService, error) {
-	fetcher, err := storage.NewFetcher(cfg)
+	fetcher, err := storage.NewR2(cfg.R2)
 	if err != nil {
 		return nil, err
 	}

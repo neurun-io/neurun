@@ -125,18 +125,17 @@ func (l *Listener) processMessage(ctx context.Context, msg streamMessage) error 
 		return l.requests.Ack(ctx, msg.ID)
 	}
 
-	log.Printf("node run received id=%s run=%s node=%s token=%d", msg.ID, req.WorkflowRunID, req.NodeKey, req.ExecutionToken)
+	log.Printf("node run received id=%s run=%s node=%s", msg.ID, req.WorkflowRunID, req.NodeKey)
 	release, err := l.resources.Reserve(req.RequiredMemoryMB())
 	if err != nil {
 		log.Printf("node run blocked id=%s run=%s node=%s: %v", msg.ID, req.WorkflowRunID, req.NodeKey, err)
 		return l.publishResponse(ctx, msg.ID, dto.WorkflowNodeRunResponse{
-			WorkflowRunID:  req.WorkflowRunID,
-			NodeKey:        req.NodeKey,
-			ExecutionToken: req.ExecutionToken,
-			Status:         domain.WorkflowNodeRunAttemptStatusFailed,
-			ErrorMessage:   err.Error(),
-			ErrorCategory:  "infrastructure",
-			Retryable:      true,
+			WorkflowRunID: req.WorkflowRunID,
+			NodeKey:       req.NodeKey,
+			Status:        domain.WorkflowNodeRunAttemptStatusFailed,
+			ErrorMessage:  err.Error(),
+			ErrorCategory: "infrastructure",
+			Retryable:     true,
 		})
 	}
 	defer release()
