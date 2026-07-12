@@ -121,7 +121,7 @@ func unzip(path, destDir string) error {
 			return fmt.Errorf("zip symlink entries are not supported: %q", file.Name)
 		}
 		if file.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, mode.Perm()); err != nil {
+			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
 			continue
@@ -136,7 +136,7 @@ func unzip(path, destDir string) error {
 		if err != nil {
 			return err
 		}
-		targetFile, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode.Perm())
+		targetFile, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 		if err != nil {
 			source.Close()
 			return err
