@@ -1,0 +1,83 @@
+name: dagflows-builder
+
+x-ministack-image: &ministack-image
+  image: ministackorg/ministack:${MINISTACK_VERSION:-1.4.2}
+
+x-local-aws-environment: &local-aws-environment
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_DEFAULT_REGION: us-east-1
+
+services:
+  ministack:
+    <<: *ministack-image
+    ports:
+      - "${MINISTACK_BIND_ADDRESS:-127.0.0.1}:${MINISTACK_PORT:-4566}:4566"
+    environment:
+      <<: *local-aws-environment
+      SERVICES: s3,sqs
+      PERSIST_STATE: "1"
+      S3_PERSIST: "1"
+      LOG_LEVEL: ${MINISTACK_LOG_LEVEL:-INFO}
+    volumes:
+      - ministack-state:/tmp/ministack-state
+      - ministack-s3:/tmp/ministack-data/s3
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:4566/_ministack/health', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  provision:
+    <<: *ministack-image
+    depends_on:
+      ministack:
+        condition: service_healthy
+    environment:
+      <<: *local-aws-environment
+      AWS_ENDPOINT_URL: http://ministack:4566
+      AWS_PAGER: ""
+      SQS_REQUEST_QUEUE_NAME: ${SQS_REQUEST_QUEUE_NAME:-builder-requests}
+      SQS_RESPONSE_QUEUE_NAME: ${SQS_RESPONSE_QUEUE_NAME:-builder-responses}
+      R2_BUCKET: ${R2_BUCKET:-dagflows-builds}
+    volumes:
+      - ./docker/ministack/init-resources.sh:/opt/dagflows/init-resources.sh:ro
+    entrypoint: ["/bin/sh", "/opt/dagflows/init-resources.sh"]
+    restart: "no"
+
+  builder:
+    platform: ${BUILDER_PLATFORM:-linux/amd64}
+    build:
+      context: .
+      args:
+        GO_VERSION: ${GO_VERSION:-1.25}
+        NODE_VERSION: ${NODE_VERSION:-24}
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+    environment:
+      <<: *local-aws-environment
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL_SQS: http://ministack:4566
+      SQS_REQUEST_QUEUE_URL: http://ministack:4566/000000000000/${SQS_REQUEST_QUEUE_NAME:-builder-requests}
+      SQS_RESPONSE_QUEUE_URL: http://ministack:4566/000000000000/${SQS_RESPONSE_QUEUE_NAME:-builder-responses}
+      SQS_WAIT_TIME_SECONDS: ${SQS_WAIT_TIME_SECONDS:-20}
+      SQS_VISIBILITY_TIMEOUT_SECONDS: ${SQS_VISIBILITY_TIMEOUT_SECONDS:-900}
+      R2_ENDPOINT: http://ministack:4566
+      R2_REGION: us-east-1
+      R2_BUCKET: ${R2_BUCKET:-dagflows-builds}
+      R2_ACCESS_KEY_ID: test
+      R2_SECRET_ACCESS_KEY: test
+      R2_PREFIX: ${R2_PREFIX:-builds}
+    init: true
+    restart: unless-stopped
+
+volumes:
+  ministack-state:
+  ministack-s3:

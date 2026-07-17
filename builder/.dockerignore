@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env*
+.agents
+.vscode
+.dagflows-artifacts
+.gocache
+.gomodcache
+.dockerignore
+docker
+Dockerfile*
+docker-compose*.yml
+docker-compose*.yaml
+compose*.yml
+compose*.yaml
+README.md
+setup.md

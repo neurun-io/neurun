@@ -13,8 +13,24 @@ to S3-compatible storage, and posts a response message.
 go run ./cmd/builder
 ```
 
-Copy `.env.example` to `.env` first. See [setup.md](setup.md) for Ministack,
+Copy `.env.example` to `.env` first. See [setup.md](setup.md) for MiniStack,
 SQS, storage, and local test-message setup.
+
+## Docker Compose
+
+Run the complete local stack with:
+
+```sh
+docker compose up --build
+```
+
+Compose starts MiniStack, creates the `builder-requests` and
+`builder-responses` SQS queues plus the `dagflows-builds` S3-compatible R2
+bucket, and then starts the builder. Resource creation is idempotent, and the
+MiniStack state and uploaded objects are kept in named volumes.
+
+See [setup.md](setup.md) for resource overrides, host-side test commands, and
+real AWS SQS/Cloudflare R2 provisioning.
 
 ## Request
 
@@ -22,14 +38,18 @@ SQS, storage, and local test-message setup.
 {
   "deployment_id": "dep_20260708_001",
   "workflow_id": "wf_branching_demo",
-  "git_url": "https://github.com/Dagflows/sample-workflow.git",
+  "git_url": "https://github.com/Dagflows/python-example.git",
   "git_branch": "main",
-  "git_commit_hash": "e97b87e884588e0b6e2cfb0bd093279b5618c888"
+  "git_commit_hash": "90b22ff306c442a866e619734ca9b3b3ae087f59"
 }
 ```
 
 `git_branch` and `git_commit_hash` are optional. Missing branch means `main`;
 missing commit means the latest commit on that branch.
+
+The request above uses the standalone
+[`Dagflows/python-example`](https://github.com/Dagflows/python-example)
+repository.
 
 ## Response
 
