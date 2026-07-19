@@ -3,11 +3,14 @@
 !.env.example
 
 .tmp/
+.tmp-go-cache/
 .cache/
 bin/
 coverage/
 dist/
 data/
+/neurun
+/neurun.exe
 
 *.coverprofile
 *.log
@@ -17,4 +20,3 @@ data/
 .vscode/
 .DS_Store
 Thumbs.db
-
