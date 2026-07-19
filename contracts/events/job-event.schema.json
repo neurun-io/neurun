@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neurun.dev/contracts/events/job-event.schema.json",
+  "title": "Neurun job event",
+  "type": "object",
+  "required": [
+    "id",
+    "sequence",
+    "type",
+    "project_id",
+    "job_id",
+    "trace_id",
+    "occurred_at",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "job.accepted",
+        "job.queued",
+        "job.leased",
+        "job.started",
+        "job.retry_scheduled",
+        "job.succeeded",
+        "job.rejected",
+        "job.failed",
+        "job.canceled",
+        "job.dead_lettered",
+        "job.lease_expired"
+      ]
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_id": {
+      "type": ["string", "null"]
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 16
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}
+

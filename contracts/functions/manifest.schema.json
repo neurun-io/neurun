@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neurun.io/contracts/functions/manifest.schema.json",
+  "title": "Neurun atomic-function manifest",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "digest",
+    "category",
+    "execution_context",
+    "side_effects",
+    "timeout",
+    "input_schema",
+    "output_schema"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.(?:0|[1-9][0-9]*)){0,2}(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "execution_context": {
+      "enum": [
+        "none",
+        "http_attempt",
+        "browser_attempt",
+        "existing_session",
+        "browser_or_session"
+      ]
+    },
+    "side_effects": {
+      "enum": [
+        "pure",
+        "idempotent",
+        "non_idempotent"
+      ]
+    },
+    "timeout": {
+      "type": "object",
+      "required": [
+        "default_ms",
+        "maximum_ms"
+      ],
+      "properties": {
+        "default_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximum_ms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "$ref": "#/$defs/tokenSet"
+    },
+    "permissions": {
+      "$ref": "#/$defs/tokenSet"
+    },
+    "input_schema": {
+      "$ref": "#/$defs/subsetSchema"
+    },
+    "output_schema": {
+      "$ref": "#/$defs/subsetSchema"
+    },
+    "resource_policy": {
+      "type": "object",
+      "properties": {
+        "memory_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cpu_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "network_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifact_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_processes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "produces": {
+          "$ref": "#/$defs/tokenSet"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "redaction": {
+      "type": "object",
+      "properties": {
+        "secret_fields": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "output_secret_fields": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "redact_artifacts": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "retry": {
+      "type": "object",
+      "properties": {
+        "allowed_failures": {
+          "$ref": "#/$defs/tokenSet"
+        }
+      },
+      "additionalProperties": false
+    },
+    "telemetry": {
+      "type": "object",
+      "properties": {
+        "dimensions": {
+          "$ref": "#/$defs/tokenSet"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "stringSet": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "tokenSet": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_.:-]*$"
+      },
+      "uniqueItems": true
+    },
+    "subsetSchema": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "null"
+          ]
+        },
+        "required": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/subsetSchema"
+          }
+        },
+        "additionalProperties": {
+          "type": "boolean"
+        },
+        "items": {
+          "$ref": "#/$defs/subsetSchema"
+        },
+        "enum": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
