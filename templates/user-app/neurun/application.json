@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "name": "your-app",
+  "workflow": "neurun/workflow.json",
+  "container": {
+    "context": ".",
+    "dockerfile": "Dockerfile"
+  },
+  "artifacts": {
+    "directory": "dist"
+  },
+  "environments": [
+    "production"
+  ]
+}

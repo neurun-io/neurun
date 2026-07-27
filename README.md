@@ -44,6 +44,19 @@ curl -H "Authorization: Bearer neu_live_local.development-only-change-me" \
 
 Never use the example key outside local development.
 
+## User application delivery
+
+Neurun does not clone or build application source inside the control plane.
+Application repositories can instead call the reusable GitHub Actions pipeline
+in `.github/workflows/user-app-ci-cd.yml`. It validates pinned Neurun
+contracts, runs repository-owned test/build/smoke scripts, publishes an
+immutable OCI image with provenance and SBOM attestations, and returns the
+digest for an environment-gated deployment.
+
+Start from `templates/user-app/`. The caller pins both this repository and the
+Neurun server image by digest so a release cannot silently change underneath a
+user application.
+
 ## Repository layout
 
 ```text
@@ -56,6 +69,7 @@ internal/function/   manifests, registry, schemas, invocation
 internal/job/        job state, outbox, leases, and events
 internal/netpolicy/  outbound request policy
 migrations/          PostgreSQL source-of-truth schema
+templates/user-app/  external application CI/CD handoff
 legacy/dagflows/     preserved Builder and Worker source lineage
 ```
 
@@ -88,4 +102,3 @@ called for by the MVP specification.
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
-

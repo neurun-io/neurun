@@ -1,0 +1,127 @@
+name: user application ci/cd
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy after publishing the immutable image.
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  pipeline:
+    # Replace both placeholders below with the same full neurun-io commit SHA.
+    uses: Dagflows/neurun-io/.github/workflows/user-app-ci-cd.yml@REPLACE_WITH_40_CHARACTER_NEURUN_COMMIT_SHA
+    with:
+      contracts-repository: Dagflows/neurun-io
+      contracts-ref: REPLACE_WITH_40_CHARACTER_NEURUN_COMMIT_SHA
+      application-manifest: neurun/application.json
+      workflow-manifest: neurun/workflow.json
+      test-script: scripts/ci/test
+      build-script: scripts/ci/build
+      smoke-script: scripts/ci/smoke
+      artifact-directory: dist
+      container-context: .
+      container-file: Dockerfile
+      smoke-mode: image
+      # Pin a released Neurun server image by digest; tags are intentionally rejected.
+      neurun-image: ghcr.io/dagflows/neurun-io@sha256:REPLACE_WITH_64_CHARACTER_IMAGE_DIGEST
+      registry: ghcr.io
+      # Replace with the lowercase owner/repository used for this application.
+      image-name: your-org/your-app
+      publish-image: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+  deploy:
+    name: deploy immutable image
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.deploy &&
+      needs.pipeline.outputs.image != ''
+    needs: pipeline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out exact application revision
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download application artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.pipeline.outputs.build-artifact }}
+          path: .ci/artifact
+
+      - name: Run environment-gated deployment
+        shell: bash
+        env:
+          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+          USER_APP_IMAGE: ${{ needs.pipeline.outputs.image }}
+          USER_APP_DIGEST: ${{ needs.pipeline.outputs.digest }}
+          USER_APP_ARTIFACT_DIRECTORY: .ci/artifact
+        run: |
+          set -euo pipefail
+          test -f scripts/ci/deploy ||
+            { echo "::error::scripts/ci/deploy is required when deployment is enabled"; exit 2; }
+          bash scripts/ci/deploy
+
+  release:
+    name: create environment-gated release
+    if: startsWith(github.ref, 'refs/tags/v') && needs.pipeline.outputs.image != ''
+    needs: pipeline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download application artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.pipeline.outputs.build-artifact }}
+          path: release/application
+
+      - name: Download published image SBOM
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.pipeline.outputs.sbom-artifact }}
+          path: release/sbom
+
+      - name: Package release files
+        shell: bash
+        run: tar --create --gzip --file "user-app-${GITHUB_SHA}.tar.gz" --directory release .
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          IMMUTABLE_IMAGE: ${{ needs.pipeline.outputs.image }}
+        run: |
+          set -euo pipefail
+          printf 'Immutable image: `%s`\n' "$IMMUTABLE_IMAGE" > release-notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            "user-app-${GITHUB_SHA}.tar.gz"
