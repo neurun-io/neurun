@@ -55,3 +55,15 @@ jobs:
           while IFS= read -r -d '' contract; do
             jq -e . "$contract" >/dev/null
           done < <(find contracts -name '*.json' -print0)
+      - name: Validate user application contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate-user-app.py \
+            --application templates/user-app/neurun/application.json \
+            --workflow templates/user-app/neurun/workflow.json \
+            --expected-workflow neurun/workflow.json \
+            --expected-container-context . \
+            --expected-container-file Dockerfile \
+            --expected-artifact-directory dist
+          python3 -m unittest scripts/test_validate_user_app.py

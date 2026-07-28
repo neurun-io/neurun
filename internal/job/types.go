@@ -12,7 +12,12 @@ import (
 )
 
 const (
-	defaultMaxAttempts    = 3
+	// DefaultMaxAttempts is used when a request does not specify an attempt
+	// limit.
+	DefaultMaxAttempts = 3
+	// MaxAttempts is the conservative domain ceiling for one durable job. It
+	// bounds attempt history growth even when callers have not applied quotas.
+	MaxAttempts           = 10
 	defaultInitialBackoff = time.Second
 	defaultMaxBackoff     = time.Minute
 )
@@ -104,10 +109,13 @@ func NewRequest(projectID string, function FunctionRef, input json.RawMessage, o
 
 	maxAttempts := options.MaxAttempts
 	if maxAttempts == 0 {
-		maxAttempts = defaultMaxAttempts
+		maxAttempts = DefaultMaxAttempts
 	}
 	if maxAttempts < 1 {
 		return Request{}, fmt.Errorf("%w: max attempts must be at least one", ErrInvalid)
+	}
+	if maxAttempts > MaxAttempts {
+		return Request{}, fmt.Errorf("%w: max attempts cannot exceed %d", ErrInvalid, MaxAttempts)
 	}
 
 	policy := options.RetryPolicy

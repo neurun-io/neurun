@@ -33,6 +33,7 @@ type Config struct {
 	MaxResponseBytes     int64
 	JobLeaseDuration     time.Duration
 	AgentConcurrency     int
+	AllowVolatileJobs    bool
 }
 
 func Load() (Config, error) {
@@ -48,6 +49,7 @@ func Load() (Config, error) {
 		MaxResponseBytes:     defaultResponseBytes,
 		JobLeaseDuration:     defaultLeaseDuration,
 		AgentConcurrency:     defaultAgentConcurrency,
+		AllowVolatileJobs:    false,
 	}
 
 	var err error
@@ -67,6 +69,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.AgentConcurrency, err = intValue("NEURUN_AGENT_CONCURRENCY", cfg.AgentConcurrency); err != nil {
+		return Config{}, err
+	}
+	if cfg.AllowVolatileJobs, err = boolValue("NEURUN_ALLOW_VOLATILE_JOBS", cfg.AllowVolatileJobs); err != nil {
 		return Config{}, err
 	}
 

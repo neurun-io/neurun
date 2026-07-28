@@ -324,6 +324,53 @@ func TestServiceChecksExecutionContextAndCapabilities(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsMismatchedProjectContextBeforeExecution(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	manifest := baseTestManifest("test.project_context", "1")
+	function, err := NewAtomicFunction(manifest, func(
+		context.Context, *ExecutionContext, json.RawMessage,
+	) (FunctionResult, error) {
+		calls.Add(1)
+		return FunctionResult{Output: json.RawMessage(`null`)}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry()
+	if err := registry.Register(function); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(registry, nil)
+
+	invocation, invokeErr := service.Invoke(context.Background(), InvocationRequest{
+		ProjectID: "prj_request",
+		Function:  FunctionRef{Name: manifest.Name, Version: "1"},
+		Context:   &ExecutionContext{ProjectID: "prj_other"},
+		Input:     json.RawMessage(`null`),
+	})
+	assertInvocationFailure(
+		t,
+		invocation,
+		invokeErr,
+		InvocationRejected,
+		FailureContextIncompatible,
+	)
+	if invocation.Failure.Code != "project_context_mismatch" {
+		t.Fatalf("failure code = %q", invocation.Failure.Code)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("executor was called %d times for a cross-project context", calls.Load())
+	}
+	stored, err := service.Get(invocation.ID)
+	if err != nil {
+		t.Fatalf("get rejected invocation: %v", err)
+	}
+	if stored.Failure == nil || stored.Failure.Code != "project_context_mismatch" {
+		t.Fatalf("stored failure = %#v", stored.Failure)
+	}
+}
+
 func TestServiceHashesAndRedactsInput(t *testing.T) {
 	t.Parallel()
 	manifest := baseTestManifest("test.redact", "1")
@@ -357,6 +404,60 @@ func TestServiceHashesAndRedactsInput(t *testing.T) {
 	}
 	if !strings.Contains(redacted, `"user":"d"`) || !strings.Contains(redacted, `"safe":true`) {
 		t.Fatalf("safe fields were lost: %s", redacted)
+	}
+}
+
+type adversarialPanicValue struct {
+	secret    string
+	formatted *atomic.Bool
+}
+
+func (v *adversarialPanicValue) String() string {
+	v.formatted.Store(true)
+	return v.secret
+}
+
+func TestServicePanicIsOpaqueForAdversarialValues(t *testing.T) {
+	t.Parallel()
+	const secret = "secret-that-must-never-cross-the-function-boundary"
+	var formatted atomic.Bool
+	manifest := baseTestManifest("test.opaque_panic", "1")
+	function, err := NewAtomicFunction(manifest, func(
+		context.Context, *ExecutionContext, json.RawMessage,
+	) (FunctionResult, error) {
+		panic(&adversarialPanicValue{secret: secret, formatted: &formatted})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry()
+	if err := registry.Register(function); err != nil {
+		t.Fatal(err)
+	}
+
+	invocation, invokeErr := NewService(registry, nil).Invoke(
+		context.Background(),
+		InvocationRequest{
+			Function: FunctionRef{Name: manifest.Name, Version: "1"},
+			Input:    json.RawMessage(`null`),
+		},
+	)
+	assertInvocationFailure(t, invocation, invokeErr, InvocationFailed, FailureInternal)
+	if formatted.Load() {
+		t.Fatal("panic value was formatted while being classified")
+	}
+	if invocation.Failure.Code != "function_panic" {
+		t.Fatalf("failure code = %q", invocation.Failure.Code)
+	}
+	if len(invocation.Failure.Details) != 0 {
+		t.Fatalf("panic details must be opaque, got %#v", invocation.Failure.Details)
+	}
+	encoded, err := json.Marshal(invocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), secret) || strings.Contains(invokeErr.Error(), secret) {
+		t.Fatalf("panic secret escaped classification: invocation=%s error=%v", encoded, invokeErr)
 	}
 }
 

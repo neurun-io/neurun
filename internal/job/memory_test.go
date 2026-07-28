@@ -159,6 +159,26 @@ func TestRequestIsCanonicalAndImmutable(t *testing.T) {
 	if request.Digest() != equivalent.Digest() {
 		t.Fatalf("canonical requests have different digests: %s != %s", request.Digest(), equivalent.Digest())
 	}
+	if request.MaxAttempts() != DefaultMaxAttempts {
+		t.Fatalf("default max attempts = %d, want %d", request.MaxAttempts(), DefaultMaxAttempts)
+	}
+	if _, err := NewRequest("project-a", FunctionRef{
+		Name: "http.fetch", Version: "1", Digest: "sha256:one",
+	}, json.RawMessage(`{}`), RequestOptions{MaxAttempts: MaxAttempts}); err != nil {
+		t.Fatalf("domain maximum %d was rejected: %v", MaxAttempts, err)
+	}
+	if _, err := NewRequest("project-a", FunctionRef{
+		Name: "http.fetch", Version: "1", Digest: "sha256:one",
+	}, json.RawMessage(`{}`), RequestOptions{MaxAttempts: MaxAttempts + 1}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("attempt limit above %d error = %v", MaxAttempts, err)
+	}
+	corrupted := request
+	corrupted.maxAttempts = MaxAttempts + 1
+	corrupted.digest = digestRequest(corrupted)
+	repository, _ := newTestRepository()
+	if _, err := repository.Accept(context.Background(), AcceptCommand{Request: corrupted}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("persistence validation accepted %d attempts: %v", corrupted.maxAttempts, err)
+	}
 	if _, err := NewRequest("project-a", FunctionRef{
 		Name: "http.fetch", Version: "1", Digest: "sha256:one",
 	}, json.RawMessage(`{} trailing`), RequestOptions{}); !errors.Is(err, ErrInvalid) {
@@ -232,7 +252,11 @@ func TestConcurrentAcceptanceIsProjectScopedAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 1 || events[0].Type != "job.accepted" {
+	if len(events) != 2 ||
+		events[0].Type != "job.accepted" ||
+		events[0].State != StateAccepted ||
+		events[1].Type != "job.queued" ||
+		events[1].State != StateQueued {
 		t.Fatalf("acceptance events = %#v", events)
 	}
 
@@ -259,8 +283,8 @@ func TestOutboxClaimsAreFencedAndAmbiguousPublishDeduplicates(t *testing.T) {
 	repository, clock := newTestRepository()
 	request := testRequest(t, "project-a", `{"url":"https://example.test"}`, 2)
 	job := acceptJob(t, repository, request, "outbox")
-	if job.State != StateAccepted {
-		t.Fatalf("accepted state = %s", job.State)
+	if job.State != StateQueued {
+		t.Fatalf("durably accepted state = %s, want queued", job.State)
 	}
 
 	first, err := repository.ClaimOutbox(context.Background(), ClaimOutboxCommand{
@@ -318,6 +342,61 @@ func TestOutboxClaimsAreFencedAndAmbiguousPublishDeduplicates(t *testing.T) {
 	rows, _ := repository.OutboxRecords(context.Background())
 	if rows[0].MessageID != first[0].Outbox.MessageID || rows[0].PublishAttempts != 2 {
 		t.Fatalf("outbox retry metadata = %#v", rows[0])
+	}
+}
+
+func TestAcceptedJobIsLeaseableBeforeOutboxPublishAcknowledgement(t *testing.T) {
+	repository, _ := newTestRepository()
+	job := acceptJob(t, repository, testRequest(t, "project-a", `{}`, 2), "publish-race")
+	if job.State != StateQueued {
+		t.Fatalf("state immediately after acceptance = %s, want queued", job.State)
+	}
+	events, err := repository.Events(context.Background(), "project-a", job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 ||
+		events[0].Type != "job.accepted" ||
+		events[1].Type != "job.queued" {
+		t.Fatalf("atomic acceptance events = %#v", events)
+	}
+
+	claims, err := repository.ClaimOutbox(context.Background(), ClaimOutboxCommand{
+		Owner: "dispatcher", Limit: 1, TTL: time.Minute,
+	})
+	if err != nil || len(claims) != 1 {
+		t.Fatalf("ClaimOutbox = %#v, %v", claims, err)
+	}
+	publisher := NewMemoryPublisher()
+	if err := publisher.Publish(context.Background(), Message{
+		ID: claims[0].Outbox.MessageID, Topic: claims[0].Outbox.Topic, Payload: claims[0].Outbox.Payload,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The worker consumes the published message before the dispatcher records
+	// its acknowledgement. Queue delivery must still be able to acquire the
+	// database-backed lease.
+	lease, err := repository.AcquireLease(context.Background(), LeaseCommand{
+		ProjectID: "project-a", JobID: job.ID, AgentID: "fast-worker", TTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("AcquireLease before publish acknowledgement: %v", err)
+	}
+	if lease.Job.State != StateLeased {
+		t.Fatalf("lease state = %s", lease.Job.State)
+	}
+	if _, err := repository.MarkOutboxPublished(
+		context.Background(), claims[0].Outbox.ID, claims[0].Token,
+	); err != nil {
+		t.Fatalf("late MarkOutboxPublished: %v", err)
+	}
+	stored, err := repository.Get(context.Background(), "project-a", job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.State != StateLeased || stored.CurrentAttemptID != lease.Attempt.ID {
+		t.Fatalf("late publish acknowledgement changed leased job: %#v", stored)
 	}
 }
 
@@ -623,7 +702,7 @@ func TestRetrySchedulingPreservesAttemptsAndDeadLettersAtLimit(t *testing.T) {
 }
 
 func TestCancellationIsDurableAndFencesRunningWork(t *testing.T) {
-	t.Run("accepted", func(t *testing.T) {
+	t.Run("queued", func(t *testing.T) {
 		repository, _ := newTestRepository()
 		job := acceptJob(t, repository, testRequest(t, "project-a", `{}`, 2), "cancel-accepted")
 		canceled, err := repository.Cancel(context.Background(), "project-a", job.ID, "no longer needed")
@@ -792,7 +871,7 @@ func TestQueriesAreProjectScopedPaginatedAndDetached(t *testing.T) {
 	snapshot.Result = json.RawMessage(`{"mutated":true}`)
 	snapshot.State = StateFailed
 	again, _ := repository.Get(context.Background(), "project-a", projectA[0].ID)
-	if again.State != StateAccepted || string(again.Request.Input()) != `{"index":0}` || again.Result != nil {
+	if again.State != StateQueued || string(again.Request.Input()) != `{"index":0}` || again.Result != nil {
 		t.Fatalf("job query aliases repository memory: %#v", again)
 	}
 	events, _ := repository.Events(context.Background(), "project-a", projectA[0].ID)

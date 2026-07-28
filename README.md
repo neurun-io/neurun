@@ -11,7 +11,7 @@ server implementation packages.
 This consolidation establishes the first deployable vertical slice of the MVP:
 
 - immutable, digest-addressed built-in atomic functions;
-- authenticated direct invocation and durable asynchronous jobs;
+- authenticated direct invocation and explicitly gated process-local jobs;
 - idempotent acceptance, outbox dispatch, leases, cancellation, and events;
 - an SSRF-aware HTTP runtime with bounded response bodies;
 - structured failures, trace IDs, and per-invocation usage;
@@ -22,7 +22,9 @@ Browser sessions, persistent PostgreSQL and JetStream adapters, extraction
 breadth, profiles, proxies, and the operator dashboard remain explicit later
 milestones. Interfaces and contracts are kept stable so those adapters can
 replace the in-process development implementations without changing the public
-API.
+API. The all-in-one binary reports job durability as `process_local`; restarts
+discard its jobs and asynchronous routes remain disabled unless
+`NEURUN_ALLOW_VOLATILE_JOBS=true`.
 
 ## Quick start
 
@@ -31,11 +33,14 @@ Requirements: Go 1.25 or newer.
 ```sh
 cp .env.example .env
 go test ./...
-go run ./cmd/neurun
+docker compose --env-file .env up --build
 ```
 
-The server listens on `:8080` by default. Use the development key from your
-local `.env`:
+To run the development binary directly, export at least
+`NEURUN_API_KEY=neu_live_local.development-only-change-me` and
+`NEURUN_ALLOW_VOLATILE_JOBS=true` before `go run ./cmd/neurun`.
+
+The server listens on `:8080` by default. Use the development key:
 
 ```sh
 curl -H "Authorization: Bearer neu_live_local.development-only-change-me" \

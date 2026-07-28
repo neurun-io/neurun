@@ -106,12 +106,11 @@ type attemptRecord struct {
 }
 
 type outboxRecord struct {
-	outbox              Outbox
-	projectID           string
-	transitionOnPublish bool
-	claimHash           [sha256.Size]byte
-	claimOwner          string
-	claimUntil          time.Time
+	outbox     Outbox
+	projectID  string
+	claimHash  [sha256.Size]byte
+	claimOwner string
+	claimUntil time.Time
 }
 
 // MemoryRepository is a race-safe development adapter. Every command locks the
@@ -221,7 +220,11 @@ func (repository *MemoryRepository) Accept(ctx context.Context, command AcceptCo
 		projectKeys[command.IdempotencyKey] = jobID
 	}
 	repository.appendEventLocked(record, "", "job.accepted", nil, now)
-	repository.enqueueDispatchLocked(record, true, now)
+	outbox := repository.enqueueDispatchLocked(record, now)
+	repository.transitionLocked(record, StateQueued, now)
+	repository.appendEventLocked(record, "", "job.queued", mustJSON(struct {
+		MessageID string `json:"message_id"`
+	}{MessageID: outbox.outbox.MessageID}), now)
 
 	return AcceptResult{Job: cloneJob(record.job)}, nil
 }
@@ -428,16 +431,6 @@ func (repository *MemoryRepository) MarkOutboxPublished(ctx context.Context, out
 	record.outbox.PublishedAt = cloneTime(&now)
 	record.outbox.LastError = ""
 	repository.clearOutboxClaimLocked(record)
-
-	if record.transitionOnPublish {
-		jobRecord := repository.jobs[record.outbox.JobID]
-		if jobRecord != nil && jobRecord.job.State == StateAccepted {
-			repository.transitionLocked(jobRecord, StateQueued, now)
-			repository.appendEventLocked(jobRecord, "", "job.queued", mustJSON(struct {
-				MessageID string `json:"message_id"`
-			}{MessageID: record.outbox.MessageID}), now)
-		}
-	}
 	return cloneOutbox(record.outbox), nil
 }
 
@@ -813,7 +806,7 @@ func (repository *MemoryRepository) EnqueueDueRetries(ctx context.Context, limit
 	for _, record := range candidates {
 		record.job.NextAttemptAt = nil
 		repository.transitionLocked(record, StateQueued, now)
-		outbox := repository.enqueueDispatchLocked(record, false, now)
+		outbox := repository.enqueueDispatchLocked(record, now)
 		repository.appendEventLocked(record, "", "job.queued", mustJSON(struct {
 			Reason    string `json:"reason"`
 			MessageID string `json:"message_id"`
@@ -904,7 +897,7 @@ func (repository *MemoryRepository) RecoverExpiredLeases(ctx context.Context, li
 			attempt.attempt.Retry = cloneRetry(retry)
 			record.job.LastRetry = cloneRetry(retry)
 			repository.transitionLocked(record, StateQueued, now)
-			outbox := repository.enqueueDispatchLocked(record, false, now)
+			outbox := repository.enqueueDispatchLocked(record, now)
 			repository.appendEventLocked(record, attempt.attempt.ID, "job.queued", mustJSON(struct {
 				Reason    string `json:"reason"`
 				MessageID string `json:"message_id"`
@@ -985,7 +978,7 @@ func (repository *MemoryRepository) appendEventLocked(record *jobRecord, attempt
 	repository.events[record.job.ID] = append(repository.events[record.job.ID], event)
 }
 
-func (repository *MemoryRepository) enqueueDispatchLocked(record *jobRecord, transitionOnPublish bool, now time.Time) *outboxRecord {
+func (repository *MemoryRepository) enqueueDispatchLocked(record *jobRecord, now time.Time) *outboxRecord {
 	record.dispatchSequence++
 	messageID := deterministicID(
 		"msg",
@@ -1020,8 +1013,7 @@ func (repository *MemoryRepository) enqueueDispatchLocked(record *jobRecord, tra
 			Payload:   payload,
 			CreatedAt: now,
 		},
-		projectID:           record.job.ProjectID,
-		transitionOnPublish: transitionOnPublish,
+		projectID: record.job.ProjectID,
 	}
 	repository.insertOutboxLocked(outbox)
 	return outbox
@@ -1117,6 +1109,7 @@ func validateImmutableRequest(request Request) (Request, error) {
 		request.function.Version == "" ||
 		request.function.Digest == "" ||
 		request.maxAttempts < 1 ||
+		request.maxAttempts > MaxAttempts ||
 		request.digest == "" {
 		return Request{}, fmt.Errorf("%w: request must be created with NewRequest", ErrInvalid)
 	}

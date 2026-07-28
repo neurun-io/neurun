@@ -10,11 +10,17 @@ info:
     digest-pinned jobs and receive an invocation ID when an agent begins the
     attempt.
 
-    The current durable job contract stores the function reference and input.
-    It does not yet persist caller-supplied session context or per-invocation
-    timeouts, so those fields are rejected for asynchronous execution. Manual
-    job retry is intentionally absent because the repository interface only
-    exposes policy-driven retry scheduling; cancellation remains supported.
+    The job contract stores the function reference and input. The all-in-one
+    binary currently uses process-local job, invocation, outbox, and queue
+    adapters: asynchronous mutation routes are disabled unless an operator
+    explicitly enables volatile development jobs, and accepted responses say
+    `durability=process_local`. A production adapter must persist these ports
+    before advertising `durability=durable`.
+
+    Asynchronous execution does not yet persist caller-supplied session context
+    or per-invocation timeouts, so those fields are rejected. Manual job retry
+    is intentionally absent because the repository interface exposes only
+    policy-driven retry scheduling; cancellation remains supported.
 servers:
   - url: /
     description: Same-origin API
@@ -180,7 +186,7 @@ paths:
       summary: Invoke an installed immutable function
       description: |
         `execution=sync` returns the completed invocation. `execution=async`
-        durably accepts a job and requires both `functions:invoke` and
+        accepts an asynchronous job and requires both `functions:invoke` and
         `jobs:write` scopes plus a non-empty `Idempotency-Key` header.
         Asynchronous requests must omit `context` and `timeout_ms` in the
         current release.
@@ -201,7 +207,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Invocation"
         "202":
-          description: Asynchronous job durably accepted or idempotently replayed.
+          description: Asynchronous job accepted or idempotently replayed.
           headers:
             Location:
               schema:
@@ -210,6 +216,8 @@ paths:
               schema:
                 type: string
                 enum: ["true"]
+            Neurun-Job-Durability:
+              $ref: "#/components/headers/JobDurability"
           content:
             application/json:
               schema:
@@ -222,6 +230,10 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
@@ -232,6 +244,8 @@ paths:
           $ref: "#/components/responses/InvocationFailure"
         "504":
           $ref: "#/components/responses/InvocationFailure"
+        "503":
+          $ref: "#/components/responses/AsyncUnavailable"
   /v1/function-invocations:
     get:
       tags: [Invocations]
@@ -322,7 +336,7 @@ paths:
     get:
       tags: [Jobs]
       operationId: listJobs
-      summary: List durable jobs for the authenticated project
+      summary: List asynchronous jobs for the authenticated project
       x-required-scope: jobs:read
       parameters:
         - name: status
@@ -343,7 +357,7 @@ paths:
         - $ref: "#/components/parameters/Cursor"
       responses:
         "200":
-          description: Project-scoped durable job page.
+          description: Project-scoped job page.
           content:
             application/json:
               schema:
@@ -357,11 +371,12 @@ paths:
     post:
       tags: [Jobs]
       operationId: createJob
-      summary: Durably accept a digest-pinned function job
+      summary: Accept a digest-pinned asynchronous function job
       description: |
         The supplied exact version or alias is resolved and pinned before
-        acceptance. Input is validated against that manifest. The durable
-        request supports execution contexts `none` and `http_attempt`.
+        acceptance. Input is validated against that manifest. The job request
+        supports execution contexts `none` and `http_attempt`. The response
+        identifies whether the configured backend is durable or process-local.
       x-required-scope: jobs:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -373,7 +388,7 @@ paths:
               $ref: "#/components/schemas/CreateJobRequest"
       responses:
         "202":
-          description: Job durably accepted or idempotently replayed.
+          description: Job accepted or idempotently replayed.
           headers:
             Location:
               schema:
@@ -382,6 +397,8 @@ paths:
               schema:
                 type: string
                 enum: ["true"]
+            Neurun-Job-Durability:
+              $ref: "#/components/headers/JobDurability"
           content:
             application/json:
               schema:
@@ -394,17 +411,23 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
           $ref: "#/components/responses/InvalidRequest"
+        "503":
+          $ref: "#/components/responses/AsyncUnavailable"
   /v1/jobs/{job_id}:
     parameters:
       - $ref: "#/components/parameters/JobID"
     get:
       tags: [Jobs]
       operationId: getJob
-      summary: Get one project-scoped durable job
+      summary: Get one project-scoped asynchronous job
       x-required-scope: jobs:read
       responses:
         "200":
@@ -479,7 +502,7 @@ paths:
     post:
       tags: [Jobs]
       operationId: cancelJob
-      summary: Cancel a durable job
+      summary: Cancel an asynchronous job
       description: Cancellation is intrinsically idempotent for terminal jobs.
       x-required-scope: jobs:write
       requestBody:
@@ -511,6 +534,10 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
@@ -545,6 +572,16 @@ paths:
                 $ref: "#/components/schemas/Invocation"
         "202":
           description: Asynchronous HTTP job accepted.
+          headers:
+            Location:
+              schema:
+                type: string
+            Idempotent-Replayed:
+              schema:
+                type: string
+                enum: ["true"]
+            Neurun-Job-Durability:
+              $ref: "#/components/headers/JobDurability"
           content:
             application/json:
               schema:
@@ -557,6 +594,10 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
@@ -567,6 +608,8 @@ paths:
           $ref: "#/components/responses/InvocationFailure"
         "504":
           $ref: "#/components/responses/InvocationFailure"
+        "503":
+          $ref: "#/components/responses/AsyncUnavailable"
 components:
   securitySchemes:
     bearerAuth:
@@ -580,6 +623,10 @@ components:
       schema:
         type: string
         pattern: "^req_"
+    JobDurability:
+      description: Persistence guarantee of the configured job backend.
+      schema:
+        $ref: "#/components/schemas/JobDurability"
   parameters:
     FunctionName:
       name: function_name
@@ -674,6 +721,20 @@ components:
             $ref: "#/components/schemas/ErrorEnvelope"
     InvalidRequest:
       description: Request syntax, query, immutable contract, or schema is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    RequestTooLarge:
+      description: Mutation body exceeds the configured byte limit.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    AsyncUnavailable:
+      description: |
+        Asynchronous jobs are disabled because no durable backend is configured
+        and volatile development jobs were not explicitly enabled.
       content:
         application/json:
           schema:
@@ -916,12 +977,29 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FunctionManifest"
-    ExecutionContext:
+    InvocationContextInput:
       type: object
+      description: |
+        Public correlation context accepted on a direct invocation. Job,
+        attempt, session, ephemeral runtime, and capability authority are
+        assigned exclusively by Neurun.
       properties:
         project_id:
           type: string
           description: Must be omitted or match the authenticated project.
+        workflow_step_id:
+          type: string
+      additionalProperties: false
+    ExecutionContext:
+      type: object
+      readOnly: true
+      description: |
+        Server-assigned execution context returned with an invocation snapshot.
+        Authority-bearing fields are observable here but cannot be supplied
+        through InvocationContextInput.
+      properties:
+        project_id:
+          type: string
         job_id:
           type: string
         attempt_id:
@@ -957,7 +1035,7 @@ components:
           enum: [sync, async]
           default: sync
         context:
-          $ref: "#/components/schemas/ExecutionContext"
+          $ref: "#/components/schemas/InvocationContextInput"
         input: {}
         timeout_ms:
           type: integer
@@ -966,6 +1044,7 @@ components:
         max_attempts:
           type: integer
           minimum: 1
+          maximum: 10
       additionalProperties: false
     InvocationStatus:
       type: string
@@ -1090,6 +1169,7 @@ components:
         max_attempts:
           type: integer
           minimum: 1
+          maximum: 10
       additionalProperties: false
     DurableRequest:
       type: object
@@ -1191,7 +1271,7 @@ components:
           format: date-time
     AcceptedJob:
       type: object
-      required: [job, job_id, duplicate, request_id]
+      required: [job, job_id, duplicate, durability, request_id]
       properties:
         job:
           $ref: "#/components/schemas/Job"
@@ -1199,8 +1279,16 @@ components:
           type: string
         duplicate:
           type: boolean
+        durability:
+          $ref: "#/components/schemas/JobDurability"
         request_id:
           type: string
+    JobDurability:
+      type: string
+      enum: [durable, process_local]
+      description: |
+        `durable` survives process restarts through persistent adapters.
+        `process_local` is an explicitly enabled development mode and does not.
     JobList:
       type: object
       required: [jobs, next_cursor]
@@ -1336,4 +1424,5 @@ components:
         max_attempts:
           type: integer
           minimum: 1
+          maximum: 10
       additionalProperties: false

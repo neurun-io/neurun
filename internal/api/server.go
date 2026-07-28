@@ -47,6 +47,15 @@ type JobService interface {
 
 type ReadyCheck func(context.Context) error
 
+type JobDurability string
+
+const (
+	JobDurabilityDurable      JobDurability = "durable"
+	JobDurabilityProcessLocal JobDurability = "process_local"
+)
+
+var ErrAsyncJobsUnavailable = errors.New("asynchronous jobs require a durable backend")
+
 type ServerOptions struct {
 	Authenticator    *auth.Authenticator
 	Registry         *function.Registry
@@ -55,6 +64,8 @@ type ServerOptions struct {
 	Ready            ReadyCheck
 	BundleVersion    string
 	MaximumBodyBytes int64
+	JobDurability    JobDurability
+	AllowAsyncJobs   bool
 }
 
 // Server exposes the public health endpoints and authenticated v1 control
@@ -66,6 +77,8 @@ type Server struct {
 	ready            ReadyCheck
 	bundleVersion    string
 	maximumBodyBytes int64
+	jobDurability    JobDurability
+	allowAsyncJobs   bool
 	handler          http.Handler
 }
 
@@ -94,6 +107,17 @@ func NewServer(options ServerOptions) (*Server, error) {
 	if maximumBodyBytes == 0 {
 		maximumBodyBytes = defaultMaximumBodyBytes
 	}
+	jobDurability := options.JobDurability
+	if jobDurability == "" {
+		// Fail closed when an embedding does not declare its persistence
+		// guarantee. Process-local jobs require a second, explicit opt-in
+		// through AllowAsyncJobs.
+		jobDurability = JobDurabilityProcessLocal
+	}
+	if jobDurability != JobDurabilityDurable &&
+		jobDurability != JobDurabilityProcessLocal {
+		return nil, fmt.Errorf("unsupported job durability %q", jobDurability)
+	}
 
 	server := &Server{
 		registry:         options.Registry,
@@ -102,6 +126,9 @@ func NewServer(options ServerOptions) (*Server, error) {
 		ready:            options.Ready,
 		bundleVersion:    bundleVersion,
 		maximumBodyBytes: maximumBodyBytes,
+		jobDurability:    jobDurability,
+		allowAsyncJobs: options.AllowAsyncJobs ||
+			jobDurability == JobDurabilityDurable,
 	}
 	server.handler = server.routes(options.Authenticator)
 	return server, nil
@@ -277,7 +304,7 @@ func (s *Server) invokeFunction(w http.ResponseWriter, request *http.Request) {
 	if !DecodeJSON(w, request, &payload, s.maximumBodyBytes) {
 		return
 	}
-	s.executeInvocation(w, request, request.PathValue("name"), payload)
+	s.executeInvocation(w, request, request.PathValue("name"), payload, false)
 }
 
 func (s *Server) executeInvocation(
@@ -285,6 +312,7 @@ func (s *Server) executeInvocation(
 	request *http.Request,
 	name string,
 	payload invokeRequest,
+	trustedContext bool,
 ) {
 	principal, ok := s.scopedProject(w, request, payload.ProjectID)
 	if !ok {
@@ -299,6 +327,7 @@ func (s *Server) executeInvocation(
 		request,
 		principal.ProjectID,
 		payload.Context,
+		trustedContext,
 	)
 	if !ok {
 		return
@@ -523,6 +552,9 @@ func (s *Server) acceptJob(
 	input json.RawMessage,
 	maxAttempts int,
 ) (job.AcceptResult, error) {
+	if !s.allowAsyncJobs {
+		return job.AcceptResult{}, ErrAsyncJobsUnavailable
+	}
 	resolved, atomicFunction, err := s.registry.ResolveRef(requested)
 	if err != nil {
 		return job.AcceptResult{}, err
@@ -572,6 +604,7 @@ func (s *Server) writeAcceptedJob(
 	result job.AcceptResult,
 ) {
 	w.Header().Set("Location", "/v1/jobs/"+result.Job.ID)
+	w.Header().Set("Neurun-Job-Durability", string(s.jobDurability))
 	if result.Duplicate {
 		w.Header().Set("Idempotent-Replayed", "true")
 	}
@@ -579,6 +612,7 @@ func (s *Server) writeAcceptedJob(
 		"job":        result.Job,
 		"job_id":     result.Job.ID,
 		"duplicate":  result.Duplicate,
+		"durability": string(s.jobDurability),
 		"request_id": RequestID(request.Context()),
 	})
 }
@@ -742,7 +776,7 @@ func (s *Server) fetch(w http.ResponseWriter, request *http.Request) {
 		Input:       payload.Request,
 		TimeoutMS:   payload.TimeoutMS,
 		MaxAttempts: payload.MaxAttempts,
-	})
+	}, true)
 }
 
 func (s *Server) executionContext(
@@ -750,6 +784,7 @@ func (s *Server) executionContext(
 	request *http.Request,
 	projectID string,
 	supplied *function.ExecutionContext,
+	trusted bool,
 ) (*function.ExecutionContext, bool) {
 	if supplied == nil {
 		return &function.ExecutionContext{ProjectID: projectID}, true
@@ -758,6 +793,20 @@ func (s *Server) executionContext(
 		WriteProblem(w, request, http.StatusForbidden, Problem{
 			Code:    "permission_denied",
 			Message: "execution context belongs to a different project",
+		})
+		return nil, false
+	}
+	if !trusted &&
+		(supplied.JobID != "" ||
+			supplied.AttemptID != "" ||
+			supplied.SessionID != "" ||
+			supplied.EphemeralHTTP ||
+			supplied.EphemeralBrowser ||
+			len(supplied.Capabilities) != 0) {
+		WriteProblem(w, request, http.StatusUnprocessableEntity, Problem{
+			Code: "server_owned_context",
+			Message: "job, attempt, session, ephemeral runtime, and capability " +
+				"context is assigned by Neurun",
 		})
 		return nil, false
 	}
@@ -903,6 +952,12 @@ func (s *Server) writeDomainError(w http.ResponseWriter, request *http.Request, 
 		WriteProblem(w, request, http.StatusConflict, Problem{
 			Code:    "invalid_state",
 			Message: "the resource is not in a state that permits this operation",
+		})
+	case errors.Is(err, ErrAsyncJobsUnavailable):
+		WriteProblem(w, request, http.StatusServiceUnavailable, Problem{
+			Code: "durable_backend_unavailable",
+			Message: "asynchronous jobs are disabled because this process has " +
+				"no durable job backend",
 		})
 	case errors.Is(err, job.ErrInvalid),
 		errors.Is(err, job.ErrInvalidCursor),

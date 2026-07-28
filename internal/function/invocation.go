@@ -241,6 +241,15 @@ func (s *Service) Invoke(ctx context.Context, request InvocationRequest) (Invoca
 	invocation.Function = resolved
 	invocation.SideEffects = manifest.SideEffects
 	invocation.Context = request.Context.clone()
+	if request.ProjectID != "" &&
+		invocation.Context.ProjectID != "" &&
+		request.ProjectID != invocation.Context.ProjectID {
+		return s.rejectBeforeExecution(invocation, Failure{
+			Category: FailureContextIncompatible,
+			Code:     "project_context_mismatch",
+			Message:  "request project_id and execution context project_id must match",
+		})
+	}
 
 	canonicalInput, decodedInput, inputErr := normalizeInput(request.Input)
 	if inputErr == nil {
@@ -308,6 +317,10 @@ func (s *Service) Invoke(ctx context.Context, request InvocationRequest) (Invoca
 		err    error
 	}
 	outcomes := make(chan outcome, 1)
+	// Atomic functions are trusted compiled-in code and must cooperate with
+	// cancellation. A deadline stops this service from waiting, but Go cannot
+	// forcibly kill an uncooperative goroutine. External side-effecting runtimes
+	// therefore require process isolation with independent lifecycle cleanup.
 	go func() {
 		result, executeErr := executeSafely(function, executionCtx, invocation.Context, canonicalInput)
 		outcomes <- outcome{result: result, err: executeErr}
@@ -439,7 +452,6 @@ func executeSafely(
 				Category: FailureInternal,
 				Code:     "function_panic",
 				Message:  "function execution panicked",
-				Details:  map[string]string{"panic": fmt.Sprint(recovered)},
 			}
 		}
 	}()

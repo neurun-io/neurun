@@ -19,10 +19,11 @@ const (
 )
 
 type serverFixture struct {
-	handler     *Server
-	registry    *function.Registry
-	invocations *function.Service
-	jobs        *job.MemoryRepository
+	authenticator *auth.Authenticator
+	handler       *Server
+	registry      *function.Registry
+	invocations   *function.Service
+	jobs          *job.MemoryRepository
 }
 
 func newServerFixture(t *testing.T, ready ReadyCheck) serverFixture {
@@ -58,20 +59,23 @@ func newServerFixture(t *testing.T, ready ReadyCheck) serverFixture {
 		t.Fatal(err)
 	}
 	handler, err := NewServer(ServerOptions{
-		Authenticator: authenticator,
-		Registry:      registry,
-		Invocations:   invocations,
-		Jobs:          jobs,
-		Ready:         ready,
+		Authenticator:  authenticator,
+		Registry:       registry,
+		Invocations:    invocations,
+		Jobs:           jobs,
+		Ready:          ready,
+		JobDurability:  JobDurabilityProcessLocal,
+		AllowAsyncJobs: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return serverFixture{
-		handler:     handler,
-		registry:    registry,
-		invocations: invocations,
-		jobs:        jobs,
+		authenticator: authenticator,
+		handler:       handler,
+		registry:      registry,
+		invocations:   invocations,
+		jobs:          jobs,
 	}
 }
 
@@ -222,6 +226,29 @@ func TestServerSyncInvocationIsProjectScoped(t *testing.T) {
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("forged context status = %d, body = %s", response.Code, response.Body)
 	}
+
+	for _, contextJSON := range []string{
+		`{"attempt_id":"att_forged"}`,
+		`{"session_id":"ses_forged"}`,
+		`{"ephemeral_http":true}`,
+		`{"capabilities":["http"]}`,
+	} {
+		body = `{"version":"1","execution":"sync","context":` +
+			contextJSON + `,"input":{}}`
+		response = performRequest(
+			t,
+			fixture.handler,
+			http.MethodPost,
+			"/v1/functions/system.echo/invoke",
+			body,
+			testKeyA,
+			"",
+		)
+		if response.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("server-owned context %s status = %d, body = %s",
+				contextJSON, response.Code, response.Body)
+		}
+	}
 }
 
 func TestServerAsyncJobAcceptanceRequiresIdempotencyAndReplays(t *testing.T) {
@@ -260,12 +287,17 @@ func TestServerAsyncJobAcceptanceRequiresIdempotencyAndReplays(t *testing.T) {
 				Function job.FunctionRef `json:"function"`
 			} `json:"request"`
 		} `json:"job"`
-		JobID     string `json:"job_id"`
-		Duplicate bool   `json:"duplicate"`
-		RequestID string `json:"request_id"`
+		JobID      string `json:"job_id"`
+		Duplicate  bool   `json:"duplicate"`
+		Durability string `json:"durability"`
+		RequestID  string `json:"request_id"`
 	}
 	decodeResponse(t, response, &accepted)
-	if accepted.JobID == "" || accepted.Job.ID != accepted.JobID || accepted.RequestID == "" {
+	if accepted.JobID == "" ||
+		accepted.Job.ID != accepted.JobID ||
+		accepted.RequestID == "" ||
+		accepted.Durability != string(JobDurabilityProcessLocal) ||
+		response.Header().Get("Neurun-Job-Durability") != string(JobDurabilityProcessLocal) {
 		t.Fatalf("accepted response = %#v", accepted)
 	}
 	if accepted.Job.Request.Function.Version != "1" ||
@@ -335,6 +367,45 @@ func TestServerAsyncJobAcceptanceRequiresIdempotencyAndReplays(t *testing.T) {
 	}
 }
 
+func TestServerGatesProcessLocalAsyncJobsUnlessExplicitlyEnabled(t *testing.T) {
+	t.Parallel()
+	fixture := newServerFixture(t, nil)
+	handler, err := NewServer(ServerOptions{
+		Authenticator: fixture.authenticator,
+		Registry:      fixture.registry,
+		Invocations:   fixture.invocations,
+		Jobs:          fixture.jobs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if handler.jobDurability != JobDurabilityProcessLocal {
+		t.Fatalf("zero-value durability = %q, want %q",
+			handler.jobDurability, JobDurabilityProcessLocal)
+	}
+	if handler.allowAsyncJobs {
+		t.Fatal("zero-value server options unexpectedly enabled asynchronous jobs")
+	}
+
+	response := performRequest(
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/jobs",
+		`{"function":{"name":"system.echo","version":"1"},"input":{}}`,
+		testKeyA,
+		"idem-disabled",
+	)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("disabled jobs status = %d, body = %s", response.Code, response.Body)
+	}
+	var envelope ErrorEnvelope
+	decodeResponse(t, response, &envelope)
+	if envelope.Error.Code != "durable_backend_unavailable" {
+		t.Fatalf("disabled jobs problem = %#v", envelope)
+	}
+}
+
 func TestServerCreateListAndCancelJob(t *testing.T) {
 	t.Parallel()
 	fixture := newServerFixture(t, nil)
@@ -356,7 +427,7 @@ func TestServerCreateListAndCancelJob(t *testing.T) {
 	}
 	decodeResponse(t, response, &accepted)
 
-	response = performRequest(t, fixture.handler, http.MethodGet, "/v1/jobs?status=accepted", "", testKeyA, "")
+	response = performRequest(t, fixture.handler, http.MethodGet, "/v1/jobs?status=queued", "", testKeyA, "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("list jobs status = %d, body = %s", response.Code, response.Body)
 	}

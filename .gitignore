@@ -15,6 +15,8 @@ data/
 *.coverprofile
 *.log
 *.out
+__pycache__/
+*.py[cod]
 
 .idea/
 .vscode/

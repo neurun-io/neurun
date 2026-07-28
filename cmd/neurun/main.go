@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -79,6 +80,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("configure outbound network policy: %w", err)
 	}
 	httpClient, err := netpolicy.NewClient(policy, netpolicy.ClientOptions{
+		Timeout:          125 * time.Second,
 		MaxResponseBytes: cfg.MaxResponseBytes,
 	})
 	if err != nil {
@@ -146,10 +148,15 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Jobs:             jobs,
 		BundleVersion:    function.BuiltinBundleVersion,
 		MaximumBodyBytes: cfg.MaxRequestBodyBytes,
+		JobDurability:    api.JobDurabilityProcessLocal,
+		AllowAsyncJobs:   cfg.AllowVolatileJobs,
 	})
 	if err != nil {
 		return fmt.Errorf("configure control API: %w", err)
 	}
+
+	runtimeCtx, stopRuntime := context.WithCancel(ctx)
+	defer stopRuntime()
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -159,10 +166,10 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		WriteTimeout:      130 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    32 << 10,
+		BaseContext: func(net.Listener) context.Context {
+			return runtimeCtx
+		},
 	}
-
-	runtimeCtx, stopRuntime := context.WithCancel(ctx)
-	defer stopRuntime()
 
 	errs := make(chan error, 2)
 	var background sync.WaitGroup
@@ -196,14 +203,20 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	case <-ctx.Done():
 	}
 
+	// Cancel execution and request base contexts before waiting for handlers.
+	// Cooperative in-process functions stop here; future side-effecting
+	// runtimes must additionally own a killable process boundary.
+	stopRuntime()
 	shutdownCtx, cancelShutdown := context.WithTimeout(
 		context.Background(),
 		cfg.ShutdownTimeout,
 	)
 	shutdownErr := server.Shutdown(shutdownCtx)
 	cancelShutdown()
+	if shutdownErr != nil {
+		shutdownErr = errors.Join(shutdownErr, server.Close())
+	}
 
-	stopRuntime()
 	background.Wait()
 	return errors.Join(serveErr, shutdownErr)
 }

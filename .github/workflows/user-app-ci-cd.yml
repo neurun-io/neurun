@@ -64,7 +64,7 @@ on:
         required: true
         type: string
       publish-image:
-        description: Publish an immutable image and attestations on non-PR events.
+        description: Publish on a protected default branch or protected tag.
         default: false
         type: boolean
     secrets:
@@ -112,7 +112,7 @@ jobs:
       build-artifact: ${{ steps.artifact-name.outputs.name }}
     steps:
       - name: Check out application source
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
@@ -134,6 +134,10 @@ jobs:
           NEURUN_ENDPOINT: ${{ inputs.neurun-endpoint }}
           REGISTRY: ${{ inputs.registry }}
           IMAGE_NAME: ${{ inputs.image-name }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
@@ -174,8 +178,16 @@ jobs:
             endpoint)
               [[ "$NEURUN_ENDPOINT" =~ ^https://[^[:space:]]+$ ]] ||
                 { echo "::error::endpoint mode requires an HTTPS neurun-endpoint"; exit 2; }
-              if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-                echo "::error::endpoint smoke checks are disabled for pull requests"
+              trusted_ref=false
+              if [[ "$REF_PROTECTED" == "true" ]] &&
+                 { [[ "$REF_TYPE" == "tag" ]] ||
+                   { [[ "$REF_TYPE" == "branch" ]] &&
+                     [[ "$REF_NAME" == "$DEFAULT_BRANCH" ]]; }; }; then
+                trusted_ref=true
+              fi
+              if [[ "$GITHUB_EVENT_NAME" == "pull_request" ||
+                    "$trusted_ref" != "true" ]]; then
+                echo "::error::endpoint smoke checks require a protected default branch or protected tag"
                 exit 2
               fi
               ;;
@@ -186,41 +198,47 @@ jobs:
           esac
 
       - name: Check out canonical Neurun contracts
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: ${{ inputs.contracts-repository }}
           ref: ${{ inputs.contracts-ref }}
           path: .neurun-contracts
-          sparse-checkout: contracts
+          sparse-checkout: |
+            contracts
+            scripts
           persist-credentials: false
-          token: ${{ github.event_name != 'pull_request' && secrets.CONTRACTS_TOKEN || github.token }}
+          token: >-
+            ${{
+              github.event_name != 'pull_request' &&
+              github.ref_protected &&
+              (
+                github.ref_type == 'tag' ||
+                (
+                  github.ref_type == 'branch' &&
+                  github.ref_name == github.event.repository.default_branch
+                )
+              ) &&
+              secrets.CONTRACTS_TOKEN ||
+              github.token
+            }}
 
-      - name: Set up contract validator
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          package-manager-cache: false
-
-      - name: Validate Neurun JSON contracts
+      - name: Validate application contracts and workflow graph
         shell: bash
         env:
           APPLICATION_MANIFEST: ${{ inputs.application-manifest }}
           WORKFLOW_MANIFEST: ${{ inputs.workflow-manifest }}
-          NPM_CONFIG_AUDIT: "false"
-          NPM_CONFIG_FUND: "false"
-          NPM_CONFIG_IGNORE_SCRIPTS: "true"
+          CONTAINER_CONTEXT: ${{ inputs.container-context }}
+          CONTAINER_FILE: ${{ inputs.container-file }}
+          ARTIFACT_DIRECTORY: ${{ inputs.artifact-directory }}
         run: |
           set -euo pipefail
-          npx --yes ajv-cli@5.0.0 validate \
-            --spec=draft2020 \
-            --strict=true \
-            -s .neurun-contracts/contracts/user-app/application.schema.json \
-            -d "$APPLICATION_MANIFEST"
-          npx --yes ajv-cli@5.0.0 validate \
-            --spec=draft2020 \
-            --strict=true \
-            -s .neurun-contracts/contracts/workflow.schema.json \
-            -d "$WORKFLOW_MANIFEST"
+          python3 .neurun-contracts/scripts/validate-user-app.py \
+            --application "$APPLICATION_MANIFEST" \
+            --workflow "$WORKFLOW_MANIFEST" \
+            --expected-workflow "$WORKFLOW_MANIFEST" \
+            --expected-container-context "$CONTAINER_CONTEXT" \
+            --expected-container-file "$CONTAINER_FILE" \
+            --expected-artifact-directory "$ARTIFACT_DIRECTORY"
 
       - name: Run application tests
         shell: bash
@@ -246,9 +264,9 @@ jobs:
             { echo "::error::build script did not create $ARTIFACT_DIRECTORY"; exit 2; }
 
       - name: Publish application artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: user-app-build-${{ github.sha }}
+          name: user-app-build-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ inputs.artifact-directory }}/
           if-no-files-found: error
           include-hidden-files: false
@@ -257,7 +275,9 @@ jobs:
       - name: Record application artifact name
         id: artifact-name
         shell: bash
-        run: echo "name=user-app-build-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+        run: >-
+          echo "name=user-app-build-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
+          >> "$GITHUB_OUTPUT"
 
   container:
     name: container and smoke check
@@ -266,23 +286,28 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: read
+    outputs:
+      image-artifact: ${{ steps.image-artifact-name.outputs.name }}
     steps:
       - name: Check out application source
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Set up BuildKit
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Build local application image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ${{ inputs.container-context }}
           file: ${{ inputs.container-file }}
           load: true
           push: false
           tags: neurun-user-app:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           provenance: mode=max
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -293,7 +318,21 @@ jobs:
           SMOKE_MODE: ${{ inputs.smoke-mode }}
           NEURUN_IMAGE: ${{ inputs.neurun-image }}
           NEURUN_ENDPOINT: ${{ inputs.neurun-endpoint }}
-          ENDPOINT_API_KEY: ${{ github.event_name != 'pull_request' && secrets.NEURUN_API_KEY || '' }}
+          ENDPOINT_API_KEY: >-
+            ${{
+              inputs.smoke-mode == 'endpoint' &&
+              github.event_name != 'pull_request' &&
+              github.ref_protected &&
+              (
+                github.ref_type == 'tag' ||
+                (
+                  github.ref_type == 'branch' &&
+                  github.ref_name == github.event.repository.default_branch
+                )
+              ) &&
+              secrets.NEURUN_API_KEY ||
+              ''
+            }}
           SMOKE_SCRIPT: ${{ inputs.smoke-script }}
           USER_APP_IMAGE: neurun-user-app:${{ github.sha }}
           WORKFLOW_MANIFEST: ${{ inputs.workflow-manifest }}
@@ -320,6 +359,7 @@ jobs:
               --env NEURUN_PUBLIC_URL=http://127.0.0.1:18080 \
               --env NEURUN_API_KEY="$local_key" \
               --env NEURUN_DEFAULT_PROJECT_ID=prj_ci \
+              --env NEURUN_ALLOW_VOLATILE_JOBS=true \
               "$NEURUN_IMAGE" >/dev/null
             base_url="http://127.0.0.1:18080"
             api_key="$local_key"
@@ -347,8 +387,38 @@ jobs:
           export NEURUN_WORKFLOW_PATH="$WORKFLOW_MANIFEST"
           bash "$SMOKE_SCRIPT"
 
+      - name: Export exact tested application image
+        shell: bash
+        env:
+          USER_APP_IMAGE: neurun-user-app:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p .ci/image
+          docker image inspect --format '{{.Id}}' "$USER_APP_IMAGE" \
+            > .ci/image/user-app-image.id
+          docker image save --output .ci/image/user-app-image.tar "$USER_APP_IMAGE"
+          sha256sum .ci/image/user-app-image.tar \
+            > .ci/image/user-app-image.tar.sha256
+
+      - name: Publish exact tested image archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: user-app-image-${{ github.sha }}-${{ github.run_attempt }}
+          path: .ci/image/
+          if-no-files-found: error
+          include-hidden-files: false
+          compression-level: 0
+          retention-days: 14
+
+      - name: Record tested image artifact name
+        id: image-artifact-name
+        shell: bash
+        run: >-
+          echo "name=user-app-image-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
+          >> "$GITHUB_OUTPUT"
+
       - name: Generate CI image SBOM
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: neurun-user-app:${{ github.sha }}
           format: spdx-json
@@ -356,16 +426,26 @@ jobs:
           upload-artifact: false
 
       - name: Publish CI SBOM
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: user-app-sbom-${{ github.sha }}
+          name: user-app-sbom-${{ github.sha }}-${{ github.run_attempt }}
           path: user-app.spdx.json
           if-no-files-found: error
           retention-days: 14
 
   publish:
     name: publish immutable image
-    if: inputs.publish-image && github.event_name != 'pull_request'
+    if: >-
+      inputs.publish-image &&
+      github.event_name != 'pull_request' &&
+      github.ref_protected &&
+      (
+        github.ref_type == 'tag' ||
+        (
+          github.ref_type == 'branch' &&
+          github.ref_name == github.event.repository.default_branch
+        )
+      )
     needs:
       - quality
       - container
@@ -379,75 +459,83 @@ jobs:
       artifact-metadata: write
     outputs:
       image: ${{ steps.immutable.outputs.image }}
-      digest: ${{ steps.push.outputs.digest }}
+      digest: ${{ steps.promote.outputs.digest }}
       sbom-artifact: ${{ steps.sbom-name.outputs.name }}
     steps:
-      - name: Check out application source
-        uses: actions/checkout@v6
+      - name: Download exact tested image archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          persist-credentials: false
+          name: ${{ needs.container.outputs.image-artifact }}
+          path: .ci/image
+
+      - name: Verify and load exact tested image
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check .ci/image/user-app-image.tar.sha256
+          docker image load --input .ci/image/user-app-image.tar
+          expected_id="$(tr -d '\r\n' < .ci/image/user-app-image.id)"
+          actual_id="$(docker image inspect \
+            --format '{{.Id}}' "neurun-user-app:${GITHUB_SHA}")"
+          [[ "$actual_id" == "$expected_id" ]] ||
+            { echo "::error::loaded image ID does not match tested image"; exit 1; }
 
       - name: Set up BuildKit
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log in to OCI registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
           password: ${{ secrets.REGISTRY_PASSWORD || github.token }}
 
-      - name: Build and publish digest-addressable image
-        id: push
-        uses: docker/build-push-action@v7
-        with:
-          context: ${{ inputs.container-context }}
-          file: ${{ inputs.container-file }}
-          push: true
-          tags: ${{ inputs.registry }}/${{ inputs.image-name }}:${{ github.sha }}
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          provenance: mode=max
-          sbom: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Record immutable image reference
-        id: immutable
+      - name: Stage exact tested image
+        id: stage
         shell: bash
         env:
-          IMAGE: ${{ inputs.registry }}/${{ inputs.image-name }}
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: echo "image=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          SOURCE_IMAGE: neurun-user-app:${{ github.sha }}
+          STAGING_IMAGE: ${{ inputs.registry }}/${{ inputs.image-name }}:ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          docker image tag "$SOURCE_IMAGE" "$STAGING_IMAGE"
+          push_output="$(docker image push "$STAGING_IMAGE" 2>&1)"
+          printf '%s\n' "$push_output"
+          digest="$(sed -nE \
+            's/.*digest: (sha256:[0-9a-f]{64}).*/\1/p' \
+            <<<"$push_output" | tail -n 1)"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+            { echo "::error::registry did not return an immutable digest"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
       - name: Attest build provenance
-        uses: actions/attest@v4
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.stage.outputs.digest }}
           push-to-registry: true
 
       - name: Generate published image SBOM
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          image: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ steps.push.outputs.digest }}
+          image: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ steps.stage.outputs.digest }}
           format: spdx-json
           output-file: published-image.spdx.json
           upload-artifact: false
 
       - name: Attest published image SBOM
-        uses: actions/attest@v4
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.stage.outputs.digest }}
           sbom-path: published-image.spdx.json
           push-to-registry: true
 
       - name: Publish release SBOM artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: published-image-sbom-${{ github.sha }}
+          name: >-
+            published-image-sbom-${{ github.sha }}-${{ github.run_attempt }}
           path: published-image.spdx.json
           if-no-files-found: error
           retention-days: 90
@@ -455,4 +543,55 @@ jobs:
       - name: Record release SBOM artifact name
         id: sbom-name
         shell: bash
-        run: echo "name=published-image-sbom-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+        run: >-
+          echo "name=published-image-sbom-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
+          >> "$GITHUB_OUTPUT"
+
+      - name: Promote attested image to release tag
+        id: promote
+        shell: bash
+        env:
+          SOURCE_IMAGE: neurun-user-app:${{ github.sha }}
+          RELEASE_IMAGE: ${{ inputs.registry }}/${{ inputs.image-name }}:${{ github.sha }}
+          EXPECTED_DIGEST: ${{ steps.stage.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          inspect_error="$(mktemp)"
+          if manifest_json="$(docker buildx imagetools inspect \
+            "$RELEASE_IMAGE" --format '{{json .Manifest}}' \
+            2>"$inspect_error")"; then
+            existing_digest="$(jq -er \
+              '.digest | select(test("^sha256:[0-9a-f]{64}$"))' \
+              <<<"$manifest_json")"
+            [[ "$existing_digest" == "$EXPECTED_DIGEST" ]] ||
+              {
+                echo "::error::commit-SHA tag already names a different digest"
+                exit 1
+              }
+            echo "digest=$existing_digest" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! grep -qiE 'manifest unknown|name unknown|not found' "$inspect_error"; then
+            cat "$inspect_error" >&2
+            echo "::error::could not verify existing release tag"
+            exit 1
+          fi
+
+          docker image tag "$SOURCE_IMAGE" "$RELEASE_IMAGE"
+          push_output="$(docker image push "$RELEASE_IMAGE" 2>&1)"
+          printf '%s\n' "$push_output"
+          digest="$(sed -nE \
+            's/.*digest: (sha256:[0-9a-f]{64}).*/\1/p' \
+            <<<"$push_output" | tail -n 1)"
+          [[ "$digest" == "$EXPECTED_DIGEST" ]] ||
+            { echo "::error::release digest differs from attested digest"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Record immutable image reference
+        id: immutable
+        shell: bash
+        env:
+          IMAGE: ${{ inputs.registry }}/${{ inputs.image-name }}
+          DIGEST: ${{ steps.promote.outputs.digest }}
+        run: echo "image=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"

@@ -5,18 +5,24 @@
   "type": "object",
   "required": [
     "id",
+    "job_id",
     "sequence",
     "type",
-    "project_id",
-    "job_id",
-    "trace_id",
-    "occurred_at",
-    "data"
+    "state",
+    "created_at"
   ],
   "properties": {
     "id": {
       "type": "string",
-      "pattern": "^evt_[0-9A-HJKMNP-TV-Z]{26}$"
+      "pattern": "^evt_[0-9a-f]{64}$"
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1
     },
     "sequence": {
       "type": "integer",
@@ -29,38 +35,37 @@
         "job.queued",
         "job.leased",
         "job.started",
-        "job.retry_scheduled",
+        "job.lease_renewed",
+        "job.retry_wait",
         "job.succeeded",
         "job.rejected",
         "job.failed",
         "job.canceled",
         "job.dead_lettered",
-        "job.lease_expired"
+        "attempt.lease_expired",
+        "attempt.failed"
       ]
     },
-    "project_id": {
+    "state": {
       "type": "string",
-      "minLength": 1
+      "enum": [
+        "accepted",
+        "queued",
+        "leased",
+        "running",
+        "retry_wait",
+        "succeeded",
+        "rejected",
+        "failed",
+        "canceled",
+        "dead_lettered"
+      ]
     },
-    "job_id": {
-      "type": "string",
-      "minLength": 1
-    },
-    "attempt_id": {
-      "type": ["string", "null"]
-    },
-    "trace_id": {
-      "type": "string",
-      "minLength": 16
-    },
-    "occurred_at": {
+    "payload": {},
+    "created_at": {
       "type": "string",
       "format": "date-time"
-    },
-    "data": {
-      "type": "object"
     }
   },
   "additionalProperties": false
 }
-
