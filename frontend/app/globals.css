@@ -1,26 +1,495 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* ---------------------------------------------------------------------------
+   Neurun design system → Tailwind v4 + shadcn bridge
+
+   Source of truth: the Neurun design system tokens (tokens/*.css).
+   Neurun semantic roles are namespaced `--nr-*` because three of them
+   (`--accent`, `--secondary`, `--muted`) collide with shadcn's own semantic
+   variable names. The `--nr-` prefix maps 1:1 onto the design system name.
+
+   Rules this file enforces:
+   - Strictly monochrome. There is no accent colour; contrast is the accent.
+   - Dark is the default and the brand's home. Light is a full complementary
+     palette, not a tinted mirror.
+   - Depth is layered ink + a 1px hairline, never shadow. The only shadow is
+     `--nr-shadow-overlay`, for dialogs and the command palette.
+   - Components read semantic tokens only. Never `var(--nr-white)` in a
+     component: the raw ramp is theme-independent and will not invert.
+--------------------------------------------------------------------------- */
+
+/* Theme is attribute-driven and dark-by-default, so `dark:`/`light:` variants
+   must follow `data-theme` rather than the OS media query. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* --- raw ink ramp: theme-independent, never used directly in components --- */
+  --nr-ink-1000: #050505;
+  --nr-ink-975: #0a0a0a;
+  --nr-ink-950: #090909;
+  --nr-ink-900: #111111;
+  --nr-ink-850: #171717;
+  --nr-ink-800: #1f1f1f;
+  --nr-ink-700: #2a2a2a;
+  --nr-graphite: #555555;
+  --nr-muted: #8a8a8a;
+  --nr-secondary: #b8b8b8;
+  --nr-mist: #c8c8c5;
+  --nr-paper: #f3f3f0;
+  --nr-white: #ffffff;
+
+  /* light ramp: pure neutral greys stepping DOWN from white */
+  --nr-snow-000: #ffffff;
+  --nr-snow-050: #fafafa;
+  --nr-snow-100: #f4f4f4;
+  --nr-snow-150: #efefef;
+  --nr-snow-200: #e9e9e9;
+  --nr-snow-250: #dfdfdf;
+  --nr-snow-300: #d2d2d2;
+  --nr-snow-line: #e6e6e6;
+  --nr-snow-400: #9a9a9a;
+  --nr-carbon-text: #3a3a3a;
+  --nr-carbon-text-muted: #6b6b6b;
+}
+
+/* ============================ DARK (default) ============================ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --nr-surface-base: var(--nr-ink-1000);
+  --nr-surface-sunken: var(--nr-ink-975);
+  --nr-surface-panel: var(--nr-ink-900);
+  --nr-surface-raised: var(--nr-ink-850);
+  --nr-surface-inset: var(--nr-ink-800);
+  --nr-surface-hover: var(--nr-ink-800);
+  --nr-surface-active: var(--nr-ink-700);
+  --nr-surface-tint: var(--nr-ink-975);
+  --nr-surface-inverse: var(--nr-white);
+  --nr-surface-scrim: rgba(5, 5, 5, 0.78);
+
+  --nr-border-hairline: var(--nr-ink-800);
+  --nr-border-default: var(--nr-ink-700);
+  --nr-border-strong: var(--nr-graphite);
+  --nr-border-inverse: var(--nr-white);
+  --nr-border-focus: var(--nr-white);
+
+  --nr-text-primary: var(--nr-white);
+  --nr-text-secondary: var(--nr-secondary);
+  --nr-text-muted: var(--nr-muted);
+  --nr-text-faint: var(--nr-graphite); /* non-text only: rules, ticks, separators */
+  --nr-text-inverse: var(--nr-ink-1000);
+  --nr-text-link: var(--nr-white);
+  --nr-text-link-hover: var(--nr-secondary);
+
+  /* emphasis: the only "accent" is maximum contrast against the surface */
+  --nr-accent: var(--nr-white);
+  --nr-accent-contrast: var(--nr-ink-1000);
+  --nr-accent-hover: var(--nr-mist);
+  --nr-accent-active: var(--nr-secondary);
+  --nr-accent-contrast-muted: var(--nr-graphite);
+
+  /* code + readouts */
+  --nr-code-comment: var(--nr-muted);
+  --nr-code-string: var(--nr-mist);
+  --nr-code-number: var(--nr-secondary);
+  --nr-code-keyword: var(--nr-white);
+  --nr-code-gutter: var(--nr-ink-700);
+
+  /* loading */
+  --nr-skeleton-base: var(--nr-ink-800);
+  --nr-skeleton-sheen: var(--nr-ink-700);
+}
+
+/* ============================== LIGHT ================================== */
+[data-theme="light"],
+[data-theme="paper"] {
+  color-scheme: light;
+
+  --nr-surface-base: var(--nr-snow-000);
+  --nr-surface-panel: var(--nr-snow-050);
+  --nr-surface-sunken: var(--nr-snow-100);
+  --nr-surface-raised: var(--nr-snow-150);
+  --nr-surface-inset: var(--nr-snow-200);
+  --nr-surface-hover: var(--nr-snow-150);
+  --nr-surface-active: var(--nr-snow-250);
+  --nr-surface-tint: var(--nr-paper);
+  --nr-surface-inverse: var(--nr-ink-1000);
+  --nr-surface-scrim: rgba(5, 5, 5, 0.32);
+
+  --nr-border-hairline: var(--nr-snow-line);
+  --nr-border-default: var(--nr-snow-300);
+  --nr-border-strong: var(--nr-muted);
+  --nr-border-inverse: var(--nr-ink-1000);
+  --nr-border-focus: var(--nr-ink-1000);
+
+  --nr-text-primary: var(--nr-ink-1000);
+  --nr-text-secondary: var(--nr-carbon-text);
+  --nr-text-muted: var(--nr-carbon-text-muted);
+  --nr-text-faint: var(--nr-snow-400); /* non-text only */
+  --nr-text-inverse: var(--nr-white);
+  --nr-text-link: var(--nr-ink-1000);
+  --nr-text-link-hover: var(--nr-carbon-text);
+
+  --nr-accent: var(--nr-ink-1000);
+  --nr-accent-contrast: var(--nr-white);
+  --nr-accent-hover: var(--nr-ink-850);
+  --nr-accent-active: var(--nr-ink-700);
+  --nr-accent-contrast-muted: var(--nr-muted);
+
+  --nr-code-comment: var(--nr-carbon-text-muted);
+  --nr-code-string: var(--nr-carbon-text);
+  --nr-code-number: #4f4f4f;
+  --nr-code-keyword: var(--nr-ink-1000);
+  --nr-code-gutter: var(--nr-snow-300);
+
+  --nr-skeleton-base: var(--nr-snow-150);
+  --nr-skeleton-sheen: var(--nr-snow-250);
+}
+
+/* ---- layout, motion, surface and pattern constants (theme-independent) ---- */
+:root {
+  --nr-nav-height: 56px;
+  --nr-rail-width: 240px;
+  --nr-rail-width-collapsed: 56px;
+  --nr-container-max: 1360px;
+  --nr-measure-docs: 74ch;
+  --nr-density-row: 36px;
+  --nr-density-row-loose: 44px;
+  --nr-control-h-sm: 28px;
+  --nr-control-h: 34px;
+  --nr-control-h-lg: 44px;
+
+  --nr-dur-instant: 80ms;
+  --nr-dur-fast: 120ms;
+  --nr-dur-base: 180ms;
+  --nr-dur-slow: 320ms;
+  --nr-dur-reveal: 560ms;
+  --nr-ease-mech: cubic-bezier(0.2, 0, 0, 1);
+  --nr-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --nr-signal-period: 2.4s;
+  --nr-cursor-period: 1s;
+
+  --nr-hairline: 1px solid var(--nr-border-hairline);
+  --nr-rule: 1px solid var(--nr-border-default);
+  --nr-shadow-overlay: 0 32px 64px -24px rgba(0, 0, 0, 0.82), 0 0 0 1px var(--nr-border-default);
+
+  --nr-pattern-hatch: repeating-linear-gradient(
+    45deg,
+    transparent 0 3px,
+    var(--nr-border-default) 3px 4px
+  );
+  --nr-pattern-hatch-dense: repeating-linear-gradient(
+    45deg,
+    transparent 0 2px,
+    var(--nr-border-strong) 2px 3px
+  );
+  --nr-pattern-grid: linear-gradient(to right, var(--nr-border-hairline) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--nr-border-hairline) 1px, transparent 1px);
+  --nr-pattern-grid-size: 64px 64px;
+  --nr-pattern-dither: radial-gradient(var(--nr-border-default) 0.5px, transparent 0.5px);
+  --nr-pattern-dither-size: 4px 4px;
+  --nr-grain-opacity: 0.035;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --nr-dur-instant: 0ms;
+    --nr-dur-fast: 0ms;
+    --nr-dur-base: 0ms;
+    --nr-dur-slow: 0ms;
+    --nr-dur-reveal: 0ms;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   shadcn semantic layer, resolved onto Neurun roles.
+   `destructive` is deliberately the inverted accent, not red: the design
+   system carries danger through inversion, glyph and copy, never hue.
+--------------------------------------------------------------------------- */
+:root,
+[data-theme="dark"],
+[data-theme="light"],
+[data-theme="paper"] {
+  --background: var(--nr-surface-base);
+  --foreground: var(--nr-text-primary);
+  --card: var(--nr-surface-panel);
+  --card-foreground: var(--nr-text-primary);
+  --popover: var(--nr-surface-panel);
+  --popover-foreground: var(--nr-text-primary);
+  --primary: var(--nr-accent);
+  --primary-foreground: var(--nr-accent-contrast);
+  --secondary: var(--nr-surface-inset);
+  --secondary-foreground: var(--nr-text-primary);
+  --muted: var(--nr-surface-inset);
+  --muted-foreground: var(--nr-text-muted);
+  --accent: var(--nr-surface-hover);
+  --accent-foreground: var(--nr-text-primary);
+  --destructive: var(--nr-accent);
+  --destructive-foreground: var(--nr-accent-contrast);
+  --border: var(--nr-border-hairline);
+  --input: var(--nr-border-default);
+  --ring: var(--nr-border-focus);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Neurun roles, addressable as Tailwind utilities (bg-surface-panel,
+     text-fg-muted, border-line, …) */
+  --color-surface-base: var(--nr-surface-base);
+  --color-surface-sunken: var(--nr-surface-sunken);
+  --color-surface-panel: var(--nr-surface-panel);
+  --color-surface-raised: var(--nr-surface-raised);
+  --color-surface-inset: var(--nr-surface-inset);
+  --color-surface-hover: var(--nr-surface-hover);
+  --color-surface-active: var(--nr-surface-active);
+  --color-surface-inverse: var(--nr-surface-inverse);
+  --color-fg: var(--nr-text-primary);
+  --color-fg-secondary: var(--nr-text-secondary);
+  --color-fg-muted: var(--nr-text-muted);
+  --color-fg-faint: var(--nr-text-faint);
+  --color-fg-inverse: var(--nr-text-inverse);
+  --color-line: var(--nr-border-hairline);
+  --color-line-default: var(--nr-border-default);
+  --color-line-strong: var(--nr-border-strong);
+  --color-line-inverse: var(--nr-border-inverse);
+  --color-code-comment: var(--nr-code-comment);
+  --color-code-string: var(--nr-code-string);
+  --color-code-number: var(--nr-code-number);
+  --color-code-keyword: var(--nr-code-keyword);
+  --color-code-gutter: var(--nr-code-gutter);
+  --color-skeleton-base: var(--nr-skeleton-base);
+  --color-skeleton-sheen: var(--nr-skeleton-sheen);
+
+  --font-sans: var(--font-geist-sans), "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Helvetica, sans-serif;
+  --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas,
+    monospace;
+
+  /* Radii: 0/2/4/6/8, plus a pill for tags only. Nothing above 8px. */
+  --radius-none: 0px;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+  --radius-3xl: 8px;
+  --radius-full: 999px;
+
+  /* Type scale, in px — no rounding to a lazy grid. */
+  --text-micro: 11px;
+  --text-meta: 12px;
+  --text-caption: 13px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 40px;
+
+  --tracking-display: -0.035em;
+  --tracking-title: -0.02em;
+  --tracking-tight: -0.01em;
+  --tracking-label: 0.08em;
+  --tracking-wide: 0.16em;
+
+  --ease-mech: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out-quint: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-pulse-node: nr-pulse var(--nr-signal-period) var(--nr-ease-mech) infinite;
+  --animate-caret: nr-blink var(--nr-cursor-period) step-end infinite;
+  --animate-shimmer: nr-shimmer 1.4s linear infinite;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-line;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    letter-spacing: var(--tracking-tight);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: 500;
+    letter-spacing: var(--tracking-title);
+    line-height: 1.1;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+    font-size: 0.925em;
+  }
+
+  /* Focus is a 2px outline at 2px offset, always visible, never removed. */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--nr-border-focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: var(--nr-accent);
+    color: var(--nr-accent-contrast);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--nr-border-default);
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--nr-border-strong);
+    background-clip: content-box;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* Mono infrastructure label: 11px uppercase at 0.16em. The only place the
+     system uppercases anything. */
+  .nr-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--nr-text-muted);
+  }
+
+  .nr-mono {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0;
+  }
+
+  .nr-grid-field {
+    background-image: var(--nr-pattern-grid);
+    background-size: var(--nr-pattern-grid-size);
+    background-position: center;
+  }
+
+  .nr-hatch {
+    background-image: var(--nr-pattern-hatch);
+  }
+
+  .nr-dither {
+    background-image: var(--nr-pattern-dither);
+    background-size: var(--nr-pattern-dither-size);
+  }
+
+  .nr-measure {
+    max-width: var(--nr-measure-docs);
+  }
+
+  .nr-overlay-shadow {
+    box-shadow: var(--nr-shadow-overlay);
+  }
+
+  /* Selected table row: a 2px inset bar on the leading edge. */
+  .nr-selected-row {
+    box-shadow: inset 2px 0 0 0 var(--nr-border-inverse);
+  }
+}
+
+@keyframes nr-pulse {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(0.82);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes nr-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes nr-shimmer {
+  0% {
+    background-position: -180% 0;
+  }
+  100% {
+    background-position: 180% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

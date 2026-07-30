@@ -16,11 +16,15 @@ This consolidation establishes the first deployable vertical slice of the MVP:
 - an SSRF-aware HTTP runtime with bounded response bodies;
 - structured failures, trace IDs, and per-invocation usage;
 - OpenAPI and database contracts for the broader MVP;
-- a standalone frontend implementation specification.
+- a standalone frontend implementation specification;
+- an operator dashboard in `frontend/` implementing that specification against
+  this foundation, generated from `api/openapi.yaml`.
 
 Browser sessions, persistent PostgreSQL and JetStream adapters, extraction
-breadth, profiles, proxies, and the operator dashboard remain explicit later
-milestones. Interfaces and contracts are kept stable so those adapters can
+breadth, profiles, and proxies remain explicit later milestones. The dashboard's
+session, proxy, agent, and settings routes name the contracts they still need
+rather than rendering placeholder data. Interfaces and contracts are kept stable
+so those adapters can
 replace the in-process development implementations without changing the public
 API. The all-in-one binary reports job durability as `process_local`; restarts
 discard its jobs and asynchronous routes remain disabled unless
@@ -49,6 +53,20 @@ curl -H "Authorization: Bearer neu_live_local.development-only-change-me" \
 
 Never use the example key outside local development.
 
+### Control plane and dashboard together
+
+Requirements: Go 1.25 or newer, Node 20.9 or newer.
+
+```sh
+make dev
+```
+
+This builds and starts the control plane on `:8080`, waits for `/healthz`, then
+starts the dashboard on `:3000` and prints the API key to paste into its
+connection screen. Ctrl-C stops both. The dashboard proxies same-origin to the
+control plane, because the server ships no CORS middleware — see
+`frontend/README.md`.
+
 ## User application delivery
 
 Neurun does not clone or build application source inside the control plane.
@@ -68,6 +86,7 @@ user application.
 api/                 OpenAPI contract
 cmd/neurun/          all-in-one development process
 contracts/           function and event schemas
+frontend/            operator dashboard (Next.js, generated OpenAPI client)
 internal/api/        HTTP transport and authentication
 internal/agent/      leased work execution and capacity
 internal/function/   manifests, registry, schemas, invocation
