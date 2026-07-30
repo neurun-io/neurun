@@ -21,16 +21,25 @@ rendering mock data.
 
 ## Running it
 
+From the repository root, `make dev` starts the control plane and this dashboard
+together. To run the dashboard alone:
+
 ```bash
 npm install
 cp .env.example .env.local     # point NEURUN_API_BASE_URL at your control plane
 npm run dev                    # http://localhost:3000
 ```
 
-Connect with a control-plane base URL and an API key
-(`neu_<environment>_<prefix>.<secret>`). Verification calls `GET /v1/functions`,
-not `/version`, because `/version` is unauthenticated and would accept a key the
-server will later reject.
+Sign in with an operator username and password. Create an account first, from the
+repository root:
+
+```bash
+scripts/create-operator.sh admin admin
+```
+
+Passwords are at least 12 characters. Roles are `admin` (all scopes), `operator`
+(read plus submit and cancel), and `viewer` (read only) — a viewer cannot start
+or cancel execution, enforced server-side by scope.
 
 ### Scripts
 
@@ -51,28 +60,31 @@ in `lib/view/`.
 
 ```
 app/
-  (dashboard)/        routes behind the connection gate, with a segment error boundary
-  api/proxy/[...path] same-origin BFF — the only thing that talks to the control plane
-  api/connection-info which upstreams this deployment will forward to
+  (dashboard)/        routes behind the sign-in gate, with a segment error boundary
+  api/proxy/[...path] same-origin proxy — the only thing that talks to the control plane
 lib/
   api/                generated types, the single client, zod boundaries, query hooks
-  connection/         connection state (in-memory key) and observed capabilities
+  session/            operator session state and observed server capabilities
   view/               status legend, time, units, redaction, schema-driven forms
-  storage/            useSyncExternalStore-backed Web Storage
+  storage/            useSyncExternalStore-backed Web Storage (display prefs only)
 components/
+  auth/               login screen
   ui/                 shadcn primitives, aligned to the design system
   neurun/             the evidence language: Panel, StatusBadge, StateFlow, CopyId,
                       KeyValue, JsonView, EventTimeline, Timestamp
-  shell/              top nav, side nav, durability banner, connection gate
+  shell/              top nav, side nav, durability banner, sign-in gate
 ```
 
 ### Why the proxy exists
 
 The control plane ships no CORS or `OPTIONS` middleware and serves no frontend
 assets, so a browser cannot call `/v1` cross-origin. Every request goes to
-`/api/proxy/*` on this origin, which forwards it. The proxy holds an allowlist
-(`NEURUN_API_BASE_URL` plus `NEURUN_ALLOWED_BASE_URLS`); without one it would be
-an open relay for arbitrary outbound requests.
+`/api/proxy/*` on this origin, which forwards it, including the session cookie in
+both directions.
+
+The upstream target comes only from `NEURUN_API_BASE_URL` on the server. The
+browser cannot choose it, which is what stops the handler being an open relay for
+arbitrary outbound requests.
 
 ### Design system
 
@@ -92,19 +104,24 @@ inherit the system rather than fighting it.
 
 ## Behaviour worth knowing
 
-- **The API key is held in memory.** "Remember for this browser session" opts
-  into `sessionStorage`. Never `localStorage`, IndexedDB, service-worker caches,
-  URLs, or error breadcrumbs.
-- **Query keys are partitioned by connection** (base URL + the non-secret key
-  prefix), and the cache is cleared on connect and disconnect, so evidence
-  cannot bleed across projects.
+- **The browser holds no readable credential.** Authentication is an `HttpOnly`,
+  `Secure`, `SameSite=Strict` session cookie issued by `POST /v1/auth/login`.
+  There is no API key in any client module, and nothing is written to
+  `sessionStorage`, `localStorage`, IndexedDB, a URL, or an error breadcrumb.
+- **Query keys are partitioned by session** (project + operator ID), and the
+  cache is cleared on sign-out, so evidence cannot bleed between operators.
+- **Sign-in failures are indistinguishable.** An unknown username, a wrong
+  password and a disabled account all return the same `invalid_credentials`
+  response, and the server spends comparable time on each so timing cannot be
+  used to enumerate accounts. Repeated failures are throttled with `429` plus
+  `Retry-After`.
 - **Unknown enum values render.** A status this build does not recognise appears
   as a neutral badge carrying its raw value. It is never mapped onto success and
   never crashes a route.
 - **Polling, not streaming.** The current contract exposes no SSE endpoint.
   Non-terminal jobs, attempts and events poll every 2s and stop on a terminal
   state; polling pauses while the document is hidden.
-- **Durability is tracked per connection.** `AcceptedJob.durability` and the
+- **Durability is tracked per session.** `AcceptedJob.durability` and the
   `Neurun-Job-Durability` header are recorded on every accepted async mutation.
   `process_local` raises a standing banner. The Job schema does not repeat
   durability on list or detail responses, so no per-job guarantee is invented.
@@ -130,7 +147,8 @@ accepted response carries a `queued` snapshot while the event stream holds both
 `job.accepted` and `job.queued` in sequence order — `accepted` is normally never
 observable as a polled state, and that asymmetry has to survive.
 
-Covered: bearer auth and stop-on-401, error envelope and request-ID display,
+Covered: sign-in success and failure, session probe and stop-on-401, the client
+assembling no credential of its own, error envelope and request-ID display,
 cursor pagination including the empty-string terminator, durability body/header,
 `durable_backend_unavailable` gating, idempotency-key reuse, unknown enums and
 partial payloads, status and failure rendering, time/unit/nanosecond handling,
@@ -147,14 +165,24 @@ manual job retry, sessions and their event stream, proxies, agents, artifacts,
 projects, API keys, identities, profiles, webhooks, audit, and cross-resource
 search.
 
-## Production auth — release blocker
+## Authentication
 
-The API key currently originates in the browser and rides the `Authorization`
-header through the proxy. The proxy solves CORS; it is **not** an auth boundary.
-Before a production browser dashboard ships, the backend must add either:
+Spec §4 listed the API key in the browser as a production release blocker, and
+required either an exchange endpoint issuing a short-lived `HttpOnly` operator
+session, or a BFF holding the key server-side. **The first option now exists**:
+the control plane has real operator accounts and `POST /v1/auth/login` issues the
+session. No API key reaches the browser, so that blocker is closed.
 
-1. an API-key exchange endpoint issuing a short-lived `HttpOnly`, `Secure`,
-   `SameSite=Strict` operator session; or
-2. a same-origin BFF that stores the API key server-side.
+Two honest limits remain:
 
-Treat that as a release blocker, not a frontend workaround.
+- **Sessions are process-local.** Accounts come from `NEURUN_OPERATOR_ACCOUNTS`
+  and sessions live in the server's memory, so a restart signs everyone out.
+  `migrations/000001_core.sql` defines the durable `operators` and
+  `operator_sessions` tables for when the PostgreSQL adapter lands.
+- **Passwords are PBKDF2-HMAC-SHA256**, not Argon2id, to keep the Go module free
+  of third-party dependencies. The iteration count is OWASP's current floor and
+  the encoded hash is self-describing, so raising the cost later does not
+  invalidate existing accounts.
+
+A bearer API key is still accepted on every `/v1` route for scripts and CI. When
+both a header and a cookie are present, the header wins.

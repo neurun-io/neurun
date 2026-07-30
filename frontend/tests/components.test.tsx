@@ -7,7 +7,7 @@ import { EventTimeline } from "@/components/neurun/event-timeline";
 import { StateFlow } from "@/components/neurun/state-flow";
 import { RoadmapRoute } from "@/components/neurun/feedback";
 import { NeurunApiError } from "@/lib/api/errors";
-import { useCapability } from "@/lib/connection/capability";
+import { useCapability } from "@/lib/session/capability";
 import { useCursorPages } from "@/lib/view/use-cursor-pages";
 import { ROADMAP } from "@/lib/roadmap";
 import { Providers } from "./utils";

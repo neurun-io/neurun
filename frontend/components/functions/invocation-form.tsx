@@ -22,7 +22,7 @@ import { Callout } from "@/components/neurun/feedback";
 import { InlineError } from "@/components/neurun/error-panel";
 import { InvocationResult } from "./invocation-result";
 import { useInvokeFunctionMutation } from "@/lib/api/queries";
-import { useCapability } from "@/lib/connection/capability";
+import { useCapability } from "@/lib/session/capability";
 import {
   acceptsAsyncExecution,
   requiresFetchEndpointForSync,

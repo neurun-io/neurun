@@ -16,6 +16,8 @@ func TestCoreMigrationIsEmbedded(t *testing.T) {
 
 	required := []string{
 		"CREATE TABLE projects",
+		"CREATE TABLE operators",
+		"CREATE TABLE operator_sessions",
 		"CREATE TABLE jobs",
 		"CREATE TABLE job_attempts",
 		"CREATE TABLE function_versions",

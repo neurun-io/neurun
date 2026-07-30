@@ -20,6 +20,25 @@ import { NeurunContractError } from "./errors";
 const timestamp = z.string();
 const openRecord = z.looseObject({});
 
+/**
+ * The signed-in operator. `role` stays an open string for the same reason every
+ * other enum does: a server that learns a new role must not break the shell.
+ */
+export const operatorSchema = z.looseObject({
+  operator_id: z.string(),
+  username: z.string(),
+  role: z.string(),
+  project_id: z.string(),
+  scopes: z.array(z.string()),
+  session_id: z.string(),
+  expires_at: timestamp,
+});
+
+export const operatorEnvelopeSchema = z.looseObject({
+  operator: operatorSchema,
+  request_id: z.string().optional(),
+});
+
 export const functionRefSchema = z.looseObject({
   name: z.string(),
   version: z.string(),

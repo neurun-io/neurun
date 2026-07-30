@@ -37,6 +37,59 @@ CREATE TABLE api_keys (
     CONSTRAINT api_keys_hash_nonempty CHECK (octet_length(key_hash) >= 32)
 );
 
+-- Human logins for the operator dashboard. Distinct from api_keys, which
+-- authenticate a program: an operator is a person, carries a role rather than an
+-- explicit scope list, and signs in with a password.
+CREATE TABLE operators (
+    id              text PRIMARY KEY,
+    organization_id text NOT NULL REFERENCES organizations(id),
+    username        text NOT NULL,
+    role            text NOT NULL,
+    -- Encoded PBKDF2-HMAC-SHA256 hash, self-describing so the iteration count
+    -- can be raised without invalidating existing rows.
+    password_hash   text NOT NULL,
+    disabled_at     timestamptz,
+    last_login_at   timestamptz,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_at      timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (organization_id, username),
+    CONSTRAINT operators_username_normalized
+        CHECK (username = lower(btrim(username)) AND length(username) > 0),
+    CONSTRAINT operators_role_known
+        CHECK (role IN ('admin', 'operator', 'viewer')),
+    CONSTRAINT operators_password_hash_encoded
+        CHECK (password_hash LIKE 'pbkdf2-sha256$%')
+);
+
+-- Issued operator sign-ins. Named operator_sessions to keep it clearly separate
+-- from `sessions`, which holds browser sessions for scraping work.
+--
+-- Only the SHA-256 digest of the token is stored, so a dump of this table cannot
+-- be replayed as a live cookie.
+CREATE TABLE operator_sessions (
+    id              text PRIMARY KEY,
+    operator_id     text NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+    project_id      text REFERENCES projects(id),
+    token_hash      bytea NOT NULL,
+    user_agent      text,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    expires_at      timestamptz NOT NULL,
+    revoked_at      timestamptz,
+    UNIQUE (token_hash),
+    CONSTRAINT operator_sessions_token_hash_length
+        CHECK (octet_length(token_hash) = 32),
+    CONSTRAINT operator_sessions_expiry_after_creation
+        CHECK (expires_at > created_at)
+);
+
+CREATE INDEX operator_sessions_operator_expiry
+    ON operator_sessions(operator_id, expires_at DESC);
+
+-- Supports pruning expired sessions without scanning revoked ones.
+CREATE INDEX operator_sessions_live_expiry
+    ON operator_sessions(expires_at)
+    WHERE revoked_at IS NULL;
+
 CREATE TABLE function_definitions (
     name            text PRIMARY KEY,
     category        text NOT NULL,

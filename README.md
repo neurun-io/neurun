@@ -23,10 +23,9 @@ This consolidation establishes the first deployable vertical slice of the MVP:
 Browser sessions, persistent PostgreSQL and JetStream adapters, extraction
 breadth, profiles, and proxies remain explicit later milestones. The dashboard's
 session, proxy, agent, and settings routes name the contracts they still need
-rather than rendering placeholder data. Interfaces and contracts are kept stable
-so those adapters can
-replace the in-process development implementations without changing the public
-API. The all-in-one binary reports job durability as `process_local`; restarts
+rather than rendering placeholder data. Interfaces and contracts are kept
+stable so those adapters can replace the in-process development implementations
+without changing the public API. The all-in-one binary reports job durability as `process_local`; restarts
 discard its jobs and asynchronous routes remain disabled unless
 `NEURUN_ALLOW_VOLATILE_JOBS=true`.
 
@@ -44,11 +43,11 @@ To run the development binary directly, export at least
 `NEURUN_API_KEY=neu_live_local.development-only-change-me` and
 `NEURUN_ALLOW_VOLATILE_JOBS=true` before `go run ./cmd/neurun`.
 
-The server listens on `:8080` by default. Use the development key:
+The server listens on `:1267` by default. Use the development key:
 
 ```sh
 curl -H "Authorization: Bearer neu_live_local.development-only-change-me" \
-  http://localhost:8080/v1/functions
+  http://localhost:1267/v1/functions
 ```
 
 Never use the example key outside local development.
@@ -61,11 +60,22 @@ Requirements: Go 1.25 or newer, Node 20.9 or newer.
 make dev
 ```
 
-This builds and starts the control plane on `:8080`, waits for `/healthz`, then
-starts the dashboard on `:3000` and prints the API key to paste into its
-connection screen. Ctrl-C stops both. The dashboard proxies same-origin to the
-control plane, because the server ships no CORS middleware — see
-`frontend/README.md`.
+This builds and starts the control plane on `:1267`, waits for `/healthz`, then
+starts the dashboard on `:3000`. Ctrl-C stops both. The dashboard proxies
+same-origin to the control plane, because the server ships no CORS middleware —
+see `frontend/README.md`.
+
+Sign in with an operator account. Create one first:
+
+```sh
+scripts/create-operator.sh admin admin
+```
+
+It prompts for a password (minimum 12 characters), hashes it, and writes only
+the hash to `NEURUN_OPERATOR_ACCOUNTS` in `.env`. Roles are `admin` (all
+scopes), `operator` (read plus submit and cancel), and `viewer` (read only).
+Without an account the dashboard says sign-in is unconfigured rather than
+showing a form that cannot succeed; API-key access is unaffected.
 
 ## User application delivery
 
@@ -118,7 +128,10 @@ See [MIGRATION.md](MIGRATION.md) for the exact boundary.
 
 Neurun runs against untrusted websites. Private-network egress is blocked by
 default, response bodies are bounded, secrets are not accepted in URLs, API
-keys are compared by hash, and project-supplied native plugins are not loaded.
+keys are compared by hash, operator passwords are stored only as PBKDF2 hashes
+with throttled sign-in, session tokens are stored only as digests behind
+HttpOnly/Secure/SameSite=Strict cookies, and project-supplied native plugins are
+not loaded.
 These controls are foundations, not a substitute for host network policy,
 container isolation, cgroups, secret management, and the release hardening
 called for by the MVP specification.

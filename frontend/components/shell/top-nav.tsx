@@ -19,12 +19,12 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Wordmark } from "@/components/neurun/logo";
 import { useVersionQuery } from "@/lib/api/queries";
-import { apiKeyIdentity, useConnection } from "@/lib/connection/store";
+import { useSession } from "@/lib/session/store";
 import { usePreferences } from "@/lib/preferences/store";
 import { routeForIdentifier } from "@/lib/navigation";
 
 export function TopNav() {
-  const { connection, disconnect } = useConnection();
+  const { operator, logout } = useSession();
   const { timeZone, toggleTimeZone } = usePreferences();
   const { resolvedTheme, setTheme } = useTheme();
   const version = useVersionQuery();
@@ -98,29 +98,28 @@ export function TopNav() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-1.5 font-mono text-micro">
-              {connection ? apiKeyIdentity(connection.apiKey) : "not connected"}
+              {operator?.username ?? "signed out"}
               <ChevronDown aria-hidden className="size-3" strokeWidth={1.5} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72">
-            <DropdownMenuLabel className="font-mono text-micro font-normal text-fg-muted">
-              {connection?.baseUrl}
+            <DropdownMenuLabel className="font-normal">
+              <span className="block font-mono text-caption text-fg">{operator?.username}</span>
+              <span className="block font-mono text-micro text-fg-muted">
+                {operator?.role} · {operator?.project_id}
+              </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <div className="px-2 py-1.5 text-caption text-fg-muted">
-              The API key determines the authenticated project. Project discovery and switching
-              require the future operator-session and project APIs.
+              Scopes: <span className="font-mono">{operator?.scopes.join(" ")}</span>
+            </div>
+            <div className="px-2 pb-1.5 text-caption text-fg-muted">
+              The session determines the project. Project switching requires the future project API.
             </div>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <a href="/api/proxy/version" target="_blank" rel="noreferrer">
-                Control-plane version
-              </a>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={disconnect}>
+            <DropdownMenuItem onSelect={() => void logout()}>
               <LogOut aria-hidden className="size-3.5" strokeWidth={1.5} />
-              Disconnect
+              Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

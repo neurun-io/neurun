@@ -15,11 +15,11 @@
  *    means asynchronous mutations are off. Synchronous execution is unaffected
  *    and must stay available.
  *
- * Both reset when the connection changes. A future `GET /version` carrying
+ * Both reset when the session changes. A future `GET /version` carrying
  * `async_jobs_enabled` and `job_durability` should replace this inference.
  */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { connectionScope, useConnection } from "./store";
+import { sessionScope, useSession } from "@/lib/session/store";
 
 export type AsyncAvailability = "unknown" | "available" | "unavailable";
 
@@ -38,8 +38,8 @@ interface CapabilityContextValue {
 const CapabilityContext = createContext<CapabilityContextValue | null>(null);
 
 export function CapabilityProvider({ children }: { children: ReactNode }) {
-  const { connection } = useConnection();
-  const scope = connectionScope(connection);
+  const { operator } = useSession();
+  const scope = sessionScope(operator);
 
   const [observed, setObserved] = useState<{
     scope: string;
@@ -47,7 +47,7 @@ export function CapabilityProvider({ children }: { children: ReactNode }) {
     asyncAvailability: AsyncAvailability;
   }>({ scope, durability: null, asyncAvailability: "unknown" });
 
-  // What was true of one control plane says nothing about the next. Adjusting
+  // What was true for one session says nothing about the next. Adjusting
   // during render rather than in an effect means no frame ever shows the
   // previous connection's durability against the new one.
   if (observed.scope !== scope) {

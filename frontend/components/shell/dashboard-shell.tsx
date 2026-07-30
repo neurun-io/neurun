@@ -6,31 +6,42 @@ import { Loader2 } from "lucide-react";
 import { TopNav } from "./top-nav";
 import { SideNav } from "./side-nav";
 import { Banner } from "@/components/neurun/feedback";
-import { ConnectionScreen } from "@/components/connection/connection-screen";
-import { useConnection } from "@/lib/connection/store";
-import { useCapability } from "@/lib/connection/capability";
+import { ErrorPanel } from "@/components/neurun/error-panel";
+import { LoginScreen } from "@/components/auth/login-screen";
+import { useSession } from "@/lib/session/store";
+import { useCapability } from "@/lib/session/capability";
 
 /**
- * The dashboard shell, and the gate in front of it.
+ * The dashboard shell, and the sign-in gate in front of it.
  *
  * Gating happens here rather than through a redirect so that a deep link —
- * `/jobs/job_01HXQ…` pasted into a chat — survives connecting. The operator
- * lands on the connection screen and, once the key is verified, is already
- * looking at the job they were sent.
+ * `/jobs/job_01HXQ…` pasted into a chat — survives signing in. The operator
+ * lands on the login screen and, once authenticated, is already looking at the
+ * job they were sent.
  */
 export function DashboardShell({ children }: { children: ReactNode }) {
-  const { connection, hydrated } = useConnection();
+  const { status, error } = useSession();
 
-  if (!hydrated) {
+  if (status === "loading") {
     return (
       <div className="flex min-h-dvh items-center justify-center" role="status">
         <Loader2 aria-hidden className="size-4 animate-spin text-fg-muted" strokeWidth={1.5} />
-        <span className="sr-only">Restoring session</span>
+        <span className="sr-only">Checking your session</span>
       </div>
     );
   }
 
-  if (!connection) return <ConnectionScreen />;
+  // The session probe itself failed — usually the control plane being
+  // unreachable. Say so rather than showing a login form that cannot work.
+  if (status === "anonymous" && error) {
+    return (
+      <main id="main" className="mx-auto w-full max-w-2xl px-6 py-10">
+        <ErrorPanel error={error} title="Could not reach the control plane" />
+      </main>
+    );
+  }
+
+  if (status !== "authenticated") return <LoginScreen />;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -49,10 +60,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 /**
  * The process-local warning.
  *
- * Shown for the whole connection once the server has reported `process_local`
- * on an accepted job, because the Job schema does not repeat durability on list
- * or detail responses — there is no per-job guarantee to render, only a
- * property of the backend this dashboard is talking to.
+ * Shown for the whole session once the server has reported `process_local` on an
+ * accepted job, because the Job schema does not repeat durability on list or
+ * detail responses — there is no per-job guarantee to render, only a property of
+ * the backend this dashboard is talking to.
  */
 function DurabilityBanner() {
   const { isProcessLocal, asyncAvailability } = useCapability();

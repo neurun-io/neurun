@@ -6,8 +6,8 @@ import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { createQueryClient } from "@/lib/api/query-client";
-import { ConnectionProvider } from "@/lib/connection/store";
-import { CapabilityProvider } from "@/lib/connection/capability";
+import { SessionProvider } from "@/lib/session/store";
+import { CapabilityProvider } from "@/lib/session/capability";
 import { PreferencesProvider } from "@/lib/preferences/store";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -26,7 +26,7 @@ export function Providers({ children }: { children: ReactNode }) {
       disableTransitionOnChange
     >
       <QueryClientProvider client={queryClient}>
-        <ConnectionProvider>
+        <SessionProvider>
           <CapabilityProvider>
             <PreferencesProvider>
               <TooltipProvider delayDuration={200}>
@@ -35,7 +35,7 @@ export function Providers({ children }: { children: ReactNode }) {
               </TooltipProvider>
             </PreferencesProvider>
           </CapabilityProvider>
-        </ConnectionProvider>
+        </SessionProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

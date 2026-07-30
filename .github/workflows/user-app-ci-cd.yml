@@ -354,8 +354,8 @@ jobs:
               --name "$container_name" \
               --cap-drop ALL \
               --security-opt no-new-privileges \
-              --publish 127.0.0.1:18080:8080 \
-              --env NEURUN_HTTP_ADDR=:8080 \
+              --publish 127.0.0.1:18080:1267 \
+              --env NEURUN_HTTP_ADDR=:1267 \
               --env NEURUN_PUBLIC_URL=http://127.0.0.1:18080 \
               --env NEURUN_API_KEY="$local_key" \
               --env NEURUN_DEFAULT_PROJECT_ID=prj_ci \

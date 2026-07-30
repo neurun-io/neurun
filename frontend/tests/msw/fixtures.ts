@@ -188,8 +188,22 @@ export const durableBackendUnavailable = {
   request_id: "req_01HXQ8F2UNAVAIL",
 };
 
+export const invalidCredentials = {
+  error: { code: "invalid_credentials", message: "invalid username or password" },
+  request_id: "req_01HXQ8F2BADLOGIN",
+};
+
+export const signInUnavailable = {
+  error: {
+    code: "operator_signin_unavailable",
+    message:
+      "no operator accounts are configured; set NEURUN_OPERATOR_ACCOUNTS to enable username and password sign-in",
+  },
+  request_id: "req_01HXQ8F2NOACCOUNTS",
+};
+
 export const unauthorized = {
-  error: { code: "unauthorized", message: "401 unauthorized — key rejected for this project" },
+  error: { code: "unauthorized", message: "your session expired; sign in again" },
   request_id: "req_01HXQ8F2UNAUTH",
 };
 

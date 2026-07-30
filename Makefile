@@ -1,24 +1,29 @@
 .PHONY: all build test vet fmt check check-all run dev clean \
 	web-install web-build web-test web-check
 
+# The Go package set is listed explicitly rather than using ./..., because
+# frontend/node_modules contains vendored Go files (npm's `flatted` ships one)
+# that ./... would otherwise pick up and try to vet, test and cover.
+GO_PACKAGES = ./cmd/... ./internal/... ./migrations/...
+
 all: check build
 
 build:
 	go build -trimpath -o bin/neurun ./cmd/neurun
 
 test:
-	go test ./...
+	go test $(GO_PACKAGES)
 
 vet:
-	go vet ./...
+	go vet $(GO_PACKAGES)
 
 fmt:
 	gofmt -w $$(find cmd internal -name '*.go' -type f)
 
 check:
-	test -z "$$(gofmt -l cmd internal)"
-	go vet ./...
-	go test -race ./...
+	test -z "$$(gofmt -l cmd internal migrations)"
+	go vet $(GO_PACKAGES)
+	go test -race $(GO_PACKAGES)
 
 run:
 	go run ./cmd/neurun
@@ -26,7 +31,7 @@ run:
 # Control plane plus the operator dashboard, with the dashboard proxying
 # same-origin to the server. Ctrl-C stops both.
 dev:
-	./frontend/scripts/dev-stack.sh
+	./scripts/dev-stack.sh
 
 clean:
 	go clean

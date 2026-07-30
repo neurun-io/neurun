@@ -17,6 +17,9 @@ export type Ready = Schemas["Ready"];
 export type Version = Schemas["Version"];
 
 export type Problem = Schemas["Problem"];
+export type Operator = Schemas["Operator"];
+export type OperatorRole = Schemas["OperatorRole"];
+export type OperatorLoginRequest = Schemas["OperatorLoginRequest"];
 export type ErrorEnvelope = Schemas["ErrorEnvelope"];
 
 export type FunctionRef = Schemas["FunctionRef"];

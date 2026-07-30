@@ -21,7 +21,7 @@ import { Callout } from "@/components/neurun/feedback";
 import { InlineError } from "@/components/neurun/error-panel";
 import { InvocationResult } from "@/components/functions/invocation-result";
 import { useFetchMutation } from "@/lib/api/queries";
-import { useCapability } from "@/lib/connection/capability";
+import { useCapability } from "@/lib/session/capability";
 import type { FetchRequest } from "@/lib/api/types";
 
 /**

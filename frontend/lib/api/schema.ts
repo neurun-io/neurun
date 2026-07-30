@@ -55,6 +55,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a username and password for an operator session
+         * @description Issues a session cookie for a configured operator account. The response
+         *     never contains the session token itself, and it never contains an API
+         *     key.
+         *
+         *     An unknown username, a wrong password, and a disabled account all return
+         *     the same `invalid_credentials` response, so the endpoint cannot be used
+         *     to enumerate accounts. Repeated failures for one username are throttled
+         *     with an increasing delay and answered with `429` plus `Retry-After`.
+         */
+        post: operations["operatorLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke the current operator session
+         * @description Deletes the session server-side and clears the cookie. Intentionally
+         *     idempotent and always `204`: signing out must not reveal whether a
+         *     session existed.
+         */
+        post: operations["operatorLogout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Describe the signed-in operator
+         * @description Returns the current operator, their role and the scopes it grants. A
+         *     missing, expired or unknown session returns `401` and clears the cookie.
+         */
+        get: operations["getOperatorSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/functions": {
         parameters: {
             query?: never;
@@ -368,6 +438,49 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["Problem"];
             request_id?: string;
+        };
+        /**
+         * @description `admin` carries every scope. `operator` can read evidence and submit or
+         *     cancel work. `viewer` can read only — it omits `functions:invoke` and
+         *     `jobs:write`, so a read-only operator cannot start or stop execution.
+         * @enum {string}
+         */
+        OperatorRole: "admin" | "operator" | "viewer";
+        OperatorLoginRequest: {
+            /** @description Compared case-insensitively. */
+            username: string;
+            /** Format: password */
+            password: string;
+        };
+        /**
+         * @description The safe projection of a signed-in operator. Carries no session token and
+         *     no password material.
+         */
+        Operator: {
+            operator_id: string;
+            username: string;
+            role: components["schemas"]["OperatorRole"];
+            /**
+             * @description The project this session acts within. The current foundation is
+             *     single-project; per-operator project scoping arrives with the
+             *     project API.
+             */
+            project_id: string;
+            /** @description Scopes granted by the role. */
+            scopes: string[];
+            session_id: string;
+            /**
+             * Format: date-time
+             * @description Absolute expiry. Sessions are not extended by activity.
+             */
+            expires_at: string;
+        };
+        OperatorLoginResponse: {
+            operator: components["schemas"]["Operator"];
+            request_id?: string;
+        };
+        OperatorSessionResponse: {
+            operator: components["schemas"]["Operator"];
         };
         FunctionRef: {
             name: string;
@@ -700,7 +813,42 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description The API key lacks the required scope or project access. */
+        /**
+         * @description The username and password did not match. Returned identically for an
+         *     unknown username, a wrong password, and a disabled account.
+         */
+        InvalidCredentials: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+        /** @description Too many failed sign-in attempts for this username. */
+        TooManyAttempts: {
+            headers: {
+                /** @description Seconds to wait before attempting again. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+        /**
+         * @description No operator accounts are configured, so username and password sign-in is
+         *     unavailable. API-key access is unaffected.
+         */
+        OperatorSignInUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+        /** @description The credential lacks the required scope or project access. */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -884,6 +1032,84 @@ export interface operations {
                     "application/json": components["schemas"]["Version"];
                 };
             };
+        };
+    };
+    operatorLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperatorLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Sign-in succeeded and a session cookie was set. */
+            200: {
+                headers: {
+                    /**
+                     * @description `neurun_operator_session=<token>; Path=/; HttpOnly; Secure;
+                     *     SameSite=Strict`.
+                     */
+                    "Set-Cookie"?: string;
+                    "Request-ID": components["headers"]["RequestID"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorLoginResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["InvalidCredentials"];
+            413: components["responses"]["RequestTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            429: components["responses"]["TooManyAttempts"];
+            503: components["responses"]["OperatorSignInUnavailable"];
+        };
+    };
+    operatorLogout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session is revoked and the cookie cleared. */
+            204: {
+                headers: {
+                    /** @description An expired `neurun_operator_session` cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getOperatorSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session is live. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorSessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            503: components["responses"]["OperatorSignInUnavailable"];
         };
     };
     listFunctions: {

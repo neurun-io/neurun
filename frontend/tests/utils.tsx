@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ConnectionProvider } from "@/lib/connection/store";
-import { CapabilityProvider } from "@/lib/connection/capability";
+import { SessionProvider } from "@/lib/session/store";
+import { CapabilityProvider } from "@/lib/session/capability";
 import { PreferencesProvider } from "@/lib/preferences/store";
 
 export function createTestQueryClient() {
@@ -24,13 +24,13 @@ export function Providers({
 }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <ConnectionProvider>
+      <SessionProvider>
         <CapabilityProvider>
           <PreferencesProvider>
             <TooltipProvider>{children}</TooltipProvider>
           </PreferencesProvider>
         </CapabilityProvider>
-      </ConnectionProvider>
+      </SessionProvider>
     </QueryClientProvider>
   );
 }

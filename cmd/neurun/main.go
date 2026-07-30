@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -26,6 +28,7 @@ import (
 	"github.com/dagflows/neurun-io/internal/ids"
 	"github.com/dagflows/neurun-io/internal/job"
 	"github.com/dagflows/neurun-io/internal/netpolicy"
+	"github.com/dagflows/neurun-io/internal/operator"
 	"github.com/dagflows/neurun-io/internal/queue"
 )
 
@@ -39,6 +42,13 @@ func main() {
 }
 
 func run() error {
+	// hash-password is handled before config.Load: it is the tool that produces
+	// NEURUN_OPERATOR_ACCOUNTS, so requiring a complete server environment first
+	// would be a chicken-and-egg trap.
+	if len(os.Args) > 1 && os.Args[1] == "hash-password" {
+		return hashPassword(os.Args[2:])
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -51,7 +61,10 @@ func run() error {
 			return json.NewEncoder(os.Stdout).Encode(buildinfo.Current())
 		case "serve":
 		default:
-			return fmt.Errorf("unknown command %q (expected serve, doctor, or version)", os.Args[1])
+			return fmt.Errorf(
+				"unknown command %q (expected serve, doctor, version, or hash-password)",
+				os.Args[1],
+			)
 		}
 	}
 
@@ -141,15 +154,22 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure API authentication: %w", err)
 	}
+	operators, err := operatorAuthenticator(cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	controlAPI, err := api.NewServer(api.ServerOptions{
-		Authenticator:    authenticator,
-		Registry:         registry,
-		Invocations:      invocations,
-		Jobs:             jobs,
-		BundleVersion:    function.BuiltinBundleVersion,
-		MaximumBodyBytes: cfg.MaxRequestBodyBytes,
-		JobDurability:    api.JobDurabilityProcessLocal,
-		AllowAsyncJobs:   cfg.AllowVolatileJobs,
+		Authenticator:        authenticator,
+		Registry:             registry,
+		Invocations:          invocations,
+		Jobs:                 jobs,
+		BundleVersion:        function.BuiltinBundleVersion,
+		MaximumBodyBytes:     cfg.MaxRequestBodyBytes,
+		JobDurability:        api.JobDurabilityProcessLocal,
+		AllowAsyncJobs:       cfg.AllowVolatileJobs,
+		Operators:            operators,
+		OperatorCookieSecure: cfg.OperatorCookieSecure,
 	})
 	if err != nil {
 		return fmt.Errorf("configure control API: %w", err)
@@ -182,7 +202,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}()
 	go func() {
 		defer background.Done()
-		runMaintenance(runtimeCtx, jobs, dispatcher, logger)
+		runMaintenance(runtimeCtx, jobs, dispatcher, operators, logger)
 	}()
 
 	go func() {
@@ -221,6 +241,52 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	return errors.Join(serveErr, shutdownErr)
 }
 
+// hashPassword reads a password from standard input and prints its encoded hash,
+// ready to paste into NEURUN_OPERATOR_ACCOUNTS.
+//
+// The password is read from stdin rather than an argument so it never lands in
+// shell history or a process listing:
+//
+//	printf '%s' 'correct horse battery staple' | neurun hash-password
+func hashPassword(args []string) error {
+	if len(args) > 0 {
+		return errors.New(
+			"hash-password takes no arguments; pipe the password on standard input " +
+				"so it stays out of shell history",
+		)
+	}
+
+	if info, err := os.Stdin.Stat(); err == nil && info.Mode()&os.ModeCharDevice != 0 {
+		fmt.Fprintln(os.Stderr,
+			"Enter the operator password, then press Enter. Input is NOT hidden — "+
+				"pipe it on stdin instead if that matters here.")
+	}
+
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("read password: %w", err)
+	}
+	password := strings.TrimRight(line, "\r\n")
+
+	if err := operator.ValidatePassword(password); err != nil {
+		return err
+	}
+	hash, err := operator.HashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	// Only the hash goes to stdout, so the command is pipeable.
+	fmt.Println(hash)
+	fmt.Fprintf(os.Stderr,
+		"\nAdd to NEURUN_OPERATOR_ACCOUNTS as username:role:hash, for example:\n"+
+			"  NEURUN_OPERATOR_ACCOUNTS='alice:admin:%s'\n"+
+			"Roles: admin (all scopes), operator (read + submit/cancel), viewer (read only).\n",
+		hash,
+	)
+	return nil
+}
+
 func doctor(cfg config.Config) error {
 	base, err := url.Parse(cfg.PublicURL)
 	if err != nil {
@@ -242,21 +308,86 @@ func doctor(cfg config.Config) error {
 	return nil
 }
 
+// operatorAuthenticator builds human sign-in from configuration.
+//
+// Returns nil when no accounts are configured, which leaves the /v1/auth
+// endpoints reporting that sign-in is unavailable while API-key access continues
+// to work. That is a deliberate configuration, not a failure.
+func operatorAuthenticator(
+	cfg config.Config,
+	logger *slog.Logger,
+) (*operator.Authenticator, error) {
+	if !cfg.OperatorSignInEnabled() {
+		logger.Warn("operator sign-in is disabled",
+			"reason", "NEURUN_OPERATOR_ACCOUNTS is empty",
+			"hint", "generate a hash with `neurun hash-password`",
+		)
+		return nil, nil
+	}
+
+	store, err := operator.NewMemoryStore(cfg.OperatorAccounts...)
+	if err != nil {
+		return nil, fmt.Errorf("configure operator accounts: %w", err)
+	}
+	authenticator, err := operator.NewAuthenticator(store, cfg.OperatorSessionTTL)
+	if err != nil {
+		return nil, fmt.Errorf("configure operator sign-in: %w", err)
+	}
+
+	for _, account := range store.Accounts() {
+		logger.Info("operator account configured",
+			"username", account.Username,
+			"role", account.Role,
+		)
+	}
+	logger.Info("operator sign-in enabled",
+		"accounts", len(cfg.OperatorAccounts),
+		"session_ttl", cfg.OperatorSessionTTL.String(),
+		"cookie_secure", cfg.OperatorCookieSecure,
+		// Sessions live in this process, so a restart signs everyone out.
+		"session_durability", "process_local",
+	)
+	return authenticator, nil
+}
+
 func runMaintenance(
 	ctx context.Context,
 	repository job.Repository,
 	dispatcher job.Dispatcher,
+	operators *operator.Authenticator,
 	logger *slog.Logger,
 ) {
 	ticker := time.NewTicker(maintenanceInterval)
 	defer ticker.Stop()
 	for {
 		maintain(ctx, repository, dispatcher, logger)
+		pruneOperatorSessions(ctx, operators, logger)
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+// pruneOperatorSessions drops expired sessions so the store does not grow
+// without bound. Expiry is already enforced on read, so this is hygiene rather
+// than an access control.
+func pruneOperatorSessions(
+	ctx context.Context,
+	operators *operator.Authenticator,
+	logger *slog.Logger,
+) {
+	if operators == nil {
+		return
+	}
+	removed, err := operators.PruneSessions(ctx)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		logger.Error("prune expired operator sessions", "error", err)
+		return
+	}
+	if removed > 0 {
+		logger.Debug("pruned expired operator sessions", "removed", removed)
 	}
 }
 

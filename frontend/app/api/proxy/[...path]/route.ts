@@ -1,26 +1,28 @@
 /**
- * Same-origin backend-for-frontend.
+ * Same-origin reverse proxy to the control plane.
  *
- * The control plane ships no CORS or `OPTIONS` middleware and serves no
- * frontend assets, so a browser dashboard cannot call `/v1` cross-origin. This
- * route handler is the same-origin reverse proxy the spec requires: the browser
- * talks only to this app's own origin, and this handler forwards to the
- * configured control plane.
+ * The control plane ships no CORS or `OPTIONS` middleware and serves no frontend
+ * assets, so a browser cannot call `/v1` cross-origin. Everything the dashboard
+ * does goes through here.
  *
- * What this is NOT: it is not the production auth boundary. The API key still
- * originates in the browser and rides the `Authorization` header through here.
- * Before a production browser dashboard ships, the backend must add either an
- * API-key exchange endpoint that issues a short-lived `HttpOnly`, `Secure`,
- * `SameSite=Strict` operator session, or a BFF that holds the key server-side.
- * That is a release blocker, not a frontend workaround.
+ * The upstream target comes only from server configuration. The browser cannot
+ * choose it, which is what stops this handler from being an open relay for
+ * arbitrary outbound requests.
+ *
+ * Authentication is the operator's `HttpOnly` session cookie, forwarded upstream
+ * and back. This handler injects no credential of its own: it holds no API key,
+ * so a request without a valid session simply gets the control plane's 401.
  */
 import { NextResponse, type NextRequest } from "next/server";
 
-const BASE_URL_HEADER = "x-neurun-base-url";
-const DEFAULT_BASE_URL = "http://localhost:8080";
+const DEFAULT_BASE_URL = "http://localhost:1267";
 
 /** Request headers worth forwarding upstream. Everything else is dropped. */
 const FORWARDED_REQUEST_HEADERS = [
+  // The session cookie. This is the whole authentication story.
+  "cookie",
+  // Still accepted so a script or curl session can use an API key against the
+  // same proxy; the browser dashboard never sets it.
   "authorization",
   "content-type",
   "accept",
@@ -47,65 +49,33 @@ function normalize(url: string): string {
   return url.trim().replace(/\/+$/, "");
 }
 
-/**
- * The set of control planes this deployment may forward to.
- *
- * Without an allowlist the handler would be an open proxy: any visitor could
- * make the server issue arbitrary outbound requests. `NEURUN_API_BASE_URL` is
- * the deployment's own control plane; `NEURUN_ALLOWED_BASE_URLS` adds others
- * for operators who point one dashboard at several environments.
- */
-function allowedBaseUrls(): string[] {
-  const configured = [
-    process.env.NEURUN_API_BASE_URL ?? DEFAULT_BASE_URL,
-    ...(process.env.NEURUN_ALLOWED_BASE_URLS ?? "")
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean),
-  ];
-  return Array.from(new Set(configured.map(normalize)));
+function baseUrl(): string {
+  return normalize(process.env.NEURUN_API_BASE_URL ?? DEFAULT_BASE_URL);
 }
 
 function errorResponse(status: number, code: string, message: string) {
   return NextResponse.json({ error: { code, message } }, { status });
 }
 
-function resolveTarget(request: NextRequest): { baseUrl: string } | { error: NextResponse } {
-  const requested = request.headers.get(BASE_URL_HEADER);
-  const allowed = allowedBaseUrls();
-
-  if (!requested) return { baseUrl: allowed[0] };
-
-  const candidate = normalize(requested);
-  if (!allowed.includes(candidate)) {
-    return {
-      error: errorResponse(
-        400,
-        "base_url_not_allowed",
-        `This dashboard is not configured to reach ${candidate}. Set NEURUN_API_BASE_URL, or add the origin to NEURUN_ALLOWED_BASE_URLS.`,
-      ),
-    };
-  }
+async function forward(request: NextRequest, segments: string[]): Promise<Response> {
+  const target = baseUrl();
 
   let parsed: URL;
   try {
-    parsed = new URL(candidate);
+    parsed = new URL(target);
   } catch {
-    return { error: errorResponse(400, "base_url_invalid", "Control-plane base URL is not a valid URL.") };
+    return errorResponse(
+      500,
+      "base_url_invalid",
+      "NEURUN_API_BASE_URL is not a valid URL.",
+    );
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return { error: errorResponse(400, "base_url_invalid", "Control-plane base URL must be http or https.") };
+    return errorResponse(500, "base_url_invalid", "NEURUN_API_BASE_URL must be http or https.");
   }
 
-  return { baseUrl: candidate };
-}
-
-async function forward(request: NextRequest, segments: string[]): Promise<Response> {
-  const target = resolveTarget(request);
-  if ("error" in target) return target.error;
-
   const search = request.nextUrl.search;
-  const upstreamUrl = `${target.baseUrl}/${segments.map(encodeURIComponent).join("/")}${search}`;
+  const upstreamUrl = `${target}/${segments.map(encodeURIComponent).join("/")}${search}`;
 
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
@@ -129,7 +99,7 @@ async function forward(request: NextRequest, segments: string[]): Promise<Respon
     return errorResponse(
       502,
       "control_plane_unreachable",
-      `Could not reach the control plane at ${target.baseUrl}.`,
+      `Could not reach the control plane at ${target}.`,
     );
   }
 
@@ -137,6 +107,11 @@ async function forward(request: NextRequest, segments: string[]): Promise<Respon
   for (const name of EXPOSED_RESPONSE_HEADERS) {
     const value = upstream.headers.get(name);
     if (value) responseHeaders.set(name, value);
+  }
+  // Set-Cookie must pass through verbatim and may appear more than once, so it
+  // is appended rather than set — this is how login and logout reach the browser.
+  for (const cookie of upstream.headers.getSetCookie()) {
+    responseHeaders.append("set-cookie", cookie);
   }
   responseHeaders.set("Cache-Control", "no-store");
 

@@ -15,6 +15,7 @@ import (
 	"github.com/dagflows/neurun-io/internal/buildinfo"
 	"github.com/dagflows/neurun-io/internal/function"
 	"github.com/dagflows/neurun-io/internal/job"
+	"github.com/dagflows/neurun-io/internal/operator"
 )
 
 const (
@@ -66,20 +67,31 @@ type ServerOptions struct {
 	MaximumBodyBytes int64
 	JobDurability    JobDurability
 	AllowAsyncJobs   bool
+
+	// Operators enables username/password sign-in. Nil leaves the /v1/auth
+	// endpoints reporting that operator sign-in is not configured, and API-key
+	// access continues to work unchanged.
+	Operators *operator.Authenticator
+	// OperatorCookieSecure sets Secure on the session cookie. Leave it true
+	// anywhere but a local plain-HTTP development server.
+	OperatorCookieSecure bool
 }
 
 // Server exposes the public health endpoints and authenticated v1 control
 // plane. It implements http.Handler directly.
 type Server struct {
-	registry         *function.Registry
-	invocations      InvocationService
-	jobs             JobService
-	ready            ReadyCheck
-	bundleVersion    string
-	maximumBodyBytes int64
-	jobDurability    JobDurability
-	allowAsyncJobs   bool
-	handler          http.Handler
+	registry             *function.Registry
+	invocations          InvocationService
+	jobs                 JobService
+	ready                ReadyCheck
+	bundleVersion        string
+	maximumBodyBytes     int64
+	jobDurability        JobDurability
+	allowAsyncJobs       bool
+	apiKeys              *auth.Authenticator
+	operators            *operator.Authenticator
+	operatorCookieSecure bool
+	handler              http.Handler
 }
 
 func NewServer(options ServerOptions) (*Server, error) {
@@ -129,8 +141,11 @@ func NewServer(options ServerOptions) (*Server, error) {
 		jobDurability:    jobDurability,
 		allowAsyncJobs: options.AllowAsyncJobs ||
 			jobDurability == JobDurabilityDurable,
+		apiKeys:              options.Authenticator,
+		operators:            options.Operators,
+		operatorCookieSecure: options.OperatorCookieSecure,
 	}
-	server.handler = server.routes(options.Authenticator)
+	server.handler = server.routes()
 	return server, nil
 }
 
@@ -138,7 +153,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	s.handler.ServeHTTP(w, request)
 }
 
-func (s *Server) routes(authenticator *auth.Authenticator) http.Handler {
+func (s *Server) routes() http.Handler {
 	protected := http.NewServeMux()
 	protected.Handle("/v1/functions", s.scoped(
 		ScopeFunctionsRead,
@@ -199,7 +214,15 @@ func (s *Server) routes(authenticator *auth.Authenticator) http.Handler {
 	root.Handle("/healthz", s.only(http.MethodGet, http.HandlerFunc(s.health)))
 	root.Handle("/readyz", s.only(http.MethodGet, http.HandlerFunc(s.readiness)))
 	root.Handle("/version", s.only(http.MethodGet, http.HandlerFunc(s.version)))
-	root.Handle("/v1/", authenticator.Middleware(protected))
+
+	// Sign-in cannot sit behind the credential it issues, so these three are
+	// registered on the root mux. ServeMux resolves by specificity, not
+	// registration order, so an exact "/v1/auth/login" wins over "/v1/".
+	root.Handle("/v1/auth/login", s.only(http.MethodPost, http.HandlerFunc(s.operatorLogin)))
+	root.Handle("/v1/auth/logout", s.only(http.MethodPost, http.HandlerFunc(s.operatorLogout)))
+	root.Handle("/v1/auth/session", s.only(http.MethodGet, http.HandlerFunc(s.operatorSession)))
+
+	root.Handle("/v1/", s.authenticate(protected))
 	root.Handle("/", http.HandlerFunc(notFound))
 
 	return RequestIDMiddleware(SecurityHeaders(Recoverer(root)))

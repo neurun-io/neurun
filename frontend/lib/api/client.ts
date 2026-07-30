@@ -8,31 +8,19 @@
  *   middleware, so the browser never talks to it directly. Requests go to this
  *   app's own `/api/proxy/*` route handler, which forwards them. See
  *   `app/api/proxy/[...path]/route.ts`.
- * - **The key lives in memory.** It is passed in per call from the connection
- *   store and is never written to `localStorage`, IndexedDB, a service-worker
- *   cache, a URL, or an error breadcrumb.
+ * - **The browser holds no credential it can read.** Authentication is an
+ *   `HttpOnly` operator session cookie issued by `POST /v1/auth/login`. There is
+ *   no API key in any client module, no bearer header assembled here, and
+ *   nothing written to `sessionStorage`, `localStorage` or a URL. The cookie
+ *   rides along because the browser attaches it, and script cannot read it.
  */
-import {
-  NeurunApiError,
-  NeurunTransportError,
-  parseErrorEnvelope,
-} from "./errors";
+import { NeurunApiError, NeurunTransportError, parseErrorEnvelope } from "./errors";
 import { idempotencyKeys } from "./idempotency";
 import { validateResponse } from "./runtime";
 import type { z } from "zod";
 
 /** Where the proxy route lives on this origin. */
 export const PROXY_PREFIX = "/api/proxy";
-
-/** Header the proxy reads to learn the upstream control plane, then strips. */
-export const BASE_URL_HEADER = "X-Neurun-Base-Url";
-
-export interface Connection {
-  /** Control-plane base URL, e.g. `http://localhost:8080`. */
-  baseUrl: string;
-  /** `neu_<environment>_<prefix>.<secret>`. Held in memory. */
-  apiKey: string;
-}
 
 export interface RequestOptions {
   method?: "GET" | "POST";
@@ -104,12 +92,11 @@ async function decodeBody(response: Response): Promise<unknown> {
 }
 
 /**
- * Perform one authenticated request and return the decoded body plus metadata.
- * Throws `NeurunApiError` for any non-2xx response and `NeurunTransportError`
- * when no response arrived at all.
+ * Perform one request and return the decoded body plus metadata. Throws
+ * `NeurunApiError` for any non-2xx response and `NeurunTransportError` when no
+ * response arrived at all.
  */
 export async function request<T>(
-  connection: Connection,
   options: RequestOptions,
   schema?: z.ZodType<T>,
 ): Promise<ApiResult<T>> {
@@ -117,13 +104,7 @@ export async function request<T>(
   const path = options.path;
   const url = `${PROXY_PREFIX}${path}${buildQuery(options.query)}`;
 
-  const headers = new Headers({
-    Accept: "application/json",
-    [BASE_URL_HEADER]: connection.baseUrl,
-  });
-  if (connection.apiKey) {
-    headers.set("Authorization", `Bearer ${connection.apiKey}`);
-  }
+  const headers = new Headers({ Accept: "application/json" });
   if (options.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
@@ -140,6 +121,7 @@ export async function request<T>(
       signal: options.signal,
       // Never let a browser or intermediary cache an operator's evidence.
       cache: "no-store",
+      // Sends the HttpOnly session cookie; this is the whole authentication.
       credentials: "same-origin",
     });
   } catch (cause) {
@@ -147,7 +129,7 @@ export async function request<T>(
     // already hold this request, so the retry must reuse the same key.
     if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
     throw new NeurunTransportError(
-      "Could not reach the control plane. Check the base URL and that the server is running.",
+      "Could not reach the control plane. Check that the server is running.",
       cause,
     );
   }
@@ -166,9 +148,7 @@ export async function request<T>(
       code: envelope?.error.code ?? `http_${response.status}`,
       message:
         envelope?.error.message ??
-        (typeof body === "string" && body
-          ? body
-          : `Request failed with HTTP ${response.status}.`),
+        (typeof body === "string" && body ? body : `Request failed with HTTP ${response.status}.`),
       details: envelope?.error.details,
       requestId: envelope?.request_id ?? meta.requestId,
       traceId: meta.traceId,
@@ -187,10 +167,9 @@ export async function request<T>(
 
 /** Convenience wrapper for callers that do not need response metadata. */
 export async function requestData<T>(
-  connection: Connection,
   options: RequestOptions,
   schema?: z.ZodType<T>,
 ): Promise<T> {
-  const { data } = await request(connection, options, schema);
+  const { data } = await request(options, schema);
   return data;
 }

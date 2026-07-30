@@ -8,17 +8,20 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dagflows/neurun-io/internal/operator"
 )
 
 const (
-	defaultHTTPAddr         = ":8080"
-	defaultPublicURL        = "http://localhost:8080"
-	defaultProjectID        = "prj_local"
-	defaultShutdownTimeout  = 10 * time.Second
-	defaultRequestBodyBytes = 1 << 20
-	defaultResponseBytes    = 4 << 20
-	defaultLeaseDuration    = 30 * time.Second
-	defaultAgentConcurrency = 8
+	defaultHTTPAddr           = ":1267"
+	defaultPublicURL          = "http://localhost:1267"
+	defaultProjectID          = "prj_local"
+	defaultShutdownTimeout    = 10 * time.Second
+	defaultRequestBodyBytes   = 1 << 20
+	defaultResponseBytes      = 4 << 20
+	defaultLeaseDuration      = 30 * time.Second
+	defaultAgentConcurrency   = 8
+	defaultOperatorSessionTTL = 12 * time.Hour
 )
 
 type Config struct {
@@ -34,6 +37,15 @@ type Config struct {
 	JobLeaseDuration     time.Duration
 	AgentConcurrency     int
 	AllowVolatileJobs    bool
+
+	// OperatorAccounts are the human logins for the dashboard. Empty means
+	// operator sign-in is unavailable and only API-key access works.
+	OperatorAccounts []operator.Account
+	// OperatorSessionTTL is the absolute lifetime of an operator session.
+	OperatorSessionTTL time.Duration
+	// OperatorCookieSecure sets the Secure attribute on the session cookie. It
+	// must stay true anywhere but a local plain-HTTP development server.
+	OperatorCookieSecure bool
 }
 
 func Load() (Config, error) {
@@ -50,6 +62,8 @@ func Load() (Config, error) {
 		JobLeaseDuration:     defaultLeaseDuration,
 		AgentConcurrency:     defaultAgentConcurrency,
 		AllowVolatileJobs:    false,
+		OperatorSessionTTL:   defaultOperatorSessionTTL,
+		OperatorCookieSecure: true,
 	}
 
 	var err error
@@ -72,6 +86,18 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.AllowVolatileJobs, err = boolValue("NEURUN_ALLOW_VOLATILE_JOBS", cfg.AllowVolatileJobs); err != nil {
+		return Config{}, err
+	}
+	if cfg.OperatorSessionTTL, err = durationValue("NEURUN_OPERATOR_SESSION_TTL", cfg.OperatorSessionTTL); err != nil {
+		return Config{}, err
+	}
+	if cfg.OperatorCookieSecure, err = boolValue("NEURUN_OPERATOR_COOKIE_SECURE", cfg.OperatorCookieSecure); err != nil {
+		return Config{}, err
+	}
+	if cfg.OperatorAccounts, err = parseOperatorAccounts(
+		os.Getenv("NEURUN_OPERATOR_ACCOUNTS"),
+		cfg.DefaultProjectID,
+	); err != nil {
 		return Config{}, err
 	}
 
@@ -118,7 +144,88 @@ func (c Config) Validate() error {
 	if c.AgentConcurrency <= 0 {
 		problems = append(problems, errors.New("NEURUN_AGENT_CONCURRENCY must be positive"))
 	}
+	if c.OperatorSessionTTL <= 0 {
+		problems = append(problems, errors.New("NEURUN_OPERATOR_SESSION_TTL must be positive"))
+	}
 	return errors.Join(problems...)
+}
+
+// OperatorSignInEnabled reports whether any human login is configured.
+func (c Config) OperatorSignInEnabled() bool {
+	return len(c.OperatorAccounts) > 0
+}
+
+// parseOperatorAccounts reads NEURUN_OPERATOR_ACCOUNTS.
+//
+// Format is `username:role:hash`, with entries separated by `;` or newlines:
+//
+//	daniel:admin:pbkdf2-sha256$650000$c2FsdA$a2V5;view:viewer:pbkdf2-sha256$...
+//
+// `:` is safe as the field separator because the encoded hash uses `$` plus
+// unpadded base64, whose alphabet contains no colon. Generate a hash with
+// `neurun hash-password`.
+//
+// Accounts are validated here so a typo fails at startup rather than at an
+// operator's first sign-in attempt.
+func parseOperatorAccounts(raw, projectID string) ([]operator.Account, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	entries := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ';' || r == '\n' || r == '\r'
+	})
+
+	accounts := make([]operator.Account, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		username, rest, found := strings.Cut(entry, ":")
+		if !found {
+			return nil, fmt.Errorf(
+				"NEURUN_OPERATOR_ACCOUNTS entry %q must use username:role:hash form", entry)
+		}
+		roleName, hash, found := strings.Cut(rest, ":")
+		if !found {
+			return nil, fmt.Errorf(
+				"NEURUN_OPERATOR_ACCOUNTS entry for %q must use username:role:hash form", username)
+		}
+
+		username = strings.ToLower(strings.TrimSpace(username))
+		hash = strings.TrimSpace(hash)
+		if username == "" {
+			return nil, errors.New("NEURUN_OPERATOR_ACCOUNTS contains an entry with an empty username")
+		}
+		if _, duplicate := seen[username]; duplicate {
+			return nil, fmt.Errorf("NEURUN_OPERATOR_ACCOUNTS defines %q more than once", username)
+		}
+		seen[username] = struct{}{}
+
+		role, err := operator.ParseRole(roleName)
+		if err != nil {
+			return nil, fmt.Errorf("NEURUN_OPERATOR_ACCOUNTS entry for %q: %w", username, err)
+		}
+		if err := operator.ValidateHash(hash); err != nil {
+			return nil, fmt.Errorf(
+				"NEURUN_OPERATOR_ACCOUNTS entry for %q: %w (generate one with `neurun hash-password`)",
+				username, err)
+		}
+
+		accounts = append(accounts, operator.Account{
+			Username:     username,
+			Role:         role,
+			ProjectID:    projectID,
+			PasswordHash: hash,
+		})
+	}
+
+	return accounts, nil
 }
 
 func value(key, fallback string) string {

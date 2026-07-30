@@ -2,7 +2,7 @@
 #
 # Start every app needed to use the operator dashboard locally:
 #
-#   1. the Neurun control plane (cmd/neurun) on :8080
+#   1. the Neurun control plane (cmd/neurun) on :1267
 #   2. this dashboard's Next.js server on :3000
 #
 # The compose `dependencies` profile (postgres, nats, minio) is deliberately not
@@ -20,8 +20,8 @@
 
 set -euo pipefail
 
-FRONTEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ROOT_DIR="$(cd "$FRONTEND_DIR/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FRONTEND_DIR="$ROOT_DIR/frontend"
 
 MODE="dev"
 START_BACKEND=1
@@ -58,8 +58,8 @@ fi
 # Configuration
 #
 # The control plane's own env comes from the repo's .env when present and
-# .env.example otherwise. This script never writes outside frontend/, so it
-# reads those rather than creating one.
+# .env.example otherwise. Only frontend/.env.local is written; .env is left to
+# the operator and to scripts/create-operator.sh.
 # ---------------------------------------------------------------------------
 
 if [ -f "$ROOT_DIR/.env" ]; then
@@ -74,7 +74,7 @@ set -a
 . "$ENV_FILE"
 set +a
 
-NEURUN_HTTP_ADDR="${NEURUN_HTTP_ADDR:-:8080}"
+NEURUN_HTTP_ADDR="${NEURUN_HTTP_ADDR:-:1267}"
 API_PORT="${NEURUN_HTTP_ADDR##*:}"
 API_BASE_URL="http://localhost:${API_PORT}"
 
@@ -83,6 +83,19 @@ API_BASE_URL="http://localhost:${API_PORT}"
 # dashboard disables only the async control and keeps sync working — but for a
 # default local run, on is more useful.
 export NEURUN_ALLOW_VOLATILE_JOBS="${NEURUN_ALLOW_VOLATILE_JOBS:-true}"
+
+# Operator accounts are what the dashboard signs in with. Report whether any
+# exist so a missing account is obvious before the browser opens.
+if [ -n "${NEURUN_OPERATOR_ACCOUNTS:-}" ]; then
+  OPERATOR_SUMMARY="$(printf '%s' "$NEURUN_OPERATOR_ACCOUNTS" | awk -F';' '{
+    for (i = 1; i <= NF; i++) {
+      split($i, parts, ":")
+      if (parts[1] != "") printf "%s%s(%s)", (i > 1 ? " " : ""), parts[1], parts[2]
+    }
+  }')"
+else
+  OPERATOR_SUMMARY="none — run scripts/create-operator.sh"
+fi
 
 # The dashboard proxies same-origin to the control plane; the browser never
 # calls it directly, because the server ships no CORS middleware.
@@ -124,7 +137,7 @@ if [ "$START_BACKEND" -eq 1 ]; then
   [ -f "$BIN" ] || BIN="$BIN.exe"
 
   log "starting control plane on $API_BASE_URL"
-  "$BIN" > "$FRONTEND_DIR/.neurun-server.log" 2>&1 &
+  "$BIN" > "$ROOT_DIR/.neurun-server.log" 2>&1 &
   BACKEND_PID=$!
 
   # Wait for readiness rather than racing the dashboard against it.
@@ -132,7 +145,7 @@ if [ "$START_BACKEND" -eq 1 ]; then
   for _ in $(seq 1 50); do
     if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
       echo "--- control plane output ---" >&2
-      cat "$FRONTEND_DIR/.neurun-server.log" >&2
+      cat "$ROOT_DIR/.neurun-server.log" >&2
       fail "control plane exited during startup"
     fi
     if node -e "fetch('$API_BASE_URL/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null; then
@@ -141,7 +154,7 @@ if [ "$START_BACKEND" -eq 1 ]; then
     fi
     sleep 0.2
   done
-  [ "$READY" -eq 1 ] || fail "control plane did not become healthy — see frontend/.neurun-server.log"
+  [ "$READY" -eq 1 ] || fail "control plane did not become healthy — see .neurun-server.log"
   log "control plane healthy"
 fi
 
@@ -153,10 +166,11 @@ cat <<BANNER
 
   Dashboard   http://localhost:${WEB_PORT}
   API         ${API_BASE_URL}
-  API key     ${NEURUN_API_KEY:-<set NEURUN_API_KEY>}
+  Operators   ${OPERATOR_SUMMARY}
   Async jobs  ${NEURUN_ALLOW_VOLATILE_JOBS} (process_local — queued jobs are lost on restart)
 
-  Paste the base URL and API key into the connection screen.
+  Sign in with an operator account. Create one with:
+    scripts/create-operator.sh admin admin
 
 BANNER
 

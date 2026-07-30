@@ -7,42 +7,71 @@ import { NeurunApiError, NeurunContractError } from "@/lib/api/errors";
 import { shouldRetry } from "@/lib/api/query-client";
 import { idempotencyKeys, stableStringify } from "@/lib/api/idempotency";
 import { jobListSchema, jobSchema, validateResponse } from "@/lib/api/runtime";
-import { API_KEY, BASE_URL, proxy, server } from "./msw/server";
+import { OPERATOR, OPERATOR_PASSWORD, proxy, server } from "./msw/server";
 import * as fixtures from "./msw/fixtures";
-
-const connection = { baseUrl: BASE_URL, apiKey: API_KEY };
 
 beforeEach(() => idempotencyKeys.clear());
 
 describe("authentication", () => {
-  it("sends the API key as a bearer token", async () => {
-    const { data } = await api.listFunctions(connection);
-    expect(data.functions).toHaveLength(2);
+  it("signs in with a username and password", async () => {
+    const operator = await api.operatorLogin(OPERATOR.username, OPERATOR_PASSWORD);
+    expect(operator.username).toBe("alice");
+    expect(operator.role).toBe("admin");
+    expect(operator.scopes).toContain("*");
   });
 
-  it("surfaces a 401 as an unauthenticated error with its request ID", async () => {
+  it("reports bad credentials without distinguishing which part was wrong", async () => {
     const error = await api
-      .listFunctions({ baseUrl: BASE_URL, apiKey: "neu_local_wrong.key" })
+      .operatorLogin("alice", "not the password")
       .catch((cause) => cause);
 
     expect(error).toBeInstanceOf(NeurunApiError);
     expect(error.status).toBe(401);
-    expect(error.isUnauthenticated).toBe(true);
-    expect(error.code).toBe("unauthorized");
-    expect(error.requestId).toBe("req_01HXQ8F2UNAUTH");
+    expect(error.code).toBe("invalid_credentials");
+    expect(error.requestId).toBe("req_01HXQ8F2BADLOGIN");
   });
 
-  it("stops retrying after a 401 — a revoked key will not become valid", () => {
-    const unauthorized = new NeurunApiError({ status: 401, code: "unauthorized", message: "no" });
-    const serverError = new NeurunApiError({ status: 500, code: "internal", message: "boom" });
+  it("reports when the server has no operator accounts configured", async () => {
+    server.use(
+      http.post(proxy("/v1/auth/login"), () =>
+        HttpResponse.json(fixtures.signInUnavailable, { status: 503 }),
+      ),
+    );
 
-    expect(shouldRetry(0, unauthorized)).toBe(false);
-    expect(shouldRetry(0, new NeurunApiError({ status: 403, code: "f", message: "f" }))).toBe(false);
-    expect(shouldRetry(0, new NeurunContractError("/v1/jobs", []))).toBe(false);
-    expect(shouldRetry(0, serverError)).toBe(true);
+    const error = await api.operatorLogin("alice", OPERATOR_PASSWORD).catch((cause) => cause);
+    expect(error.status).toBe(503);
+    expect(error.code).toBe("operator_signin_unavailable");
   });
 
-  it("never puts the key in the request URL", async () => {
+  it("authenticates with the session cookie and assembles no credential itself", async () => {
+    let authorization: string | null = "unset";
+    let cookie: string | null = "unset";
+    let credentials: RequestCredentials | undefined;
+
+    server.use(
+      http.get(proxy("/v1/functions"), ({ request: intercepted }) => {
+        authorization = intercepted.headers.get("authorization");
+        cookie = intercepted.headers.get("cookie");
+        credentials = intercepted.credentials;
+        return HttpResponse.json({ functions: [] });
+      }),
+    );
+
+    // Sign in here rather than relying on a previous test, so the round-trip
+    // being asserted is this test's own.
+    await api.operatorLogin(OPERATOR.username, OPERATOR_PASSWORD);
+    await api.listFunctions();
+
+    // No bearer token is assembled anywhere in the client — there is no API key
+    // in any client module to assemble one from.
+    expect(authorization).toBeNull();
+    // The request opts into cookie credentials rather than carrying a header.
+    expect(credentials).toBe("same-origin");
+    // And the session issued by login is what actually authenticates the call.
+    expect(cookie).toContain("neurun_operator_session=");
+  });
+
+  it("never puts a secret in the request URL", async () => {
     let seenUrl = "";
     server.use(
       http.get(proxy("/v1/functions"), ({ request: intercepted }) => {
@@ -51,9 +80,42 @@ describe("authentication", () => {
       }),
     );
 
-    await api.listFunctions(connection);
-    expect(seenUrl).not.toContain("supersecret");
-    expect(seenUrl).not.toContain(API_KEY);
+    await api.listFunctions();
+    expect(seenUrl).not.toContain("password");
+    expect(seenUrl).not.toContain("neu_");
+    expect(seenUrl).not.toContain("token");
+  });
+
+  it("resolves the signed-in operator", async () => {
+    const operator = await api.getOperatorSession();
+    expect(operator.operator_id).toBe(OPERATOR.operator_id);
+    expect(operator.project_id).toBe("prj_local");
+  });
+
+  it("surfaces an expired session as a 401", async () => {
+    server.use(
+      http.get(proxy("/v1/auth/session"), () =>
+        HttpResponse.json(fixtures.unauthorized, { status: 401 }),
+      ),
+    );
+
+    const error = await api.getOperatorSession().catch((cause) => cause);
+    expect(error).toBeInstanceOf(NeurunApiError);
+    expect(error.isUnauthenticated).toBe(true);
+  });
+
+  it("signs out without needing the session to be live", async () => {
+    await expect(api.operatorLogout()).resolves.toBeUndefined();
+  });
+
+  it("stops retrying after a 401 — an expired session will not revive", () => {
+    const unauthorized = new NeurunApiError({ status: 401, code: "unauthorized", message: "no" });
+    const serverError = new NeurunApiError({ status: 500, code: "internal", message: "boom" });
+
+    expect(shouldRetry(0, unauthorized)).toBe(false);
+    expect(shouldRetry(0, new NeurunApiError({ status: 403, code: "f", message: "f" }))).toBe(false);
+    expect(shouldRetry(0, new NeurunContractError("/v1/jobs", []))).toBe(false);
+    expect(shouldRetry(0, serverError)).toBe(true);
   });
 });
 
@@ -66,7 +128,7 @@ describe("error envelope", () => {
     );
 
     const error = await api
-      .invokeFunction(connection, "system.echo", { version: "1", execution: "sync", input: {} })
+      .invokeFunction("system.echo", { version: "1", execution: "sync", input: {} })
       .catch((cause) => cause);
 
     expect(error).toBeInstanceOf(NeurunApiError);
@@ -84,7 +146,7 @@ describe("error envelope", () => {
     );
 
     const error = await api
-      .createJob(connection, { function: { name: "system.echo", version: "1" }, input: {} })
+      .createJob({ function: { name: "system.echo", version: "1" }, input: {} })
       .catch((cause) => cause);
 
     expect(error.isDurableBackendUnavailable).toBe(true);
@@ -94,7 +156,7 @@ describe("error envelope", () => {
 
 describe("accepted asynchronous work", () => {
   it("reads durability from both the body and the header", async () => {
-    const { data, meta } = await api.createJob(connection, {
+    const { data, meta } = await api.createJob({
       function: { name: "system.echo", version: "1" },
       input: { message: "hello" },
     });
@@ -107,11 +169,11 @@ describe("accepted asynchronous work", () => {
   });
 
   it("returns a queued snapshot whose events still record the accepted step", async () => {
-    const { data } = await api.createJob(connection, {
+    const { data } = await api.createJob({
       function: { name: "system.echo", version: "1" },
       input: { message: "hello" },
     });
-    const { data: events } = await api.listJobEvents(connection, data.job_id);
+    const { data: events } = await api.listJobEvents(data.job_id);
 
     expect(data.job.state).toBe("queued");
     expect(events.map((event) => event.type)).toEqual([
@@ -141,8 +203,8 @@ describe("idempotency keys", () => {
       }),
     );
 
-    await api.createJob(connection, { function: { name: "system.echo", version: "1" }, input: {} });
-    await api.cancelJob(connection, fixtures.JOB_ID);
+    await api.createJob({ function: { name: "system.echo", version: "1" }, input: {} });
+    await api.cancelJob(fixtures.JOB_ID);
 
     expect(seen[0]).toBeTruthy();
     expect(seen[1]).toBeNull();
@@ -161,10 +223,13 @@ describe("idempotency keys", () => {
       }),
     );
 
-    const body = { function: { name: "system.echo", version: "1" }, input: { message: "hello" } };
+    const body = {
+      function: { name: "system.echo", version: "1" },
+      input: { message: "hello" },
+    };
 
-    await api.createJob(connection, body).catch(() => undefined);
-    await api.createJob(connection, body);
+    await api.createJob(body).catch(() => undefined);
+    await api.createJob(body);
 
     expect(keys).toHaveLength(2);
     // The whole point: the server may already hold the first request.
@@ -180,9 +245,12 @@ describe("idempotency keys", () => {
       }),
     );
 
-    const body = { function: { name: "system.echo", version: "1" }, input: { message: "hello" } };
-    await api.createJob(connection, body);
-    await api.createJob(connection, body);
+    const body = {
+      function: { name: "system.echo", version: "1" },
+      input: { message: "hello" },
+    };
+    await api.createJob(body);
+    await api.createJob(body);
 
     expect(keys[0]).not.toBe(keys[1]);
   });
@@ -196,11 +264,11 @@ describe("idempotency keys", () => {
 
 describe("cursor pagination", () => {
   it("follows the server's opaque cursor and stops on the empty string", async () => {
-    const first = await api.listJobs(connection, { limit: 50 });
+    const first = await api.listJobs({ limit: 50 });
     expect(first.data.jobs).toHaveLength(2);
     expect(first.data.next_cursor).toBe("cursor-page-2");
 
-    const second = await api.listJobs(connection, { cursor: first.data.next_cursor });
+    const second = await api.listJobs({ cursor: first.data.next_cursor });
     expect(second.data.jobs).toHaveLength(1);
     // Empty string means there is no next page.
     expect(second.data.next_cursor).toBe("");
@@ -215,7 +283,7 @@ describe("cursor pagination", () => {
       }),
     );
 
-    await api.listJobs(connection, { status: ["queued", "running"] });
+    await api.listJobs({ status: ["queued", "running"] });
     expect(seen).toContain("status=queued");
     expect(seen).toContain("status=running");
     expect(seen).not.toContain("queued%2Crunning");
@@ -259,13 +327,24 @@ describe("runtime boundary validation", () => {
     expect(error).toBeInstanceOf(NeurunContractError);
     expect(error!.issues.join(" ")).toContain("jobs");
   });
+
+  it("accepts an operator role this build does not know", async () => {
+    server.use(
+      http.get(proxy("/v1/auth/session"), () =>
+        HttpResponse.json({ operator: { ...OPERATOR, role: "auditor", scopes: ["jobs:read"] } }),
+      ),
+    );
+
+    const operator = await api.getOperatorSession();
+    expect(operator.role).toBe("auditor");
+  });
 });
 
 describe("transport", () => {
   it("reports an unreachable control plane distinctly from an API error", async () => {
     server.use(http.get(proxy("/version"), () => HttpResponse.error()));
 
-    const error = await request(connection, { path: "/version" }).catch((cause) => cause);
+    const error = await request({ path: "/version" }).catch((cause) => cause);
 
     expect(error).not.toBeInstanceOf(NeurunApiError);
     expect(error.name).toBe("NeurunTransportError");

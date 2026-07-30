@@ -5,7 +5,7 @@
  * here infers internal server state, and nothing here reaches an endpoint the
  * current OpenAPI does not publish.
  */
-import { type ApiResult, type Connection, request } from "./client";
+import { type ApiResult, request } from "./client";
 import {
   acceptedJobSchema,
   cancelInvocationResponseSchema,
@@ -20,6 +20,7 @@ import {
   jobListSchema,
   jobSchema,
   manifestBundleSchema,
+  operatorEnvelopeSchema,
   versionSchema,
 } from "./runtime";
 import type {
@@ -38,20 +39,53 @@ import type {
   JobList,
   JobState,
   ManifestBundle,
+  Operator,
   Version,
 } from "./types";
+
+/* -------------------------------------------------------------------------- */
+/* Auth                                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Exchange a username and password for a session.
+ *
+ * The token is never visible here: the server returns it as an `HttpOnly`
+ * cookie, and this response carries only the operator projection.
+ */
+export async function operatorLogin(username: string, password: string) {
+  const { data } = await request<{ operator: Operator }>(
+    { method: "POST", path: "/v1/auth/login", body: { username, password } },
+    operatorEnvelopeSchema as never,
+  );
+  return data.operator;
+}
+
+/** Revoke the current session. Idempotent, and always succeeds. */
+export async function operatorLogout(): Promise<void> {
+  await request({ method: "POST", path: "/v1/auth/logout" });
+}
+
+/** The signed-in operator, or a 401 when there is no live session. */
+export async function getOperatorSession(signal?: AbortSignal) {
+  const { data } = await request<{ operator: Operator }>(
+    { path: "/v1/auth/session", signal },
+    operatorEnvelopeSchema as never,
+  );
+  return data.operator;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Health                                                                      */
 /* -------------------------------------------------------------------------- */
 
-export function getVersion(connection: Connection, signal?: AbortSignal) {
-  return request<Version>(connection, { path: "/version", signal }, versionSchema as never);
+export function getVersion(signal?: AbortSignal) {
+  return request<Version>({ path: "/version", signal }, versionSchema as never);
 }
 
-export async function getReadiness(connection: Connection, signal?: AbortSignal): Promise<boolean> {
+export async function getReadiness(signal?: AbortSignal): Promise<boolean> {
   try {
-    await request(connection, { path: "/readyz", signal });
+    await request({ path: "/readyz", signal });
     return true;
   } catch {
     return false;
@@ -70,42 +104,32 @@ export interface ListFunctionsParams {
 }
 
 export function listFunctions(
-  connection: Connection,
   params: ListFunctionsParams = {},
   signal?: AbortSignal,
 ) {
-  return request<FunctionList>(
-    connection,
-    { path: "/v1/functions", query: { ...params }, signal },
+  return request<FunctionList>({ path: "/v1/functions", query: { ...params }, signal },
     functionListSchema as never,
   );
 }
 
-export function getFunction(connection: Connection, functionName: string, signal?: AbortSignal) {
-  return request<FunctionDefinition>(
-    connection,
-    { path: `/v1/functions/${functionName}`, signal },
+export function getFunction(functionName: string, signal?: AbortSignal) {
+  return request<FunctionDefinition>({ path: `/v1/functions/${functionName}`, signal },
     functionDefinitionSchema as never,
   );
 }
 
 export function getFunctionVersion(
-  connection: Connection,
   functionName: string,
   version: string,
   signal?: AbortSignal,
 ) {
-  return request<FunctionManifest>(
-    connection,
-    { path: `/v1/functions/${functionName}/versions/${version}`, signal },
+  return request<FunctionManifest>({ path: `/v1/functions/${functionName}/versions/${version}`, signal },
     functionManifestSchema as never,
   );
 }
 
-export function getFunctionManifestBundle(connection: Connection, signal?: AbortSignal) {
-  return request<ManifestBundle>(
-    connection,
-    { path: "/v1/function-manifest-bundle", signal },
+export function getFunctionManifestBundle(signal?: AbortSignal) {
+  return request<ManifestBundle>({ path: "/v1/function-manifest-bundle", signal },
     manifestBundleSchema as never,
   );
 }
@@ -120,12 +144,11 @@ export type InvokeOutcome =
   | { kind: "accepted"; result: ApiResult<AcceptedJob> };
 
 export async function invokeFunction(
-  connection: Connection,
   functionName: string,
   body: InvokeFunctionRequest,
 ): Promise<InvokeOutcome> {
   const isAsync = body.execution === "async";
-  const result = await request<unknown>(connection, {
+  const result = await request<unknown>({
     method: "POST",
     path: `/v1/functions/${functionName}/invoke`,
     body,
@@ -155,25 +178,19 @@ export interface ListInvocationsParams {
 }
 
 export function listFunctionInvocations(
-  connection: Connection,
   params: ListInvocationsParams = {},
   signal?: AbortSignal,
 ) {
-  return request<InvocationList>(
-    connection,
-    { path: "/v1/function-invocations", query: { ...params }, signal },
+  return request<InvocationList>({ path: "/v1/function-invocations", query: { ...params }, signal },
     invocationListSchema as never,
   );
 }
 
 export function getFunctionInvocation(
-  connection: Connection,
   invocationId: string,
   signal?: AbortSignal,
 ) {
-  return request<Invocation>(
-    connection,
-    { path: `/v1/function-invocations/${invocationId}`, signal },
+  return request<Invocation>({ path: `/v1/function-invocations/${invocationId}`, signal },
     invocationSchema as never,
   );
 }
@@ -182,9 +199,8 @@ export function getFunctionInvocation(
  * Signals cancellation to a running *direct* invocation. Job-owned execution is
  * canceled through its job endpoint instead.
  */
-export function cancelFunctionInvocation(connection: Connection, invocationId: string) {
+export function cancelFunctionInvocation(invocationId: string) {
   return request(
-    connection,
     { method: "POST", path: `/v1/function-invocations/${invocationId}/cancel` },
     cancelInvocationResponseSchema as never,
   );
@@ -207,10 +223,8 @@ export interface ListJobsParams {
  * limit. Do not send `tag`, mode, failure, function, agent or created-before —
  * the current server rejects `tag` rather than ignoring it.
  */
-export function listJobs(connection: Connection, params: ListJobsParams = {}, signal?: AbortSignal) {
-  return request<JobList>(
-    connection,
-    {
+export function listJobs(params: ListJobsParams = {}, signal?: AbortSignal) {
+  return request<JobList>({
       path: "/v1/jobs",
       query: {
         status: params.status,
@@ -224,49 +238,39 @@ export function listJobs(connection: Connection, params: ListJobsParams = {}, si
   );
 }
 
-export function createJob(connection: Connection, body: CreateJobRequest) {
-  return request<AcceptedJob>(
-    connection,
-    { method: "POST", path: "/v1/jobs", body, idempotent: true },
+export function createJob(body: CreateJobRequest) {
+  return request<AcceptedJob>({ method: "POST", path: "/v1/jobs", body, idempotent: true },
     acceptedJobSchema as never,
   );
 }
 
-export function getJob(connection: Connection, jobId: string, signal?: AbortSignal) {
-  return request<Job>(connection, { path: `/v1/jobs/${jobId}`, signal }, jobSchema as never);
+export function getJob(jobId: string, signal?: AbortSignal) {
+  return request<Job>({ path: `/v1/jobs/${jobId}`, signal }, jobSchema as never);
 }
 
 export async function listJobEvents(
-  connection: Connection,
   jobId: string,
   signal?: AbortSignal,
 ): Promise<ApiResult<JobEvent[]>> {
-  const { data, meta } = await request<{ events: JobEvent[] }>(
-    connection,
-    { path: `/v1/jobs/${jobId}/events`, signal },
+  const { data, meta } = await request<{ events: JobEvent[] }>({ path: `/v1/jobs/${jobId}/events`, signal },
     jobEventListSchema as never,
   );
   return { data: data.events, meta };
 }
 
 export async function listJobAttempts(
-  connection: Connection,
   jobId: string,
   signal?: AbortSignal,
 ): Promise<ApiResult<JobAttempt[]>> {
-  const { data, meta } = await request<{ attempts: JobAttempt[] }>(
-    connection,
-    { path: `/v1/jobs/${jobId}/attempts`, signal },
+  const { data, meta } = await request<{ attempts: JobAttempt[] }>({ path: `/v1/jobs/${jobId}/attempts`, signal },
     jobAttemptListSchema as never,
   );
   return { data: data.attempts, meta };
 }
 
 /** Cancellation is intrinsically idempotent, so it takes no Idempotency-Key. */
-export function cancelJob(connection: Connection, jobId: string, reason?: string) {
-  return request<{ job: Job; duplicate: boolean; request_id: string }>(
-    connection,
-    {
+export function cancelJob(jobId: string, reason?: string) {
+  return request<{ job: Job; duplicate: boolean; request_id: string }>({
       method: "POST",
       path: `/v1/jobs/${jobId}/cancel`,
       body: reason ? { reason } : undefined,
@@ -285,11 +289,10 @@ export function cancelJob(connection: Connection, jobId: string, reason?: string
  * cannot assign the trusted HTTP execution context that generic route requires.
  */
 export async function fetchUrl(
-  connection: Connection,
   body: FetchRequest,
 ): Promise<InvokeOutcome> {
   const isAsync = body.execution === "async";
-  const result = await request<unknown>(connection, {
+  const result = await request<unknown>({
     method: "POST",
     path: "/v1/fetch",
     body,

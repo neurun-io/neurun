@@ -10,10 +10,28 @@ import (
 	"strings"
 )
 
+// Kind distinguishes what sort of caller a principal represents.
+//
+// Both kinds carry scopes and a project, so authorization stays in one place —
+// but audit and error messages need to tell a program apart from a person.
+type Kind string
+
+const (
+	// KindAPIKey is a program authenticated by a bearer API key.
+	KindAPIKey Kind = "api_key"
+	// KindOperator is a human authenticated by a username/password session.
+	KindOperator Kind = "operator"
+)
+
 type Principal struct {
-	KeyID     string   `json:"key_id"`
-	ProjectID string   `json:"project_id"`
-	Scopes    []string `json:"scopes"`
+	Kind Kind `json:"kind,omitempty"`
+	// KeyID is set for KindAPIKey.
+	KeyID string `json:"key_id,omitempty"`
+	// OperatorID and Username are set for KindOperator.
+	OperatorID string   `json:"operator_id,omitempty"`
+	Username   string   `json:"username,omitempty"`
+	ProjectID  string   `json:"project_id"`
+	Scopes     []string `json:"scopes"`
 }
 
 func (p Principal) HasScope(required string) bool {
@@ -57,6 +75,7 @@ func New(credentials ...Credential) (*Authenticator, error) {
 		scopes := append([]string(nil), credential.Scopes...)
 		hashed = append(hashed, hashedCredential{
 			principal: Principal{
+				Kind:      KindAPIKey,
 				KeyID:     credential.ID,
 				ProjectID: credential.ProjectID,
 				Scopes:    scopes,
@@ -87,7 +106,7 @@ func (a *Authenticator) Authenticate(raw string) (Principal, bool) {
 
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		raw, ok := bearerToken(request.Header.Get("Authorization"))
+		raw, ok := BearerToken(request.Header.Get("Authorization"))
 		if !ok {
 			writeUnauthorized(w)
 			return
@@ -130,7 +149,13 @@ func FromContext(ctx context.Context) (Principal, bool) {
 	return principal, ok
 }
 
-func bearerToken(header string) (string, bool) {
+// BearerToken extracts the token from an Authorization header value, reporting
+// false when the header is absent or not a well-formed bearer credential.
+//
+// Exported so callers that must choose between credential kinds before
+// delegating — the control API accepts either an API key or a session cookie —
+// share this parsing rather than reimplementing it.
+func BearerToken(header string) (string, bool) {
 	scheme, token, found := strings.Cut(strings.TrimSpace(header), " ")
 	if !found || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.Contains(token, " ") {
 		return "", false

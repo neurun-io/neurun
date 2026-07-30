@@ -26,12 +26,17 @@ servers:
     description: Same-origin API
 tags:
   - name: Health
+  - name: Auth
   - name: Functions
   - name: Invocations
   - name: Jobs
   - name: Fetch
+# Either credential is accepted on every /v1 route: a bearer API key for
+# programs, or an operator session cookie for a signed-in human. An explicit
+# Authorization header takes precedence when both are present.
 security:
   - bearerAuth: []
+  - operatorSession: []
 paths:
   /healthz:
     get:
@@ -83,6 +88,95 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Version"
+  /v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: operatorLogin
+      summary: Exchange a username and password for an operator session
+      description: |
+        Issues a session cookie for a configured operator account. The response
+        never contains the session token itself, and it never contains an API
+        key.
+
+        An unknown username, a wrong password, and a disabled account all return
+        the same `invalid_credentials` response, so the endpoint cannot be used
+        to enumerate accounts. Repeated failures for one username are throttled
+        with an increasing delay and answered with `429` plus `Retry-After`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperatorLoginRequest"
+      responses:
+        "200":
+          description: Sign-in succeeded and a session cookie was set.
+          headers:
+            Set-Cookie:
+              description: |
+                `neurun_operator_session=<token>; Path=/; HttpOnly; Secure;
+                SameSite=Strict`.
+              schema:
+                type: string
+            Request-ID:
+              $ref: "#/components/headers/RequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorLoginResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+        "503":
+          $ref: "#/components/responses/OperatorSignInUnavailable"
+  /v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: operatorLogout
+      summary: Revoke the current operator session
+      description: |
+        Deletes the session server-side and clears the cookie. Intentionally
+        idempotent and always `204`: signing out must not reveal whether a
+        session existed.
+      security:
+        - operatorSession: []
+      responses:
+        "204":
+          description: The session is revoked and the cookie cleared.
+          headers:
+            Set-Cookie:
+              description: An expired `neurun_operator_session` cookie.
+              schema:
+                type: string
+  /v1/auth/session:
+    get:
+      tags: [Auth]
+      operationId: getOperatorSession
+      summary: Describe the signed-in operator
+      description: |
+        Returns the current operator, their role and the scopes it grants. A
+        missing, expired or unknown session returns `401` and clears the cookie.
+      security:
+        - operatorSession: []
+      responses:
+        "200":
+          description: The session is live.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/OperatorSignInUnavailable"
   /v1/functions:
     get:
       tags: [Functions]
@@ -617,6 +711,16 @@ components:
       scheme: bearer
       bearerFormat: Neurun API key
       description: API key in `neu_<environment>_<prefix>.<secret>` form.
+    operatorSession:
+      type: apiKey
+      in: cookie
+      name: neurun_operator_session
+      description: |
+        Operator session issued by `POST /v1/auth/login`. Delivered as an
+        `HttpOnly`, `Secure`, `SameSite=Strict` cookie, so a browser attaches it
+        automatically and no script can read it. The token is stored server-side
+        only as a SHA-256 digest, and the session is revoked by
+        `POST /v1/auth/logout`.
   headers:
     RequestID:
       description: Per-request transport correlation ID.
@@ -701,8 +805,36 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
+    InvalidCredentials:
+      description: |
+        The username and password did not match. Returned identically for an
+        unknown username, a wrong password, and a disabled account.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    TooManyAttempts:
+      description: Too many failed sign-in attempts for this username.
+      headers:
+        Retry-After:
+          description: Seconds to wait before attempting again.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    OperatorSignInUnavailable:
+      description: |
+        No operator accounts are configured, so username and password sign-in is
+        unavailable. API-key access is unaffected.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     Forbidden:
-      description: The API key lacks the required scope or project access.
+      description: The credential lacks the required scope or project access.
       content:
         application/json:
           schema:
@@ -819,6 +951,79 @@ components:
           $ref: "#/components/schemas/Problem"
         request_id:
           type: string
+    OperatorRole:
+      type: string
+      enum: [admin, operator, viewer]
+      description: |
+        `admin` carries every scope. `operator` can read evidence and submit or
+        cancel work. `viewer` can read only — it omits `functions:invoke` and
+        `jobs:write`, so a read-only operator cannot start or stop execution.
+    OperatorLoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          description: Compared case-insensitively.
+          minLength: 1
+          maxLength: 128
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 256
+      additionalProperties: false
+    Operator:
+      type: object
+      description: |
+        The safe projection of a signed-in operator. Carries no session token and
+        no password material.
+      required:
+        - operator_id
+        - username
+        - role
+        - project_id
+        - scopes
+        - session_id
+        - expires_at
+      properties:
+        operator_id:
+          type: string
+        username:
+          type: string
+        role:
+          $ref: "#/components/schemas/OperatorRole"
+        project_id:
+          type: string
+          description: |
+            The project this session acts within. The current foundation is
+            single-project; per-operator project scoping arrives with the
+            project API.
+        scopes:
+          type: array
+          items:
+            type: string
+          description: Scopes granted by the role.
+        session_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: Absolute expiry. Sessions are not extended by activity.
+    OperatorLoginResponse:
+      type: object
+      required: [operator]
+      properties:
+        operator:
+          $ref: "#/components/schemas/Operator"
+        request_id:
+          type: string
+    OperatorSessionResponse:
+      type: object
+      required: [operator]
+      properties:
+        operator:
+          $ref: "#/components/schemas/Operator"
     FunctionRef:
       type: object
       required: [name, version, digest]

@@ -24,10 +24,13 @@ jobs:
           cache: true
       - name: Format
         run: test -z "$(gofmt -l cmd internal migrations)"
+        # The package set is explicit rather than ./..., because
+        # frontend/node_modules contains vendored Go files (npm's `flatted`
+        # ships one) that ./... would pick up and try to vet, test and cover.
       - name: Vet
-        run: go vet ./...
+        run: go vet ./cmd/... ./internal/... ./migrations/...
       - name: Test
-        run: go test -race -coverprofile=coverage.out ./...
+        run: go test -race -coverprofile=coverage.out ./cmd/... ./internal/... ./migrations/...
       - name: Build
         run: go build -trimpath ./cmd/neurun
 
