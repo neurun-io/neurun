@@ -21,7 +21,14 @@ rendering mock data.
 
 ## Running it
 
-From the repository root, `make dev` starts the control plane and this dashboard
+From the repository root, Docker Compose builds and starts this dashboard, the
+control plane, PostgreSQL, and NATS:
+
+```bash
+docker compose --env-file .env up --build
+```
+
+For host development, `make dev` starts the control plane and this dashboard
 together. To run the dashboard alone:
 
 ```bash

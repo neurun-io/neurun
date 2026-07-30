@@ -15,10 +15,12 @@ RUN CGO_ENABLED=0 go build -trimpath \
       -X github.com/dagflows/neurun-io/internal/buildinfo.Commit=${COMMIT} \
       -X github.com/dagflows/neurun-io/internal/buildinfo.BuiltAt=${BUILT_AT}" \
     -o /out/neurun ./cmd/neurun
+RUN mkdir -p /out/data/artifacts \
+    && touch /out/data/artifacts/.keep
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/neurun /usr/local/bin/neurun
+COPY --from=build --chown=nonroot:nonroot /out/data /var/lib/neurun
 EXPOSE 1267
 USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/neurun"]
-

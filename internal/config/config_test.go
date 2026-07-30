@@ -13,6 +13,7 @@ func TestLoadDefaultsAndOverrides(t *testing.T) {
 	t.Setenv("NEURUN_SHUTDOWN_TIMEOUT", "3s")
 	t.Setenv("NEURUN_AGENT_CONCURRENCY", "3")
 	t.Setenv("NEURUN_ALLOW_VOLATILE_JOBS", "true")
+	t.Setenv("NEURUN_ARTIFACT_DIRECTORY", "testdata/artifacts")
 
 	cfg, err := Load()
 	if err != nil {
@@ -35,6 +36,9 @@ func TestLoadDefaultsAndOverrides(t *testing.T) {
 	}
 	if !cfg.AllowVolatileJobs {
 		t.Fatal("volatile jobs should be enabled by explicit override")
+	}
+	if cfg.ArtifactDirectory != "testdata/artifacts" {
+		t.Fatalf("ArtifactDirectory = %q", cfg.ArtifactDirectory)
 	}
 }
 

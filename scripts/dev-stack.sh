@@ -5,10 +5,9 @@
 #   1. the Neurun control plane (cmd/neurun) on :1267
 #   2. this dashboard's Next.js server on :3000
 #
-# The compose `dependencies` profile (postgres, nats, minio) is deliberately not
-# started. The current all-in-one server uses process-local job, invocation,
-# outbox and queue adapters, so those services are unused until the persistent
-# adapters land.
+# Docker Compose starts PostgreSQL and NATS by default, but this host-development
+# helper deliberately does not. The current all-in-one server uses process-local
+# job, invocation, outbox and queue adapters until the persistent adapters land.
 #
 # Ctrl-C stops both processes.
 #

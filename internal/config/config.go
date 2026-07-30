@@ -16,6 +16,7 @@ const (
 	defaultHTTPAddr           = ":1267"
 	defaultPublicURL          = "http://localhost:1267"
 	defaultProjectID          = "prj_local"
+	defaultArtifactDirectory  = "data/artifacts"
 	defaultShutdownTimeout    = 10 * time.Second
 	defaultRequestBodyBytes   = 1 << 20
 	defaultResponseBytes      = 4 << 20
@@ -30,6 +31,7 @@ type Config struct {
 	LogLevel             string
 	APIKey               string
 	DefaultProjectID     string
+	ArtifactDirectory    string
 	BlockPrivateNetworks bool
 	ShutdownTimeout      time.Duration
 	MaxRequestBodyBytes  int64
@@ -55,6 +57,7 @@ func Load() (Config, error) {
 		LogLevel:             value("NEURUN_LOG_LEVEL", "info"),
 		APIKey:               strings.TrimSpace(os.Getenv("NEURUN_API_KEY")),
 		DefaultProjectID:     value("NEURUN_DEFAULT_PROJECT_ID", defaultProjectID),
+		ArtifactDirectory:    value("NEURUN_ARTIFACT_DIRECTORY", defaultArtifactDirectory),
 		BlockPrivateNetworks: true,
 		ShutdownTimeout:      defaultShutdownTimeout,
 		MaxRequestBodyBytes:  defaultRequestBodyBytes,
@@ -128,6 +131,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.DefaultProjectID) == "" {
 		problems = append(problems, errors.New("NEURUN_DEFAULT_PROJECT_ID is required"))
+	}
+	if strings.TrimSpace(c.ArtifactDirectory) == "" {
+		problems = append(problems, errors.New("NEURUN_ARTIFACT_DIRECTORY is required"))
 	}
 	if c.ShutdownTimeout <= 0 {
 		problems = append(problems, errors.New("NEURUN_SHUTDOWN_TIMEOUT must be positive"))

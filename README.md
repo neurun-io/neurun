@@ -29,21 +29,26 @@ without changing the public API. The all-in-one binary reports job durability as
 discard its jobs and asynchronous routes remain disabled unless
 `NEURUN_ALLOW_VOLATILE_JOBS=true`.
 
-## Quick start
+## Quick start with Docker
 
-Requirements: Go 1.25 or newer.
+Requirements: Docker Engine or Docker Desktop with Compose v2.
 
 ```sh
 cp .env.example .env
-go test ./...
-docker compose --env-file .env up --build
+docker compose --env-file .env up --build -d
+docker compose ps
 ```
 
-To run the development binary directly, export at least
-`NEURUN_API_KEY=neu_live_local.development-only-change-me` and
-`NEURUN_ALLOW_VOLATILE_JOBS=true` before `go run ./cmd/neurun`.
+One command starts the operator dashboard, control plane, PostgreSQL, and NATS:
 
-The server listens on `:1267` by default. Use the development key:
+- dashboard: `http://localhost:3000`
+- API: `http://localhost:1267`
+
+PostgreSQL, JetStream, and artifact payloads persist in Docker-managed local
+volumes. Artifact payloads use the filesystem-backed `neurun-data` volume;
+there is no MinIO or other object-storage service in the local stack.
+
+Check the API with the development key:
 
 ```sh
 curl -H "Authorization: Bearer neu_live_local.development-only-change-me" \
@@ -52,7 +57,17 @@ curl -H "Authorization: Bearer neu_live_local.development-only-change-me" \
 
 Never use the example key outside local development.
 
-### Control plane and dashboard together
+```sh
+docker compose logs -f
+docker compose down       # preserve local data
+docker compose down -v    # also delete all local volumes
+```
+
+The current MVP still uses process-local job, invocation, and queue adapters;
+PostgreSQL and JetStream are started so the complete dependency stack is
+available, but durable adapters remain a later milestone.
+
+### Host development
 
 Requirements: Go 1.25 or newer, Node 20.9 or newer.
 
@@ -64,6 +79,10 @@ This builds and starts the control plane on `:1267`, waits for `/healthz`, then
 starts the dashboard on `:3000`. Ctrl-C stops both. The dashboard proxies
 same-origin to the control plane, because the server ships no CORS middleware —
 see `frontend/README.md`.
+
+To run only the development binary, export at least
+`NEURUN_API_KEY=neu_live_local.development-only-change-me` and
+`NEURUN_ALLOW_VOLATILE_JOBS=true` before `go run ./cmd/neurun`.
 
 Sign in with an operator account. Create one first:
 

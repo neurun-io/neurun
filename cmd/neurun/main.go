@@ -20,6 +20,7 @@ import (
 
 	"github.com/dagflows/neurun-io/internal/agent"
 	"github.com/dagflows/neurun-io/internal/api"
+	"github.com/dagflows/neurun-io/internal/artifact"
 	"github.com/dagflows/neurun-io/internal/auth"
 	"github.com/dagflows/neurun-io/internal/buildinfo"
 	"github.com/dagflows/neurun-io/internal/config"
@@ -86,6 +87,15 @@ func run() error {
 }
 
 func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	artifactStore, err := artifact.NewLocalStore(cfg.ArtifactDirectory)
+	if err != nil {
+		return fmt.Errorf("configure local artifact storage: %w", err)
+	}
+	logger.Info("artifact storage configured",
+		"driver", "local",
+		"directory", artifactStore.Root(),
+	)
+
 	policy, err := netpolicy.NewPolicy(netpolicy.Options{
 		AllowPrivateNetworks: !cfg.BlockPrivateNetworks,
 	})
@@ -164,6 +174,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Registry:             registry,
 		Invocations:          invocations,
 		Jobs:                 jobs,
+		Ready:                artifactStore.Check,
 		BundleVersion:        function.BuiltinBundleVersion,
 		MaximumBodyBytes:     cfg.MaxRequestBodyBytes,
 		JobDurability:        api.JobDurabilityProcessLocal,

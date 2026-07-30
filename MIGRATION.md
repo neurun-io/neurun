@@ -19,7 +19,7 @@ provenance explicit.
 | Dagflows concept | Neurun destination |
 | --- | --- |
 | Artifact SHA-256 and size metadata | immutable artifact records |
-| S3/R2 object abstraction | generic S3-compatible artifact adapter |
+| S3/R2 object abstraction | local filesystem artifact adapter behind a generic blob-store boundary |
 | Worker bounded slots and memory gate | agent admission control |
 | Publish result before acknowledging work | transactional finalization before queue acknowledgement |
 | Firecracker process-group cleanup | Chromium process-group and cgroup cleanup |
@@ -45,4 +45,3 @@ HTTP are the only initial execution runtimes.
 The only historically tracked `.env` contained empty object-store credential
 values. No local ignored `.env`, Go cache, VM image, Firecracker binary, or
 generated runtime asset was imported from the working copies.
-
