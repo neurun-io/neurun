@@ -41,7 +41,7 @@ docker compose ps
 
 One command starts the operator dashboard, control plane, PostgreSQL, and NATS:
 
-- dashboard: `http://localhost:3000`
+- dashboard: `http://localhost:3001`
 - API: `http://localhost:1267`
 
 PostgreSQL, JetStream, and artifact payloads persist in Docker-managed local
@@ -76,7 +76,7 @@ make dev
 ```
 
 This builds and starts the control plane on `:1267`, waits for `/healthz`, then
-starts the dashboard on `:3000`. Ctrl-C stops both. The dashboard proxies
+starts the dashboard on `:3001`. Ctrl-C stops both. The dashboard proxies
 same-origin to the control plane, because the server ships no CORS middleware —
 see `frontend/README.md`.
 

@@ -3,8 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
-import { ChevronDown, LogOut, Moon, Search, Sun } from "lucide-react";
+import { ChevronDown, LogOut, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Wordmark } from "@/components/neurun/logo";
+import { ThemeToggle } from "@/components/neurun/theme-toggle";
 import { useVersionQuery } from "@/lib/api/queries";
 import { useSession } from "@/lib/session/store";
 import { usePreferences } from "@/lib/preferences/store";
@@ -26,7 +26,6 @@ import { routeForIdentifier } from "@/lib/navigation";
 export function TopNav() {
   const { operator, logout } = useSession();
   const { timeZone, toggleTimeZone } = usePreferences();
-  const { resolvedTheme, setTheme } = useTheme();
   const version = useVersionQuery();
 
   return (
@@ -82,18 +81,7 @@ export function TopNav() {
           <TooltipContent>Show exact times in {timeZone === "utc" ? "local time" : "UTC"}</TooltipContent>
         </Tooltip>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setTheme(resolvedTheme === "light" ? "dark" : "light")}
-          aria-label={`Switch to ${resolvedTheme === "light" ? "dark" : "light"} theme`}
-        >
-          {resolvedTheme === "light" ? (
-            <Moon aria-hidden className="size-3.5" strokeWidth={1.5} />
-          ) : (
-            <Sun aria-hidden className="size-3.5" strokeWidth={1.5} />
-          )}
-        </Button>
+        <ThemeToggle />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

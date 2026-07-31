@@ -107,6 +107,6 @@ cat <<SUMMARY
 
   Start the stack with:
     docker compose --env-file .env up --build     # control plane only, :1267
-    make dev                                     # control plane + dashboard, :3000
+    make dev                                     # control plane + dashboard, :3001
 
 SUMMARY

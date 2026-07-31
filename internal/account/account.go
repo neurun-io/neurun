@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -286,7 +287,7 @@ func (s *Store) CreateKey(ctx context.Context, r CreateKeyRequest) (CreatedKey, 
 
 func (s *Store) ListKeys(ctx context.Context, projectID string, limit int) ([]Key, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id,project_id,COALESCE(user_id,''),
-		name,key_prefix,scopes,created_at,revoked_at FROM api_keys WHERE project_id=$1
+		name,key_prefix,to_jsonb(scopes)::text,created_at,revoked_at FROM api_keys WHERE project_id=$1
 		ORDER BY created_at DESC,id DESC LIMIT $2`, projectID, limit)
 	if err != nil {
 		return nil, err
@@ -296,7 +297,7 @@ func (s *Store) ListKeys(ctx context.Context, projectID string, limit int) ([]Ke
 	for rows.Next() {
 		var key Key
 		if err := rows.Scan(&key.ID, &key.ProjectID, &key.UserID, &key.Name,
-			&key.Prefix, &key.Scopes, &key.CreatedAt, &key.RevokedAt); err != nil {
+			&key.Prefix, (*scopeList)(&key.Scopes), &key.CreatedAt, &key.RevokedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, key)
@@ -309,9 +310,9 @@ func (s *Store) RevokeKey(ctx context.Context, projectID, id string) (Key, error
 	var key Key
 	err := s.db.QueryRowContext(ctx, `UPDATE api_keys SET revoked_at=COALESCE(revoked_at,$3)
 		WHERE project_id=$1 AND id=$2
-		RETURNING id,project_id,COALESCE(user_id,''),name,key_prefix,scopes,created_at,revoked_at`,
+		RETURNING id,project_id,COALESCE(user_id,''),name,key_prefix,to_jsonb(scopes)::text,created_at,revoked_at`,
 		projectID, id, now).Scan(&key.ID, &key.ProjectID, &key.UserID, &key.Name,
-		&key.Prefix, &key.Scopes, &key.CreatedAt, &key.RevokedAt)
+		&key.Prefix, (*scopeList)(&key.Scopes), &key.CreatedAt, &key.RevokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Key{}, ErrNotFound
 	}
@@ -319,6 +320,36 @@ func (s *Store) RevokeKey(ctx context.Context, projectID, id string) (Key, error
 		return Key{}, err
 	}
 	return key, nil
+}
+
+// scopeList reads a text[] column that its query renders as JSON.
+//
+// The pgx stdlib driver hands database/sql the bare Postgres array literal, and
+// database/sql cannot assign that string to a *[]string. Selecting the column
+// through to_jsonb makes the wire form unambiguous — including for the empty
+// array and for values that would otherwise need array-literal quoting — so
+// decoding is a plain json.Unmarshal.
+type scopeList []string
+
+func (list *scopeList) Scan(src any) error {
+	var raw []byte
+	switch value := src.(type) {
+	case nil:
+		*list = nil
+		return nil
+	case []byte:
+		raw = value
+	case string:
+		raw = []byte(value)
+	default:
+		return fmt.Errorf("account: cannot scan %T into scopes", src)
+	}
+	var scopes []string
+	if err := json.Unmarshal(raw, &scopes); err != nil {
+		return fmt.Errorf("account: decode scopes: %w", err)
+	}
+	*list = scopes
+	return nil
 }
 
 type scanner interface{ Scan(...any) error }
@@ -416,9 +447,9 @@ func (s *Store) AuthenticateContext(ctx context.Context, raw string) (auth.Princ
 		return auth.Principal{}, false
 	}
 	var id, projectID string
-	var scopes []string
+	var scopes scopeList
 	var stored []byte
-	err := s.db.QueryRowContext(ctx, `SELECT id,project_id,scopes,key_hash
+	err := s.db.QueryRowContext(ctx, `SELECT id,project_id,to_jsonb(scopes)::text,key_hash
 		FROM api_keys WHERE key_prefix=$1 AND revoked_at IS NULL`, prefix).
 		Scan(&id, &projectID, &scopes, &stored)
 	digest := sha256.Sum256([]byte(raw))

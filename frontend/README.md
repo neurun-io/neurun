@@ -34,7 +34,7 @@ together. To run the dashboard alone:
 ```bash
 npm install
 cp .env.example .env.local     # point NEURUN_API_BASE_URL at your control plane
-npm run dev                    # http://localhost:3000
+npm run dev                    # http://localhost:3001
 ```
 
 Sign in with an operator username and password. Create an account first, from the

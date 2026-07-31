@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { act, render, renderHook, screen, within } from "@testing-library/react";
+import { ThemeProvider } from "next-themes";
+
+import { ThemeToggle } from "@/components/neurun/theme-toggle";
+import { LoginScreen } from "@/components/auth/login-screen";
 
 import { StatusBadge } from "@/components/neurun/status-badge";
 import { ErrorPanel } from "@/components/neurun/error-panel";
@@ -180,5 +184,55 @@ describe("capability tracking", () => {
     expect(result.current.durability).toBe("replicated");
     expect(result.current.isDurable).toBe(false);
     expect(result.current.isProcessLocal).toBe(false);
+  });
+});
+
+describe("ThemeToggle", () => {
+  function renderToggle() {
+    return render(
+      <ThemeProvider
+        attribute="data-theme"
+        defaultTheme="dark"
+        themes={["dark", "light"]}
+        enableSystem={false}
+        storageKey="neurun-theme-test"
+      >
+        <ThemeToggle />
+      </ThemeProvider>,
+    );
+  }
+
+  it("offers the theme it would switch to, and switches on click", async () => {
+    renderToggle();
+
+    // The label names the destination theme, not the current one.
+    const toggle = await screen.findByRole("button", { name: "Switch to light theme" });
+
+    await act(async () => {
+      toggle.click();
+    });
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(screen.getByRole("button", { name: "Switch to dark theme" })).toBeInTheDocument();
+  });
+});
+
+describe("LoginScreen", () => {
+  it("carries a theme toggle, so the theme is settable before signing in", async () => {
+    render(
+      <ThemeProvider
+        attribute="data-theme"
+        defaultTheme="dark"
+        themes={["dark", "light"]}
+        enableSystem={false}
+        storageKey="neurun-theme-test"
+      >
+        <Providers>
+          <LoginScreen />
+        </Providers>
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: /Switch to .* theme/ })).toBeInTheDocument();
   });
 });

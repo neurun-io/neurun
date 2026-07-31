@@ -26,8 +26,13 @@ RUN groupadd --gid 10001 neurun \
     && mkdir -p /var/lib/neurun \
     && chown -R neurun:neurun /var/lib/neurun
 COPY --from=build --chown=neurun:neurun /out/neurun /usr/local/bin/neurun
+# The container runs with a read-only root filesystem, so pip must not reach for
+# the default cache under $HOME. Builds inherit this environment, and their work
+# directories live in the writable /tmp tmpfs.
 ENV NEURUN_DATA_DIRECTORY=/var/lib/neurun \
-    NEURUN_PYTHON_EXECUTABLE=python3
+    NEURUN_PYTHON_EXECUTABLE=python3 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 EXPOSE 1267
 USER neurun
 ENTRYPOINT ["/usr/local/bin/neurun"]

@@ -1,10 +1,14 @@
 .git
 .github
 .tmp
+.tmp-go-cache
 bin
 coverage
 data
 legacy
+.env
+.env.*
+!.env.example
 frontend/.next
 frontend/node_modules
 *.log

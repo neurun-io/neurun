@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -300,7 +301,7 @@ func saveDeploymentTx(
 	if err := advisoryLock(
 		ctx,
 		transaction,
-		"deployment\x00"+record.ProjectID+"\x00"+record.ID,
+		advisoryKey("deployment", record.ProjectID, record.ID),
 	); err != nil {
 		return err
 	}
@@ -715,12 +716,12 @@ func scanBuild(scanner rowScanner) (Build, error) {
 	for index, snapshot := range snapshots {
 		record.Artifacts[index] = artifactFromSnapshot(snapshot)
 	}
+	// Decoding through the pointer leaves Failure nil for a JSON null, which is
+	// how rows written before nullableJSON was corrected represent "no failure".
 	if len(failureJSON) > 0 {
-		var failure Failure
-		if err := json.Unmarshal(failureJSON, &failure); err != nil {
+		if err := json.Unmarshal(failureJSON, &record.Failure); err != nil {
 			return Build{}, fmt.Errorf("decode build failure: %w", err)
 		}
-		record.Failure = &failure
 	}
 	if finishedAt.Valid {
 		finished := finishedAt.Time
@@ -752,6 +753,16 @@ func (store *PostgresStore) transaction(
 	return nil
 }
 
+// advisoryKey joins the parts of a lock name into one text value.
+//
+// The separator has to be a character validateIdentifier rejects, so that
+// distinct part sequences cannot collide into one lock. It cannot be NUL:
+// PostgreSQL refuses a NUL byte in any text value, so hashing such a key fails
+// the whole transaction with SQLSTATE 22021 rather than locking anything.
+func advisoryKey(parts ...string) string {
+	return strings.Join(parts, "/")
+}
+
 func advisoryLock(ctx context.Context, transaction *sql.Tx, key string) error {
 	if _, err := transaction.ExecContext(
 		ctx,
@@ -763,7 +774,27 @@ func advisoryLock(ctx context.Context, transaction *sql.Tx, key string) error {
 	return nil
 }
 
-func nullableJSON(value any) (any, error) {
+// postgresTime normalizes a minted timestamp to the precision a timestamptz
+// column actually keeps.
+//
+// PostgreSQL stores microseconds and the driver truncates on the way in, while
+// Go carries nanoseconds. Handing a caller the untruncated value while the
+// database keeps the truncated one makes the two disagree by up to a
+// microsecond, and validateRunFinalization compares StartedAt exactly — so an
+// untruncated claim time rejected every finalization as changed metadata.
+// Round(0) alone is not enough: it strips the monotonic reading, not precision.
+func postgresTime(value time.Time) time.Time {
+	return value.UTC().Round(0).Truncate(time.Microsecond)
+}
+
+// nullableJSON encodes an optional failure, mapping a nil pointer to SQL NULL.
+//
+// The parameter is typed rather than any on purpose. A nil *Failure placed in an
+// any is itself non-nil — it carries a type — so an any-typed version took the
+// marshalling branch for absent failures and stored the JSON literal null. That
+// is not SQL NULL: reading such a row produced a non-nil failure, which made
+// every successfully built deployment fail validation as an incomplete build.
+func nullableJSON(value *Failure) (any, error) {
 	if value == nil {
 		return nil, nil
 	}

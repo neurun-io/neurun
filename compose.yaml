@@ -61,7 +61,7 @@ services:
     environment:
       NEURUN_API_BASE_URL: http://neurun:1267
     ports:
-      - "${NEURUN_DASHBOARD_PORT:-3000}:3000"
+      - "${NEURUN_DASHBOARD_PORT:-3001}:3001"
     init: true
     read_only: true
     tmpfs:

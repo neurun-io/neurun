@@ -147,7 +147,7 @@ func (store *PostgresStore) ClaimQueuedRun(
 	if now.IsZero() {
 		return Run{}, fmt.Errorf("%w: claim time is required", ErrInvalid)
 	}
-	now = now.UTC().Round(0)
+	now = postgresTime(now)
 	var claimed Run
 	err := store.transaction(ctx, func(transaction *sql.Tx) error {
 		record, version, err := scanExecution(transaction.QueryRowContext(
@@ -193,7 +193,7 @@ func (store *PostgresStore) RecoverRunningRuns(
 	if err := validateRecovery(now, failure); err != nil {
 		return 0, err
 	}
-	now = now.UTC().Round(0)
+	now = postgresTime(now)
 	recovered := 0
 	err := store.transaction(ctx, func(transaction *sql.Tx) error {
 		rows, err := transaction.QueryContext(
@@ -352,12 +352,12 @@ func scanExecution(scanner rowScanner) (Run, int64, error) {
 	if len(outputJSON) > 0 {
 		record.Output = append(json.RawMessage(nil), outputJSON...)
 	}
+	// As in scanBuild, decoding through the pointer maps a JSON null back to an
+	// absent failure rather than an empty one.
 	if len(failureJSON) > 0 {
-		var failure Failure
-		if err := json.Unmarshal(failureJSON, &failure); err != nil {
+		if err := json.Unmarshal(failureJSON, &record.Failure); err != nil {
 			return Run{}, 0, fmt.Errorf("decode execution failure: %w", err)
 		}
-		record.Failure = &failure
 	}
 	if startedAt.Valid {
 		started := startedAt.Time

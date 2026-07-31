@@ -10,6 +10,7 @@ import { Panel } from "@/components/neurun/panel";
 import { Callout } from "@/components/neurun/feedback";
 import { InlineError } from "@/components/neurun/error-panel";
 import { Logo } from "@/components/neurun/logo";
+import { ThemeToggle } from "@/components/neurun/theme-toggle";
 import { NeurunApiError } from "@/lib/api/errors";
 import { useSession } from "@/lib/session/store";
 
@@ -137,6 +138,11 @@ function Header() {
       <div>
         <h1 className="text-xl">Neurun operator dashboard</h1>
         <p className="text-caption text-fg-muted">Run the web. Keep the evidence.</p>
+      </div>
+      {/* Sign-in is outside the dashboard chrome, so it carries its own theme
+          switch rather than leaving the choice until after sign-in. */}
+      <div className="ml-auto shrink-0">
+        <ThemeToggle />
       </div>
     </div>
   );
