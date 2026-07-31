@@ -15,49 +15,33 @@ services:
       timeout: 3s
       retries: 20
 
-  nats:
-    image: nats:2.11-alpine
-    command: ["--jetstream", "--store_dir=/data", "--http_port=8222"]
-    volumes:
-      - nats-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8222/healthz"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   neurun:
     build:
       context: .
-    depends_on:
-      postgres:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
     environment:
       NEURUN_HTTP_ADDR: :1267
       NEURUN_PUBLIC_URL: ${NEURUN_PUBLIC_URL:-http://localhost:1267}
       NEURUN_API_KEY: ${NEURUN_API_KEY:?set NEURUN_API_KEY in .env}
       NEURUN_DEFAULT_PROJECT_ID: ${NEURUN_DEFAULT_PROJECT_ID:-prj_local}
-      NEURUN_ARTIFACT_DIRECTORY: /var/lib/neurun/artifacts
-      NEURUN_BLOCK_PRIVATE_NETWORKS: ${NEURUN_BLOCK_PRIVATE_NETWORKS:-true}
-      NEURUN_ALLOW_VOLATILE_JOBS: ${NEURUN_ALLOW_VOLATILE_JOBS:-false}
-      # Human logins for the dashboard, as `username:role:hash` separated by `;`.
-      # Empty means only API-key access works. Populate it with
-      # `scripts/create-operator.sh`.
+      NEURUN_DATA_DIRECTORY: /var/lib/neurun
+      NEURUN_PYTHON_EXECUTABLE: python3
+      NEURUN_DATABASE_URL: postgres://neurun:${POSTGRES_PASSWORD:-neurun-local-change-me}@postgres:5432/neurun?sslmode=disable
+      # Local subprocess execution is for trusted uploaded code only.
+      NEURUN_TRUSTED_CODE_EXECUTION: "true"
       NEURUN_OPERATOR_ACCOUNTS: ${NEURUN_OPERATOR_ACCOUNTS:-}
       NEURUN_OPERATOR_SESSION_TTL: ${NEURUN_OPERATOR_SESSION_TTL:-12h}
-      NEURUN_OPERATOR_COOKIE_SECURE: ${NEURUN_OPERATOR_COOKIE_SECURE:-true}
+      NEURUN_OPERATOR_COOKIE_SECURE: ${NEURUN_OPERATOR_COOKIE_SECURE:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "${NEURUN_HTTP_PORT:-1267}:1267"
     volumes:
-      # Artifact payloads stay on the Docker host; no object-storage service is
-      # required for the local stack.
       - neurun-data:/var/lib/neurun
     init: true
     read_only: true
     tmpfs:
-      - /tmp:size=64m,mode=1777
+      - /tmp:size=768m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -76,8 +60,6 @@ services:
         condition: service_healthy
     environment:
       NEURUN_API_BASE_URL: http://neurun:1267
-      HOSTNAME: 0.0.0.0
-      PORT: 3000
     ports:
       - "${NEURUN_DASHBOARD_PORT:-3000}:3000"
     init: true
@@ -89,19 +71,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 3s
-      retries: 5
 
 volumes:
   postgres-data:
-  nats-data:
   neurun-data:
