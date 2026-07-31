@@ -3,573 +3,342 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/dagflows/neurun-io/internal/auth"
-	"github.com/dagflows/neurun-io/internal/function"
-	"github.com/dagflows/neurun-io/internal/job"
+	"github.com/neurun-io/neurun/internal/account"
+	"github.com/neurun-io/neurun/internal/auth"
+	"github.com/neurun-io/neurun/internal/deployment"
 )
 
-const (
-	testKeyA = "neu_test_a.secret-a"
-	testKeyB = "neu_test_b.secret-b"
-)
+const testAPIKey = "neu_test.local-secret"
 
-type serverFixture struct {
-	authenticator *auth.Authenticator
-	handler       *Server
-	registry      *function.Registry
-	invocations   *function.Service
-	jobs          *job.MemoryRepository
+type fakeDeployments struct {
+	createRun           deployment.CreateExecutionRequest
+	createApp           deployment.CreateAppRequest
+	listAppName         string
+	listDeploymentAppID string
+	rerunID             string
 }
 
-func newServerFixture(t *testing.T, ready ReadyCheck) serverFixture {
+func (*fakeDeployments) Create(
+	context.Context, deployment.CreateRequest,
+) (deployment.Deployment, error) {
+	return deployment.Deployment{ID: "dep_test", ProjectID: "prj_test"}, nil
+}
+
+func (*fakeDeployments) Get(
+	_ context.Context, projectID, deploymentID string,
+) (deployment.Deployment, error) {
+	if projectID != "prj_test" || deploymentID != "dep_test" {
+		return deployment.Deployment{}, deployment.ErrNotFound
+	}
+	return deployment.Deployment{ID: deploymentID, ProjectID: projectID}, nil
+}
+
+func (fake *fakeDeployments) List(
+	_ context.Context, _ string, appID string, _ int,
+) ([]deployment.Deployment, error) {
+	fake.listDeploymentAppID = appID
+	return []deployment.Deployment{}, nil
+}
+
+func (fake *fakeDeployments) CreateExecution(
+	_ context.Context, request deployment.CreateExecutionRequest,
+) (deployment.Execution, error) {
+	fake.createRun = request
+	return deployment.Run{
+		ID: "run_test", ProjectID: request.ProjectID,
+		DeploymentID: request.DeploymentID, BuildID: "bld_test",
+		Status: deployment.RunQueued, Input: request.Input,
+	}, nil
+}
+
+func (*fakeDeployments) GetExecution(
+	_ context.Context, projectID, runID string,
+) (deployment.Execution, error) {
+	if projectID != "prj_test" || runID != "run_test" {
+		return deployment.Run{}, deployment.ErrRunNotFound
+	}
+	return deployment.Run{ID: runID, ProjectID: projectID}, nil
+}
+
+func (*fakeDeployments) ListDeploymentExecutions(
+	context.Context, string, string, int,
+) ([]deployment.Execution, error) {
+	return []deployment.Execution{}, nil
+}
+
+func (fake *fakeDeployments) RerunExecution(
+	_ context.Context, projectID, runID string,
+) (deployment.Execution, error) {
+	fake.rerunID = runID
+	return deployment.Run{
+		ID: "run_again", ProjectID: projectID, RerunOfRunID: runID,
+		Status: deployment.RunQueued,
+	}, nil
+}
+
+func (*fakeDeployments) GetProject(context.Context, string) (deployment.Project, error) {
+	return deployment.Project{}, nil
+}
+func (*fakeDeployments) ListProjects(context.Context, string, int) ([]deployment.Project, error) {
+	return []deployment.Project{}, nil
+}
+func (*fakeDeployments) UpdateProject(context.Context, string, deployment.UpdateProjectRequest) (deployment.Project, error) {
+	return deployment.Project{}, nil
+}
+func (*fakeDeployments) GetBuild(context.Context, string, string) (deployment.Build, error) {
+	return deployment.Build{}, nil
+}
+func (*fakeDeployments) ListBuilds(context.Context, string, string, int) ([]deployment.Build, error) {
+	return []deployment.Build{}, nil
+}
+func (*fakeDeployments) ListExecutions(context.Context, string, string, int) ([]deployment.Execution, error) {
+	return []deployment.Execution{}, nil
+}
+func (fake *fakeDeployments) CreateApp(
+	_ context.Context, request deployment.CreateAppRequest,
+) (deployment.App, error) {
+	fake.createApp = request
+	return deployment.App{
+		ID: "app_test", ProjectID: request.ProjectID, Name: request.Name,
+	}, nil
+}
+func (*fakeDeployments) GetApp(context.Context, string, string) (deployment.App, error) {
+	return deployment.App{}, nil
+}
+
+func (fake *fakeDeployments) ListApps(
+	_ context.Context, _ string, name string, _ int,
+) ([]deployment.App, error) {
+	fake.listAppName = name
+	return []deployment.App{}, nil
+}
+func (*fakeDeployments) UpdateApp(context.Context, string, string, deployment.UpdateAppRequest) (deployment.App, error) {
+	return deployment.App{}, nil
+}
+
+type fakeAccounts struct{}
+
+func (*fakeAccounts) CreateUser(context.Context, account.CreateUserRequest) (account.User, error) {
+	return account.User{}, nil
+}
+func (*fakeAccounts) GetUser(context.Context, string, string) (account.User, error) {
+	return account.User{}, nil
+}
+func (*fakeAccounts) ListUsers(context.Context, string, int) ([]account.User, error) {
+	return []account.User{}, nil
+}
+func (*fakeAccounts) UpdateUser(context.Context, string, string, account.UpdateUserRequest) (account.User, error) {
+	return account.User{}, nil
+}
+func (*fakeAccounts) CreateKey(context.Context, account.CreateKeyRequest) (account.CreatedKey, error) {
+	return account.CreatedKey{}, nil
+}
+func (*fakeAccounts) ListKeys(context.Context, string, int) ([]account.Key, error) {
+	return []account.Key{}, nil
+}
+func (*fakeAccounts) RevokeKey(context.Context, string, string) (account.Key, error) {
+	return account.Key{}, nil
+}
+
+func newTestServer(t *testing.T) (*Server, *fakeDeployments) {
 	t.Helper()
-	registry := function.NewRegistry()
-	if err := function.RegisterBuiltins(registry); err != nil {
-		t.Fatal(err)
-	}
-	fetchFunction, err := testFetchFunction()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(fetchFunction); err != nil {
-		t.Fatal(err)
-	}
-	invocations := function.NewService(registry, function.NewMemoryStore())
-	jobs := job.NewMemoryRepository()
-	authenticator, err := auth.New(
-		auth.Credential{
-			ID:        "key_a",
-			ProjectID: "prj_a",
-			RawKey:    testKeyA,
-			Scopes:    []string{"*"},
-		},
-		auth.Credential{
-			ID:        "key_b",
-			ProjectID: "prj_b",
-			RawKey:    testKeyB,
-			Scopes:    []string{"*"},
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler, err := NewServer(ServerOptions{
-		Authenticator:  authenticator,
-		Registry:       registry,
-		Invocations:    invocations,
-		Jobs:           jobs,
-		Ready:          ready,
-		JobDurability:  JobDurabilityProcessLocal,
-		AllowAsyncJobs: true,
+	authenticator, err := auth.New(auth.Credential{
+		ID: "key_test", ProjectID: "prj_test", RawKey: testAPIKey,
+		Scopes: []string{"*"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return serverFixture{
-		authenticator: authenticator,
-		handler:       handler,
-		registry:      registry,
-		invocations:   invocations,
-		jobs:          jobs,
-	}
-}
-
-func testFetchFunction() (function.AtomicFunction, error) {
-	return function.NewAtomicFunction(function.Manifest{
-		Name:             "http.fetch",
-		Version:          "1",
-		Category:         "http",
-		Description:      "Test HTTP function.",
-		ExecutionContext: function.ExecutionContextHTTPAttempt,
-		SideEffects:      function.SideEffectIdempotent,
-		Timeout: function.TimeoutPolicy{
-			DefaultMS: 1000,
-			MaximumMS: 5000,
-		},
-		Capabilities: []string{"http"},
-		InputSchema: function.Schema{
-			Type:                 function.TypeObject,
-			Required:             []string{"url"},
-			AdditionalProperties: function.Bool(false),
-			Properties: map[string]function.Schema{
-				"url": {Type: function.TypeString},
-			},
-		},
-		OutputSchema: function.Schema{},
-	}, func(
-		ctx context.Context,
-		execution *function.ExecutionContext,
-		input json.RawMessage,
-	) (function.FunctionResult, error) {
-		if err := ctx.Err(); err != nil {
-			return function.FunctionResult{}, err
-		}
-		output, err := json.Marshal(map[string]any{
-			"project_id": execution.ProjectID,
-			"input":      json.RawMessage(input),
-		})
-		if err != nil {
-			return function.FunctionResult{}, err
-		}
-		return function.FunctionResult{Output: output}, nil
+	service := &fakeDeployments{}
+	server, err := NewServer(ServerOptions{
+		Authenticator: authenticator, Deployments: service, Accounts: &fakeAccounts{},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return server, service
 }
 
-func TestServerPublicHealthAndAuthenticatedCatalog(t *testing.T) {
+func TestPublicHealthAndRemovedRoutes(t *testing.T) {
 	t.Parallel()
-	fixture := newServerFixture(t, nil)
-
-	response := performRequest(t, fixture.handler, http.MethodGet, "/healthz", "", "", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("health status = %d, body = %s", response.Code, response.Body)
+	server, _ := newTestServer(t)
+	response := request(t, server, http.MethodGet, "/healthz", "", "")
+	if response.Code != http.StatusOK || response.Header().Get("Request-ID") == "" {
+		t.Fatalf("health = %d %s", response.Code, response.Body)
 	}
-	if response.Header().Get("Request-ID") == "" {
-		t.Fatal("health response is missing Request-ID")
-	}
-	if response.Header().Get("X-Content-Type-Options") != "nosniff" {
-		t.Fatal("health response is missing security headers")
-	}
-
-	response = performRequest(t, fixture.handler, http.MethodGet, "/v1/functions", "", "", "")
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated catalog status = %d, body = %s", response.Code, response.Body)
-	}
-	if response.Header().Get("WWW-Authenticate") == "" {
-		t.Fatal("unauthenticated response is missing challenge")
-	}
-
-	response = performRequest(t, fixture.handler, http.MethodGet, "/v1/functions", "", testKeyA, "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("catalog status = %d, body = %s", response.Code, response.Body)
-	}
-	var catalog struct {
-		Functions []function.Manifest `json:"functions"`
-	}
-	decodeResponse(t, response, &catalog)
-	if len(catalog.Functions) != 3 {
-		t.Fatalf("catalog function count = %d, want 3", len(catalog.Functions))
-	}
-}
-
-func TestServerReadinessFailureUsesProblemEnvelope(t *testing.T) {
-	t.Parallel()
-	fixture := newServerFixture(t, func(context.Context) error {
-		return context.DeadlineExceeded
-	})
-	response := performRequest(t, fixture.handler, http.MethodGet, "/readyz", "", "", "")
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("ready status = %d, body = %s", response.Code, response.Body)
-	}
-	var envelope ErrorEnvelope
-	decodeResponse(t, response, &envelope)
-	if envelope.Error.Code != "not_ready" || envelope.RequestID == "" {
-		t.Fatalf("ready problem = %#v", envelope)
-	}
-}
-
-func TestServerSyncInvocationIsProjectScoped(t *testing.T) {
-	t.Parallel()
-	fixture := newServerFixture(t, nil)
-	body := `{"project_id":"prj_a","version":"1","execution":"sync","input":{"hello":"world"}}`
-	response := performRequest(
-		t,
-		fixture.handler,
-		http.MethodPost,
-		"/v1/functions/system.echo/invoke",
-		body,
-		testKeyA,
-		"",
-	)
-	if response.Code != http.StatusOK {
-		t.Fatalf("invoke status = %d, body = %s", response.Code, response.Body)
-	}
-	var invoked invocationResponse
-	decodeResponse(t, response, &invoked)
-	if invoked.ProjectID != "prj_a" || invoked.Status != function.InvocationSucceeded {
-		t.Fatalf("invocation = %#v", invoked.Invocation)
-	}
-	if invoked.Context == nil || invoked.Context.ProjectID != "prj_a" {
-		t.Fatalf("execution context = %#v", invoked.Context)
-	}
-	if invoked.RequestID == "" || invoked.TraceID == invoked.RequestID {
-		t.Fatalf("request_id = %q, trace_id = %q", invoked.RequestID, invoked.TraceID)
-	}
-
-	response = performRequest(
-		t,
-		fixture.handler,
-		http.MethodGet,
-		"/v1/function-invocations/"+invoked.ID,
-		"",
-		testKeyB,
-		"",
-	)
+	response = request(t, server, http.MethodGet, "/v1/functions", "", testAPIKey)
 	if response.Code != http.StatusNotFound {
-		t.Fatalf("cross-project invocation status = %d, body = %s", response.Code, response.Body)
+		t.Fatalf("removed route = %d %s", response.Code, response.Body)
 	}
+}
 
-	body = `{"version":"1","execution":"sync","context":{"project_id":"prj_b"},"input":{}}`
-	response = performRequest(
-		t,
-		fixture.handler,
-		http.MethodPost,
-		"/v1/functions/system.echo/invoke",
-		body,
-		testKeyA,
-		"",
+func TestDeploymentRoutesRequireAPIKey(t *testing.T) {
+	t.Parallel()
+	server, _ := newTestServer(t)
+	response := request(t, server, http.MethodGet, "/v1/deployments", "", "")
+	if response.Code != http.StatusUnauthorized ||
+		response.Header().Get("WWW-Authenticate") == "" {
+		t.Fatalf("response = %d %s", response.Code, response.Body)
+	}
+}
+
+func TestCreateRunPreservesExplicitNullAndLocation(t *testing.T) {
+	t.Parallel()
+	server, service := newTestServer(t)
+	response := request(
+		t, server, http.MethodPost, "/v1/deployments/dep_test/executions",
+		`{"input":null}`, testAPIKey,
 	)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("forged context status = %d, body = %s", response.Code, response.Body)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("response = %d %s", response.Code, response.Body)
 	}
+	if response.Header().Get("Location") != "/v1/executions/run_test" {
+		t.Fatalf("Location = %q", response.Header().Get("Location"))
+	}
+	if string(service.createRun.Input) != "null" {
+		t.Fatalf("input = %s", service.createRun.Input)
+	}
+}
 
-	for _, contextJSON := range []string{
-		`{"attempt_id":"att_forged"}`,
-		`{"session_id":"ses_forged"}`,
-		`{"ephemeral_http":true}`,
-		`{"capabilities":["http"]}`,
-	} {
-		body = `{"version":"1","execution":"sync","context":` +
-			contextJSON + `,"input":{}}`
-		response = performRequest(
-			t,
-			fixture.handler,
-			http.MethodPost,
-			"/v1/functions/system.echo/invoke",
-			body,
-			testKeyA,
-			"",
+func TestCreateRunRejectsMissingAndUnknownFields(t *testing.T) {
+	t.Parallel()
+	server, _ := newTestServer(t)
+	for _, body := range []string{`{}`, `{"input":{},"extra":true}`} {
+		response := request(
+			t, server, http.MethodPost, "/v1/deployments/dep_test/executions",
+			body, testAPIKey,
 		)
 		if response.Code != http.StatusUnprocessableEntity {
-			t.Fatalf("server-owned context %s status = %d, body = %s",
-				contextJSON, response.Code, response.Body)
+			t.Fatalf("body %s = %d %s", body, response.Code, response.Body)
 		}
 	}
 }
 
-func TestServerAsyncJobAcceptanceRequiresIdempotencyAndReplays(t *testing.T) {
+func TestRerunTargetsRunAndReturnsAcceptedLocation(t *testing.T) {
 	t.Parallel()
-	fixture := newServerFixture(t, nil)
-	body := `{"version":"1","execution":"async","input":{"work":1},"max_attempts":2}`
-	response := performRequest(
-		t,
-		fixture.handler,
-		http.MethodPost,
-		"/v1/functions/system.echo/invoke",
-		body,
-		testKeyA,
-		"",
+	server, service := newTestServer(t)
+	response := request(
+		t, server, http.MethodPost, "/v1/executions/run_test/rerun",
+		"", testAPIKey,
 	)
+	if response.Code != http.StatusAccepted ||
+		response.Header().Get("Location") != "/v1/executions/run_again" ||
+		service.rerunID != "run_test" {
+		t.Fatalf("response = %d %s, Location = %q, rerun = %q",
+			response.Code, response.Body, response.Header().Get("Location"), service.rerunID)
+	}
+}
+
+func TestArtifactStorageKeyIsNotSerialized(t *testing.T) {
+	t.Parallel()
+	body, err := json.Marshal(deployment.Artifact{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "storage") {
+		t.Fatalf("artifact leaked internal storage: %s", body)
+	}
+}
+
+func TestExecutionAlwaysSerializesLogs(t *testing.T) {
+	t.Parallel()
+	body, err := json.Marshal(deployment.Execution{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"logs":""`) {
+		t.Fatalf("execution omitted bounded logs: %s", body)
+	}
+}
+
+func TestEmptyUserPatchIsRejected(t *testing.T) {
+	t.Parallel()
+	server, _ := newTestServer(t)
+	response := request(t, server, http.MethodPatch, "/v1/users/usr_test", `{}`, testAPIKey)
 	if response.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("missing idempotency status = %d, body = %s", response.Code, response.Body)
-	}
-
-	response = performRequest(
-		t,
-		fixture.handler,
-		http.MethodPost,
-		"/v1/functions/system.echo/invoke",
-		body,
-		testKeyA,
-		"idem-one",
-	)
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("async invoke status = %d, body = %s", response.Code, response.Body)
-	}
-	var accepted struct {
-		Job struct {
-			ID      string `json:"id"`
-			Request struct {
-				Function job.FunctionRef `json:"function"`
-			} `json:"request"`
-		} `json:"job"`
-		JobID      string `json:"job_id"`
-		Duplicate  bool   `json:"duplicate"`
-		Durability string `json:"durability"`
-		RequestID  string `json:"request_id"`
-	}
-	decodeResponse(t, response, &accepted)
-	if accepted.JobID == "" ||
-		accepted.Job.ID != accepted.JobID ||
-		accepted.RequestID == "" ||
-		accepted.Durability != string(JobDurabilityProcessLocal) ||
-		response.Header().Get("Neurun-Job-Durability") != string(JobDurabilityProcessLocal) {
-		t.Fatalf("accepted response = %#v", accepted)
-	}
-	if accepted.Job.Request.Function.Version != "1" ||
-		accepted.Job.Request.Function.Digest == "" {
-		t.Fatalf("job function was not pinned: %#v", accepted.Job.Request.Function)
-	}
-
-	response = performRequest(
-		t,
-		fixture.handler,
-		http.MethodPost,
-		"/v1/functions/system.echo/invoke",
-		body,
-		testKeyA,
-		"idem-one",
-	)
-	if response.Code != http.StatusAccepted || response.Header().Get("Idempotent-Replayed") != "true" {
-		t.Fatalf("replay status = %d, headers = %#v, body = %s", response.Code, response.Header(), response.Body)
-	}
-	var replayed struct {
-		JobID     string `json:"job_id"`
-		Duplicate bool   `json:"duplicate"`
-	}
-	decodeResponse(t, response, &replayed)
-	if !replayed.Duplicate || replayed.JobID != accepted.JobID {
-		t.Fatalf("replayed response = %#v", replayed)
-	}
-
-	changed := `{"version":"1","execution":"async","input":{"work":2},"max_attempts":2}`
-	response = performRequest(
-		t,
-		fixture.handler,
-		http.MethodPost,
-		"/v1/functions/system.echo/invoke",
-		changed,
-		testKeyA,
-		"idem-one",
-	)
-	if response.Code != http.StatusConflict {
-		t.Fatalf("idempotency conflict status = %d, body = %s", response.Code, response.Body)
-	}
-
-	response = performRequest(
-		t,
-		fixture.handler,
-		http.MethodGet,
-		"/v1/jobs/"+accepted.JobID+"/events",
-		"",
-		testKeyA,
-		"",
-	)
-	if response.Code != http.StatusOK {
-		t.Fatalf("job events status = %d, body = %s", response.Code, response.Body)
-	}
-
-	response = performRequest(
-		t,
-		fixture.handler,
-		http.MethodGet,
-		"/v1/jobs/"+accepted.JobID,
-		"",
-		testKeyB,
-		"",
-	)
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("cross-project job status = %d, body = %s", response.Code, response.Body)
+		t.Fatalf("response = %d %s", response.Code, response.Body)
 	}
 }
 
-func TestServerGatesProcessLocalAsyncJobsUnlessExplicitlyEnabled(t *testing.T) {
+func TestCreateAppUsesAuthenticatedProjectAndHasNoDelete(t *testing.T) {
 	t.Parallel()
-	fixture := newServerFixture(t, nil)
-	handler, err := NewServer(ServerOptions{
-		Authenticator: fixture.authenticator,
-		Registry:      fixture.registry,
-		Invocations:   fixture.invocations,
-		Jobs:          fixture.jobs,
-	})
-	if err != nil {
-		t.Fatal(err)
+	server, service := newTestServer(t)
+	response := request(t, server, http.MethodPost, "/v1/apps", `{"name":"scraper"}`, testAPIKey)
+	if response.Code != http.StatusCreated ||
+		response.Header().Get("Location") != "/v1/apps/app_test" ||
+		service.createApp.ProjectID != "prj_test" ||
+		service.createApp.Name != "scraper" {
+		t.Fatalf("response = %d %s, Location = %q, request = %#v",
+			response.Code, response.Body, response.Header().Get("Location"), service.createApp)
 	}
-	if handler.jobDurability != JobDurabilityProcessLocal {
-		t.Fatalf("zero-value durability = %q, want %q",
-			handler.jobDurability, JobDurabilityProcessLocal)
-	}
-	if handler.allowAsyncJobs {
-		t.Fatal("zero-value server options unexpectedly enabled asynchronous jobs")
-	}
-
-	response := performRequest(
-		t,
-		handler,
-		http.MethodPost,
-		"/v1/jobs",
-		`{"function":{"name":"system.echo","version":"1"},"input":{}}`,
-		testKeyA,
-		"idem-disabled",
-	)
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("disabled jobs status = %d, body = %s", response.Code, response.Body)
-	}
-	var envelope ErrorEnvelope
-	decodeResponse(t, response, &envelope)
-	if envelope.Error.Code != "durable_backend_unavailable" {
-		t.Fatalf("disabled jobs problem = %#v", envelope)
+	response = request(t, server, http.MethodDelete, "/v1/apps/app_test", "", testAPIKey)
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("delete response = %d %s", response.Code, response.Body)
 	}
 }
 
-func TestServerCreateListAndCancelJob(t *testing.T) {
+func TestListFiltersAreForwarded(t *testing.T) {
 	t.Parallel()
-	fixture := newServerFixture(t, nil)
-	body := `{"function":{"name":"system.echo","version":"stable"},"input":{"job":true}}`
-	response := performRequest(
-		t,
-		fixture.handler,
-		http.MethodPost,
-		"/v1/jobs",
-		body,
-		testKeyA,
-		"idem-job",
-	)
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("create job status = %d, body = %s", response.Code, response.Body)
+	server, service := newTestServer(t)
+	response := request(t, server, http.MethodGet, "/v1/apps?name=scrape&limit=1", "", testAPIKey)
+	if response.Code != http.StatusOK || service.listAppName != "scrape" {
+		t.Fatalf("apps response = %d %s, name = %q", response.Code, response.Body, service.listAppName)
 	}
-	var accepted struct {
-		JobID string `json:"job_id"`
-	}
-	decodeResponse(t, response, &accepted)
-
-	response = performRequest(t, fixture.handler, http.MethodGet, "/v1/jobs?status=queued", "", testKeyA, "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("list jobs status = %d, body = %s", response.Code, response.Body)
-	}
-	var listed struct {
-		Jobs []job.Job `json:"jobs"`
-	}
-	decodeResponse(t, response, &listed)
-	if len(listed.Jobs) != 1 || listed.Jobs[0].ID != accepted.JobID {
-		t.Fatalf("listed jobs = %#v", listed.Jobs)
-	}
-
-	response = performRequest(
-		t,
-		fixture.handler,
-		http.MethodPost,
-		"/v1/jobs/"+accepted.JobID+"/cancel",
-		`{"reason":"operator request"}`,
-		testKeyA,
-		"",
-	)
-	if response.Code != http.StatusOK {
-		t.Fatalf("cancel job status = %d, body = %s", response.Code, response.Body)
-	}
-	var canceled struct {
-		Job       job.Job `json:"job"`
-		RequestID string  `json:"request_id"`
-	}
-	decodeResponse(t, response, &canceled)
-	if canceled.Job.State != job.StateCanceled || canceled.RequestID == "" {
-		t.Fatalf("canceled response = %#v", canceled)
+	response = request(t, server, http.MethodGet, "/v1/deployments?app_id=app_test&limit=1", "", testAPIKey)
+	if response.Code != http.StatusOK || service.listDeploymentAppID != "app_test" {
+		t.Fatalf("deployments response = %d %s, app_id = %q", response.Code, response.Body, service.listDeploymentAppID)
 	}
 }
 
-func TestServerFetchSuppliesTrustedHTTPContext(t *testing.T) {
+func TestDeploymentFormRequiresAppID(t *testing.T) {
 	t.Parallel()
-	fixture := newServerFixture(t, nil)
-	body := `{"project_id":"prj_a","mode":"auto","request":{"url":"https://example.test"}}`
-	response := performRequest(
-		t,
-		fixture.handler,
-		http.MethodPost,
-		"/v1/fetch",
-		body,
-		testKeyA,
-		"",
-	)
-	if response.Code != http.StatusOK {
-		t.Fatalf("fetch status = %d, body = %s", response.Code, response.Body)
+	form := &multipart.Form{
+		Value: map[string][]string{"runtime": {"python"}},
+		File:  map[string][]*multipart.FileHeader{"source": {&multipart.FileHeader{Filename: "source.zip"}}},
 	}
-	var invoked invocationResponse
-	decodeResponse(t, response, &invoked)
-	if invoked.Context == nil ||
-		invoked.Context.ProjectID != "prj_a" ||
-		!invoked.Context.EphemeralHTTP ||
-		len(invoked.Context.Capabilities) != 1 ||
-		invoked.Context.Capabilities[0] != "http" {
-		t.Fatalf("fetch execution context = %#v", invoked.Context)
+	if message := validateDeploymentForm(form); message != "app_id is required exactly once" {
+		t.Fatalf("validation message = %q", message)
+	}
+	form.Value["app_id"] = []string{"app_test"}
+	if message := validateDeploymentForm(form); message != "" {
+		t.Fatalf("valid form rejected: %q", message)
 	}
 }
 
-func TestServerEnforcesScopesAndJSONMethods(t *testing.T) {
+func TestOnlyAPIKeysRouteIsExposed(t *testing.T) {
 	t.Parallel()
-	registry := function.NewRegistry()
-	if err := function.RegisterBuiltins(registry); err != nil {
-		t.Fatal(err)
+	server, _ := newTestServer(t)
+	if response := request(t, server, http.MethodGet, "/v1/api-keys", "", testAPIKey); response.Code != http.StatusOK {
+		t.Fatalf("api-keys response = %d %s", response.Code, response.Body)
 	}
-	authenticator, err := auth.New(auth.Credential{
-		ID:        "read_only",
-		ProjectID: "prj_a",
-		RawKey:    testKeyA,
-		Scopes:    []string{ScopeFunctionsRead},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler, err := NewServer(ServerOptions{
-		Authenticator: authenticator,
-		Registry:      registry,
-		Invocations:   function.NewService(registry, function.NewMemoryStore()),
-		Jobs:          job.NewMemoryRepository(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	response := performRequest(
-		t,
-		handler,
-		http.MethodPost,
-		"/v1/functions/system.echo/invoke",
-		`{"input":{}}`,
-		testKeyA,
-		"",
-	)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("scope status = %d, body = %s", response.Code, response.Body)
-	}
-	var envelope ErrorEnvelope
-	decodeResponse(t, response, &envelope)
-	if envelope.Error.Code != "permission_denied" || envelope.RequestID == "" {
-		t.Fatalf("scope problem = %#v", envelope)
-	}
-
-	response = performRequest(t, handler, http.MethodPost, "/healthz", "", "", "")
-	if response.Code != http.StatusMethodNotAllowed ||
-		!strings.Contains(response.Header().Get("Allow"), http.MethodGet) {
-		t.Fatalf("method response = %d, headers = %#v, body = %s", response.Code, response.Header(), response.Body)
-	}
-	decodeResponse(t, response, &envelope)
-	if envelope.Error.Code != "method_not_allowed" {
-		t.Fatalf("method problem = %#v", envelope)
+	if response := request(t, server, http.MethodGet, "/v1/keys", "", testAPIKey); response.Code != http.StatusNotFound {
+		t.Fatalf("legacy keys response = %d %s", response.Code, response.Body)
 	}
 }
 
-func performRequest(
+func request(
 	t *testing.T,
 	handler http.Handler,
 	method string,
-	path string,
+	target string,
 	body string,
-	key string,
-	idempotencyKey string,
+	apiKey string,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	httpRequest := httptest.NewRequest(method, target, strings.NewReader(body))
 	if body != "" {
-		request.Header.Set("Content-Type", "application/json")
+		httpRequest.Header.Set("Content-Type", "application/json")
 	}
-	if key != "" {
-		request.Header.Set("Authorization", "Bearer "+key)
-	}
-	if idempotencyKey != "" {
-		request.Header.Set("Idempotency-Key", idempotencyKey)
+	if apiKey != "" {
+		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
+	handler.ServeHTTP(response, httpRequest)
 	return response
-}
-
-func decodeResponse(t *testing.T, response *httptest.ResponseRecorder, destination any) {
-	t.Helper()
-	if err := json.NewDecoder(response.Body).Decode(destination); err != nil {
-		t.Fatalf("decode response: %v; body = %s", err, response.Body)
-	}
 }

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dagflows/neurun-io/internal/ids"
+	"github.com/neurun-io/neurun/internal/ids"
 )
 
 type Problem struct {

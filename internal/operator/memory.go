@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dagflows/neurun-io/internal/ids"
+	"github.com/neurun-io/neurun/internal/ids"
 )
 
 // MemoryStore is the process-local Store adapter.

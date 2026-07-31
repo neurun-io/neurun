@@ -6,11 +6,8 @@
 // cookie. Both paths converge on auth.Principal, so scope enforcement stays in
 // one place.
 //
-// Storage follows the same pattern as jobs and invocations in this foundation: a
-// port with a process-local adapter. Operator sessions therefore do not survive
-// a restart, and accounts come from configuration rather than a database. The
-// operators and operator_sessions tables in migrations/ describe the durable
-// shape for when the PostgreSQL adapter lands.
+// Human accounts are durable while sessions remain process-local and therefore
+// do not survive a restart.
 package operator
 
 import (
@@ -45,16 +42,22 @@ const (
 
 // Scopes returns the API scopes granted by the role.
 //
-// `viewer` deliberately omits functions:invoke and jobs:write, so a read-only
-// operator cannot start or cancel work even though the UI is the same build.
+// A viewer receives only read scopes; an operator may deploy and execute code.
 func (r Role) Scopes() []string {
 	switch r {
 	case RoleAdmin:
 		return []string{"*"}
 	case RoleOperator:
-		return []string{"functions:read", "functions:invoke", "jobs:read", "jobs:write"}
+		return []string{
+			"projects:read", "apps:read", "apps:write",
+			"deployments:read", "deployments:write",
+			"builds:read", "executions:read", "executions:write",
+		}
 	case RoleViewer:
-		return []string{"functions:read", "jobs:read"}
+		return []string{
+			"projects:read", "apps:read", "deployments:read", "builds:read",
+			"executions:read", "users:read", "api_keys:read",
+		}
 	default:
 		return nil
 	}

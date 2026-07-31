@@ -1,1633 +1,734 @@
 openapi: 3.1.0
 info:
-  title: Neurun Control API
+  title: Neurun API
   version: 0.1.0
-  description: |
-    Project-scoped control API for the Neurun MVP execution foundation.
-
-    The catalog is release-owned and read-only. Synchronous invocations execute
-    in the serving process. Asynchronous invocations are accepted as immutable,
-    digest-pinned jobs and receive an invocation ID when an agent begins the
-    attempt.
-
-    The job contract stores the function reference and input. The all-in-one
-    binary currently uses process-local job, invocation, outbox, and queue
-    adapters: asynchronous mutation routes are disabled unless an operator
-    explicitly enables volatile development jobs, and accepted responses say
-    `durability=process_local`. A production adapter must persist these ports
-    before advertising `durability=durable`.
-
-    Asynchronous execution does not yet persist caller-supplied session context
-    or per-invocation timeouts, so those fields are rejected. Manual job retry
-    is intentionally absent because the repository interface exposes only
-    policy-driven retry scheduling; cancellation remains supported.
+  description: Build Python deployments and execute immutable builds.
 servers:
-  - url: /
-    description: Same-origin API
-tags:
-  - name: Health
-  - name: Auth
-  - name: Functions
-  - name: Invocations
-  - name: Jobs
-  - name: Fetch
-# Either credential is accepted on every /v1 route: a bearer API key for
-# programs, or an operator session cookie for a signed-in human. An explicit
-# Authorization header takes precedence when both are present.
+  - url: http://localhost:1267
 security:
   - bearerAuth: []
-  - operatorSession: []
 paths:
   /healthz:
     get:
-      tags: [Health]
-      operationId: getHealth
-      summary: Process liveness
       security: []
+      operationId: health
       responses:
         "200":
-          description: Process is alive.
-          headers:
-            Request-ID:
-              $ref: "#/components/headers/RequestID"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Health"
+          description: Process is healthy.
   /readyz:
     get:
-      tags: [Health]
-      operationId: getReadiness
-      summary: Dependency readiness
       security: []
+      operationId: readiness
       responses:
         "200":
-          description: Server is ready to accept work.
-          headers:
-            Request-ID:
-              $ref: "#/components/headers/RequestID"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Ready"
+          description: Storage is ready.
         "503":
-          $ref: "#/components/responses/NotReady"
+          $ref: "#/components/responses/Problem"
   /version:
     get:
-      tags: [Health]
-      operationId: getVersion
-      summary: Build and contract versions
       security: []
+      operationId: version
       responses:
         "200":
-          description: Build information.
-          headers:
-            Request-ID:
-              $ref: "#/components/headers/RequestID"
+          description: Build metadata.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Version"
+                type: object
+                required: [version, commit, built_at, api_version, schema_version]
+                properties:
+                  version: {type: string}
+                  commit: {type: string}
+                  built_at: {type: string}
+                  api_version: {type: string}
+                  schema_version: {type: string}
   /v1/auth/login:
     post:
-      tags: [Auth]
-      operationId: operatorLogin
-      summary: Exchange a username and password for an operator session
-      description: |
-        Issues a session cookie for a configured operator account. The response
-        never contains the session token itself, and it never contains an API
-        key.
-
-        An unknown username, a wrong password, and a disabled account all return
-        the same `invalid_credentials` response, so the endpoint cannot be used
-        to enumerate accounts. Repeated failures for one username are throttled
-        with an increasing delay and answered with `429` plus `Retry-After`.
       security: []
+      operationId: operatorLogin
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/OperatorLoginRequest"
+              type: object
+              additionalProperties: false
+              required: [username, password]
+              properties:
+                username: {type: string}
+                password: {type: string}
       responses:
         "200":
-          description: Sign-in succeeded and a session cookie was set.
-          headers:
-            Set-Cookie:
-              description: |
-                `neurun_operator_session=<token>; Path=/; HttpOnly; Secure;
-                SameSite=Strict`.
-              schema:
-                type: string
-            Request-ID:
-              $ref: "#/components/headers/RequestID"
+          description: Operator session created.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/OperatorLoginResponse"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "401":
-          $ref: "#/components/responses/InvalidCredentials"
-        "413":
-          $ref: "#/components/responses/RequestTooLarge"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "429":
-          $ref: "#/components/responses/TooManyAttempts"
-        "503":
-          $ref: "#/components/responses/OperatorSignInUnavailable"
+              schema: {$ref: "#/components/schemas/OperatorEnvelope"}
+        "401": {$ref: "#/components/responses/Problem"}
   /v1/auth/logout:
     post:
-      tags: [Auth]
+      security: []
       operationId: operatorLogout
-      summary: Revoke the current operator session
-      description: |
-        Deletes the session server-side and clears the cookie. Intentionally
-        idempotent and always `204`: signing out must not reveal whether a
-        session existed.
-      security:
-        - operatorSession: []
       responses:
-        "204":
-          description: The session is revoked and the cookie cleared.
-          headers:
-            Set-Cookie:
-              description: An expired `neurun_operator_session` cookie.
-              schema:
-                type: string
+        "204": {description: Session cleared.}
   /v1/auth/session:
     get:
-      tags: [Auth]
+      security: []
       operationId: getOperatorSession
-      summary: Describe the signed-in operator
-      description: |
-        Returns the current operator, their role and the scopes it grants. A
-        missing, expired or unknown session returns `401` and clears the cookie.
-      security:
-        - operatorSession: []
       responses:
         "200":
-          description: The session is live.
+          description: Current operator.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/OperatorSessionResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "503":
-          $ref: "#/components/responses/OperatorSignInUnavailable"
-  /v1/functions:
+              schema: {$ref: "#/components/schemas/OperatorEnvelope"}
+        "401": {$ref: "#/components/responses/Problem"}
+  /v1/projects:
     get:
-      tags: [Functions]
-      operationId: listFunctions
-      summary: List installed immutable function versions
-      x-required-scope: functions:read
+      operationId: listProjects
       parameters:
-        - name: category
-          in: query
-          schema:
-            type: string
-        - name: capability
-          in: query
-          schema:
-            type: string
-        - name: status
-          in: query
-          description: The current release supports only `available`.
-          schema:
-            type: string
-            enum: [available]
-      responses:
-        "200":
-          description: Exact installed function versions in deterministic order.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FunctionList"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-  /v1/functions/{function_name}:
-    parameters:
-      - $ref: "#/components/parameters/FunctionName"
-    get:
-      tags: [Functions]
-      operationId: getFunction
-      summary: Get all installed versions of one function
-      x-required-scope: functions:read
-      responses:
-        "200":
-          description: Function definition and exact versions.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FunctionDefinition"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /v1/functions/{function_name}/versions/{version}:
-    parameters:
-      - $ref: "#/components/parameters/FunctionName"
-      - $ref: "#/components/parameters/FunctionVersion"
-    get:
-      tags: [Functions]
-      operationId: getFunctionVersion
-      summary: Resolve an exact version or release alias
-      x-required-scope: functions:read
-      responses:
-        "200":
-          description: Resolved immutable manifest.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FunctionManifest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /v1/function-manifest-bundle:
-    get:
-      tags: [Functions]
-      operationId: getFunctionManifestBundle
-      summary: Get the digest-addressed installed manifest bundle
-      x-required-scope: functions:read
-      responses:
-        "200":
-          description: Normalized manifest bundle.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ManifestBundle"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-  /v1/functions/{function_name}/invoke:
-    parameters:
-      - $ref: "#/components/parameters/FunctionName"
-    post:
-      tags: [Invocations]
-      operationId: invokeFunction
-      summary: Invoke an installed immutable function
-      description: |
-        `execution=sync` returns the completed invocation. `execution=async`
-        accepts an asynchronous job and requires both `functions:invoke` and
-        `jobs:write` scopes plus a non-empty `Idempotency-Key` header.
-        Asynchronous requests must omit `context` and `timeout_ms` in the
-        current release.
-      x-required-scope: functions:invoke
-      parameters:
-        - $ref: "#/components/parameters/ConditionalIdempotencyKey"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InvokeFunctionRequest"
-      responses:
-        "200":
-          description: Synchronous invocation completed successfully.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Invocation"
-        "202":
-          description: Asynchronous job accepted or idempotently replayed.
-          headers:
-            Location:
-              schema:
-                type: string
-            Idempotent-Replayed:
-              schema:
-                type: string
-                enum: ["true"]
-            Neurun-Job-Durability:
-              $ref: "#/components/headers/JobDurability"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AcceptedJob"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "413":
-          $ref: "#/components/responses/RequestTooLarge"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "422":
-          $ref: "#/components/responses/InvalidRequest"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/InvocationFailure"
-        "504":
-          $ref: "#/components/responses/InvocationFailure"
-        "503":
-          $ref: "#/components/responses/AsyncUnavailable"
-  /v1/function-invocations:
-    get:
-      tags: [Invocations]
-      operationId: listFunctionInvocations
-      summary: List invocations visible to the authenticated project
-      x-required-scope: functions:read
-      parameters:
-        - name: function
-          in: query
-          schema:
-            type: string
-        - name: version
-          in: query
-          schema:
-            type: string
-        - name: status
-          in: query
-          schema:
-            $ref: "#/components/schemas/InvocationStatus"
         - $ref: "#/components/parameters/Limit"
-        - $ref: "#/components/parameters/Cursor"
       responses:
         "200":
-          description: Project-scoped invocation page.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InvocationList"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-  /v1/function-invocations/{invocation_id}:
-    parameters:
-      - $ref: "#/components/parameters/InvocationID"
-    get:
-      tags: [Invocations]
-      operationId: getFunctionInvocation
-      summary: Get one project-scoped invocation
-      x-required-scope: functions:read
-      responses:
-        "200":
-          description: Invocation snapshot.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Invocation"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /v1/function-invocations/{invocation_id}/cancel:
-    parameters:
-      - $ref: "#/components/parameters/InvocationID"
-    post:
-      tags: [Invocations]
-      operationId: cancelFunctionInvocation
-      summary: Signal cancellation to a running direct invocation
-      x-required-scope: functions:invoke
-      responses:
-        "202":
-          description: Cancellation signal was delivered.
+          description: Projects visible to the principal.
           content:
             application/json:
               schema:
                 type: object
-                required: [invocation_id, request_id, status]
+                required: [projects]
                 properties:
-                  invocation_id:
-                    type: string
-                  request_id:
-                    type: string
-                  status:
-                    const: cancel_requested
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-  /v1/jobs:
+                  projects:
+                    type: array
+                    items: {$ref: "#/components/schemas/Project"}
+  /v1/projects/{project_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema: {type: string}
     get:
-      tags: [Jobs]
-      operationId: listJobs
-      summary: List asynchronous jobs for the authenticated project
-      x-required-scope: jobs:read
+      operationId: getProject
+      responses:
+        "200":
+          description: Project.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Project"}
+        "404": {$ref: "#/components/responses/Problem"}
+    patch:
+      operationId: updateProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: {type: string}
+      responses:
+        "200":
+          description: Updated project.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Project"}
+  /v1/apps:
+    get:
+      operationId: listApps
       parameters:
-        - name: status
-          in: query
-          description: Repeat or provide a comma-separated set.
-          schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/JobState"
-          style: form
-          explode: true
-        - name: created_after
-          in: query
-          schema:
-            type: string
-            format: date-time
         - $ref: "#/components/parameters/Limit"
-        - $ref: "#/components/parameters/Cursor"
+        - name: name
+          in: query
+          description: Return the app with this exact project-scoped name.
+          schema: {type: string, minLength: 1, maxLength: 120}
       responses:
         "200":
-          description: Project-scoped job page.
+          description: Apps in the authenticated project.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/JobList"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
+                type: object
+                required: [apps]
+                properties:
+                  apps:
+                    type: array
+                    items: {$ref: "#/components/schemas/App"}
+        "422": {$ref: "#/components/responses/Problem"}
     post:
-      tags: [Jobs]
-      operationId: createJob
-      summary: Accept a digest-pinned asynchronous function job
-      description: |
-        The supplied exact version or alias is resolved and pinned before
-        acceptance. Input is validated against that manifest. The job request
-        supports execution contexts `none` and `http_attempt`. The response
-        identifies whether the configured backend is durable or process-local.
-      x-required-scope: jobs:write
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
+      operationId: createApp
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateJobRequest"
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: {type: string}
       responses:
-        "202":
-          description: Job accepted or idempotently replayed.
+        "201":
+          description: App created.
           headers:
-            Location:
-              schema:
-                type: string
-            Idempotent-Replayed:
-              schema:
-                type: string
-                enum: ["true"]
-            Neurun-Job-Durability:
-              $ref: "#/components/headers/JobDurability"
+            Location: {$ref: "#/components/headers/Location"}
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/AcceptedJob"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "413":
-          $ref: "#/components/responses/RequestTooLarge"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "422":
-          $ref: "#/components/responses/InvalidRequest"
-        "503":
-          $ref: "#/components/responses/AsyncUnavailable"
-  /v1/jobs/{job_id}:
+              schema: {$ref: "#/components/schemas/App"}
+        "409": {$ref: "#/components/responses/Problem"}
+  /v1/apps/{app_id}:
     parameters:
-      - $ref: "#/components/parameters/JobID"
+      - name: app_id
+        in: path
+        required: true
+        schema: {type: string}
     get:
-      tags: [Jobs]
-      operationId: getJob
-      summary: Get one project-scoped asynchronous job
-      x-required-scope: jobs:read
+      operationId: getApp
       responses:
         "200":
-          description: Job snapshot.
+          description: App.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Job"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /v1/jobs/{job_id}/events:
-    parameters:
-      - $ref: "#/components/parameters/JobID"
-    get:
-      tags: [Jobs]
-      operationId: listJobEvents
-      summary: List the append-only job event stream
-      x-required-scope: jobs:read
-      responses:
-        "200":
-          description: Events in ascending job-local sequence order.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [events]
-                properties:
-                  events:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/JobEvent"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /v1/jobs/{job_id}/attempts:
-    parameters:
-      - $ref: "#/components/parameters/JobID"
-    get:
-      tags: [Jobs]
-      operationId: listJobAttempts
-      summary: List immutable execution attempts
-      x-required-scope: jobs:read
-      responses:
-        "200":
-          description: Attempts in creation order.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [attempts]
-                properties:
-                  attempts:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/JobAttempt"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /v1/jobs/{job_id}/cancel:
-    parameters:
-      - $ref: "#/components/parameters/JobID"
-    post:
-      tags: [Jobs]
-      operationId: cancelJob
-      summary: Cancel an asynchronous job
-      description: Cancellation is intrinsically idempotent for terminal jobs.
-      x-required-scope: jobs:write
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CancelJobRequest"
-      responses:
-        "200":
-          description: Current canceled or already-terminal job snapshot.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [job, duplicate, request_id]
-                properties:
-                  job:
-                    $ref: "#/components/schemas/Job"
-                  duplicate:
-                    type: boolean
-                  request_id:
-                    type: string
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "413":
-          $ref: "#/components/responses/RequestTooLarge"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "422":
-          $ref: "#/components/responses/InvalidRequest"
-  /v1/fetch:
-    post:
-      tags: [Fetch]
-      operationId: fetch
-      summary: Execute the release-owned http.fetch function
-      description: |
-        Maps `request` to the immutable `http.fetch` function and supplies a
-        server-owned ephemeral HTTP context with the authenticated project and
-        `http` capability. The current function accepts GET and HEAD requests.
-        `mode=auto` currently resolves to HTTP; browser mode is not available.
-        Async execution additionally requires `jobs:write` and a non-empty
-        `Idempotency-Key`.
-      x-required-scope: functions:invoke
-      parameters:
-        - $ref: "#/components/parameters/ConditionalIdempotencyKey"
+              schema: {$ref: "#/components/schemas/App"}
+        "404": {$ref: "#/components/responses/Problem"}
+    patch:
+      operationId: updateApp
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/FetchRequest"
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: {type: string}
       responses:
         "200":
-          description: Synchronous HTTP function invocation.
+          description: App updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/App"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+  /v1/users:
+    get:
+      operationId: listUsers
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Project users.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Invocation"
-        "202":
-          description: Asynchronous HTTP job accepted.
+                type: object
+                required: [users]
+                properties:
+                  users:
+                    type: array
+                    items: {$ref: "#/components/schemas/User"}
+    post:
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username, display_name, role, password]
+              properties:
+                username: {type: string}
+                display_name: {type: string}
+                role: {type: string, enum: [admin, operator, viewer]}
+                password: {type: string, format: password}
+      responses:
+        "201":
+          description: User created.
           headers:
-            Location:
-              schema:
-                type: string
-            Idempotent-Replayed:
-              schema:
-                type: string
-                enum: ["true"]
-            Neurun-Job-Durability:
-              $ref: "#/components/headers/JobDurability"
+            Location: {$ref: "#/components/headers/Location"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/User"}
+  /v1/users/{user_id}:
+    parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      operationId: getUser
+      responses:
+        "200":
+          description: User.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/User"}
+        "404": {$ref: "#/components/responses/Problem"}
+    patch:
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                display_name: {type: string}
+                role: {type: string, enum: [admin, operator, viewer]}
+                disabled: {type: boolean}
+      responses:
+        "200":
+          description: User updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/User"}
+  /v1/api-keys:
+    get:
+      operationId: listAPIKeys
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Project API keys.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AcceptedJob"
+                type: object
+                required: [api_keys]
+                properties:
+                  api_keys:
+                    type: array
+                    items: {$ref: "#/components/schemas/APIKey"}
+    post:
+      operationId: createAPIKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, scopes]
+              properties:
+                name: {type: string}
+                user_id: {type: string}
+                scopes:
+                  type: array
+                  items: {type: string}
+      responses:
+        "201":
+          description: Key created; secret is returned only here.
+          headers:
+            Location: {$ref: "#/components/headers/Location"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CreatedAPIKey"}
+  /v1/api-keys/{api_key_id}:
+    parameters:
+      - name: api_key_id
+        in: path
+        required: true
+        schema: {type: string}
+    delete:
+      operationId: revokeAPIKey
+      responses:
+        "200":
+          description: Key revoked.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/APIKey"}
+  /v1/builds:
+    get:
+      operationId: listBuilds
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - name: deployment_id
+          in: query
+          schema: {type: string}
+      responses:
+        "200":
+          description: Project builds.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [builds]
+                properties:
+                  builds:
+                    type: array
+                    items: {$ref: "#/components/schemas/Build"}
+  /v1/builds/{build_id}:
+    parameters:
+      - name: build_id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      operationId: getBuild
+      responses:
+        "200":
+          description: Build.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Build"}
+        "404": {$ref: "#/components/responses/Problem"}
+  /v1/deployments:
+    get:
+      operationId: listDeployments
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - name: app_id
+          in: query
+          description: Return only deployments owned by this project-scoped App.
+          schema: {type: string}
+      responses:
+        "200":
+          description: Project deployments.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deployments]
+                properties:
+                  deployments:
+                    type: array
+                    items: {$ref: "#/components/schemas/Deployment"}
         "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
+          $ref: "#/components/responses/Problem"
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+    post:
+      operationId: createDeployment
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [app_id, runtime, source]
+              properties:
+                app_id:
+                  type: string
+                runtime:
+                  type: string
+                  const: python
+                entrypoint:
+                  type: string
+                  default: main.py:handler
+                source:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Deployment built successfully.
+          headers:
+            Location: {$ref: "#/components/headers/Location"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Deployment"}
+        "401":
+          $ref: "#/components/responses/Problem"
         "413":
-          $ref: "#/components/responses/RequestTooLarge"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
+          $ref: "#/components/responses/Problem"
         "422":
-          $ref: "#/components/responses/InvalidRequest"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/InvocationFailure"
-        "504":
-          $ref: "#/components/responses/InvocationFailure"
-        "503":
-          $ref: "#/components/responses/AsyncUnavailable"
+          $ref: "#/components/responses/Problem"
+  /v1/deployments/{deployment_id}:
+    parameters:
+      - $ref: "#/components/parameters/DeploymentID"
+    get:
+      operationId: getDeployment
+      responses:
+        "200":
+          description: Deployment.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Deployment"}
+        "404":
+          $ref: "#/components/responses/Problem"
+  /v1/deployments/{deployment_id}/executions:
+    parameters:
+      - $ref: "#/components/parameters/DeploymentID"
+    get:
+      operationId: listDeploymentExecutions
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Executions for this deployment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [executions]
+                properties:
+                  executions:
+                    type: array
+                    items: {$ref: "#/components/schemas/Execution"}
+        "404":
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createDeploymentExecution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [input]
+              properties:
+                input: {}
+      responses:
+        "202":
+          description: Execution durably queued and pinned to the latest ready build.
+          headers:
+            Location: {$ref: "#/components/headers/Location"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Execution"}
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+  /v1/executions:
+    get:
+      operationId: listExecutions
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - name: deployment_id
+          in: query
+          schema: {type: string}
+      responses:
+        "200":
+          description: Project executions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [executions]
+                properties:
+                  executions:
+                    type: array
+                    items: {$ref: "#/components/schemas/Execution"}
+  /v1/executions/{execution_id}:
+    parameters:
+      - $ref: "#/components/parameters/ExecutionID"
+    get:
+      operationId: getExecution
+      responses:
+        "200":
+          description: Execution.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Execution"}
+        "404":
+          $ref: "#/components/responses/Problem"
+  /v1/executions/{execution_id}/rerun:
+    parameters:
+      - $ref: "#/components/parameters/ExecutionID"
+    post:
+      operationId: rerunExecution
+      responses:
+        "202":
+          description: New execution queued with the exact original build and input.
+          headers:
+            Location: {$ref: "#/components/headers/Location"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Execution"}
+        "404":
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: Neurun API key
-      description: API key in `neu_<environment>_<prefix>.<secret>` form.
-    operatorSession:
-      type: apiKey
-      in: cookie
-      name: neurun_operator_session
-      description: |
-        Operator session issued by `POST /v1/auth/login`. Delivered as an
-        `HttpOnly`, `Secure`, `SameSite=Strict` cookie, so a browser attaches it
-        automatically and no script can read it. The token is stored server-side
-        only as a SHA-256 digest, and the session is revoked by
-        `POST /v1/auth/logout`.
   headers:
-    RequestID:
-      description: Per-request transport correlation ID.
-      schema:
-        type: string
-        pattern: "^req_"
-    JobDurability:
-      description: Persistence guarantee of the configured job backend.
-      schema:
-        $ref: "#/components/schemas/JobDurability"
+    Location:
+      schema: {type: string}
   parameters:
-    FunctionName:
-      name: function_name
-      in: path
-      required: true
-      schema:
-        type: string
-        pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
-    FunctionVersion:
-      name: version
-      in: path
-      required: true
-      description: Exact immutable version, `stable`, or `latest`.
-      schema:
-        type: string
-    InvocationID:
-      name: invocation_id
-      in: path
-      required: true
-      schema:
-        type: string
-        pattern: "^fni_"
-    JobID:
-      name: job_id
-      in: path
-      required: true
-      schema:
-        type: string
-        pattern: "^job_"
     Limit:
       name: limit
       in: query
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 200
-        default: 50
-    Cursor:
-      name: cursor
-      in: query
-      description: Opaque cursor returned by the preceding page.
-      schema:
-        type: string
-    IdempotencyKey:
-      name: Idempotency-Key
-      in: header
+      schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+    DeploymentID:
+      name: deployment_id
+      in: path
       required: true
-      description: Project-scoped client-generated mutation key.
-      schema:
-        type: string
-        minLength: 1
-        maxLength: 256
-    ConditionalIdempotencyKey:
-      name: Idempotency-Key
-      in: header
-      required: false
-      description: Required when `execution=async`; ignored for synchronous execution.
-      schema:
-        type: string
-        minLength: 1
-        maxLength: 256
+      schema: {type: string}
+    ExecutionID:
+      name: execution_id
+      in: path
+      required: true
+      schema: {type: string}
   responses:
-    Unauthorized:
-      description: Missing or invalid bearer API key.
-      headers:
-        Request-ID:
-          $ref: "#/components/headers/RequestID"
-        WWW-Authenticate:
-          schema:
-            type: string
+    Problem:
+      description: Request could not be completed.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    InvalidCredentials:
-      description: |
-        The username and password did not match. Returned identically for an
-        unknown username, a wrong password, and a disabled account.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    TooManyAttempts:
-      description: Too many failed sign-in attempts for this username.
-      headers:
-        Retry-After:
-          description: Seconds to wait before attempting again.
-          schema:
-            type: integer
-            minimum: 1
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    OperatorSignInUnavailable:
-      description: |
-        No operator accounts are configured, so username and password sign-in is
-        unavailable. API-key access is unaffected.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    Forbidden:
-      description: The credential lacks the required scope or project access.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    NotFound:
-      description: Resource does not exist or belongs to another project.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    NotReady:
-      description: A required dependency is not ready.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    InvalidRequest:
-      description: Request syntax, query, immutable contract, or schema is invalid.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    RequestTooLarge:
-      description: Mutation body exceeds the configured byte limit.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    AsyncUnavailable:
-      description: |
-        Asynchronous jobs are disabled because no durable backend is configured
-        and volatile development jobs were not explicitly enabled.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    UnsupportedMediaType:
-      description: Mutation body is not application/json.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    Conflict:
-      description: Idempotency, digest pin, or resource state conflict.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    InvocationFailure:
-      description: |
-        The function reached a terminal failure. `error.details.invocation`
-        contains the persisted invocation snapshot.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    InternalError:
-      description: Unexpected server failure.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   schemas:
-    Health:
+    Operator:
       type: object
-      required: [status]
+      required: [operator_id, username, role, project_id, scopes, session_id, expires_at]
       properties:
-        status:
-          const: ok
-    Ready:
+        operator_id: {type: string}
+        username: {type: string}
+        role: {type: string}
+        project_id: {type: string}
+        scopes:
+          type: array
+          items: {type: string}
+        session_id: {type: string}
+        expires_at: {type: string, format: date-time}
+    OperatorEnvelope:
       type: object
-      required: [status]
+      required: [operator]
       properties:
-        status:
-          const: ready
-    Version:
+        operator: {$ref: "#/components/schemas/Operator"}
+        request_id: {type: string}
+    Project:
       type: object
-      required:
-        - version
-        - commit
-        - built_at
-        - api_version
-        - schema_version
-        - function_bundle
+      required: [id, name, created_at, updated_at]
       properties:
-        version:
-          type: string
-        commit:
-          type: string
-        built_at:
-          type: string
-        api_version:
-          type: string
-        schema_version:
-          type: string
-        function_bundle:
-          type: string
+        id: {type: string}
+        name: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    App:
+      type: object
+      required: [id, project_id, name, created_at, updated_at]
+      properties:
+        id: {type: string}
+        project_id: {type: string}
+        name: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    User:
+      type: object
+      required: [id, project_id, username, display_name, role, disabled, created_at, updated_at]
+      properties:
+        id: {type: string}
+        project_id: {type: string}
+        username: {type: string}
+        display_name: {type: string}
+        role: {type: string, enum: [admin, operator, viewer]}
+        disabled: {type: boolean}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    APIKey:
+      type: object
+      required: [id, project_id, name, prefix, scopes, created_at]
+      properties:
+        id: {type: string}
+        project_id: {type: string}
+        user_id: {type: string}
+        name: {type: string}
+        prefix: {type: string}
+        scopes:
+          type: array
+          items: {type: string}
+        created_at: {type: string, format: date-time}
+        revoked_at: {type: string, format: date-time}
+    CreatedAPIKey:
+      allOf:
+        - $ref: "#/components/schemas/APIKey"
+        - type: object
+          required: [secret]
+          properties:
+            secret: {type: string}
+    Artifact:
+      type: object
+      required: [id, kind, name, media_type, size_bytes, sha256, created_at]
+      properties:
+        id: {type: string}
+        kind: {type: string}
+        name: {type: string}
+        media_type: {type: string}
+        size_bytes: {type: integer, format: int64}
+        sha256: {type: string}
+        created_at: {type: string, format: date-time}
+    Failure:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string}
+        message: {type: string}
+    Build:
+      type: object
+      required: [id, project_id, deployment_id, number, status, runtime, entrypoint, source_sha256, artifacts, started_at]
+      properties:
+        id: {type: string}
+        project_id: {type: string}
+        deployment_id: {type: string}
+        number: {type: integer}
+        status: {type: string, enum: [building, ready, failed]}
+        runtime: {type: string, const: python}
+        entrypoint: {type: string}
+        source_sha256: {type: string}
+        artifacts:
+          type: array
+          items: {$ref: "#/components/schemas/Artifact"}
+        failure:
+          oneOf:
+            - $ref: "#/components/schemas/Failure"
+            - type: "null"
+        started_at: {type: string, format: date-time}
+        finished_at:
+          type: [string, "null"]
+          format: date-time
+    Deployment:
+      type: object
+      required: [id, project_id, app_id, runtime, entrypoint, status, source, builds, created_at, updated_at]
+      properties:
+        id: {type: string}
+        project_id: {type: string}
+        app_id: {type: string}
+        runtime: {type: string, const: python}
+        entrypoint: {type: string}
+        status: {type: string, enum: [uploaded, building, ready, failed]}
+        source: {$ref: "#/components/schemas/Artifact"}
+        builds:
+          type: array
+          items: {$ref: "#/components/schemas/Build"}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    Execution:
+      type: object
+      required: [id, project_id, deployment_id, build_id, status, input, logs, created_at]
+      properties:
+        id: {type: string}
+        project_id: {type: string}
+        deployment_id: {type: string}
+        build_id: {type: string}
+        status: {type: string, enum: [queued, running, succeeded, failed]}
+        input: {}
+        output: {}
+        failure:
+          oneOf:
+            - $ref: "#/components/schemas/Failure"
+            - type: "null"
+        logs: {type: string}
+        created_at: {type: string, format: date-time}
+        started_at:
+          type: [string, "null"]
+          format: date-time
+        finished_at:
+          type: [string, "null"]
+          format: date-time
+        rerun_of_execution_id: {type: string}
     Problem:
       type: object
       required: [code, message]
       properties:
-        code:
-          type: string
-        message:
-          type: string
-        details:
-          type: object
-          additionalProperties: true
+        code: {type: string}
+        message: {type: string}
+        details: {type: object, additionalProperties: true}
     ErrorEnvelope:
       type: object
       required: [error]
       properties:
-        error:
-          $ref: "#/components/schemas/Problem"
-        request_id:
-          type: string
-    OperatorRole:
-      type: string
-      enum: [admin, operator, viewer]
-      description: |
-        `admin` carries every scope. `operator` can read evidence and submit or
-        cancel work. `viewer` can read only — it omits `functions:invoke` and
-        `jobs:write`, so a read-only operator cannot start or stop execution.
-    OperatorLoginRequest:
-      type: object
-      required: [username, password]
-      properties:
-        username:
-          type: string
-          description: Compared case-insensitively.
-          minLength: 1
-          maxLength: 128
-        password:
-          type: string
-          format: password
-          minLength: 12
-          maxLength: 256
-      additionalProperties: false
-    Operator:
-      type: object
-      description: |
-        The safe projection of a signed-in operator. Carries no session token and
-        no password material.
-      required:
-        - operator_id
-        - username
-        - role
-        - project_id
-        - scopes
-        - session_id
-        - expires_at
-      properties:
-        operator_id:
-          type: string
-        username:
-          type: string
-        role:
-          $ref: "#/components/schemas/OperatorRole"
-        project_id:
-          type: string
-          description: |
-            The project this session acts within. The current foundation is
-            single-project; per-operator project scoping arrives with the
-            project API.
-        scopes:
-          type: array
-          items:
-            type: string
-          description: Scopes granted by the role.
-        session_id:
-          type: string
-        expires_at:
-          type: string
-          format: date-time
-          description: Absolute expiry. Sessions are not extended by activity.
-    OperatorLoginResponse:
-      type: object
-      required: [operator]
-      properties:
-        operator:
-          $ref: "#/components/schemas/Operator"
-        request_id:
-          type: string
-    OperatorSessionResponse:
-      type: object
-      required: [operator]
-      properties:
-        operator:
-          $ref: "#/components/schemas/Operator"
-    FunctionRef:
-      type: object
-      required: [name, version, digest]
-      properties:
-        name:
-          type: string
-        version:
-          type: string
-        digest:
-          type: string
-          pattern: "^sha256:[0-9a-f]{64}$"
-    RequestedFunctionRef:
-      type: object
-      required: [name]
-      properties:
-        name:
-          type: string
-        version:
-          type: string
-          default: stable
-        digest:
-          type: string
-          pattern: "^sha256:[0-9a-f]{64}$"
-      additionalProperties: false
-    JSONSchema:
-      type: object
-      properties:
-        type:
-          type: string
-          enum: [object, array, string, number, integer, boolean, "null"]
-        required:
-          type: array
-          items:
-            type: string
-        properties:
-          type: object
-          additionalProperties:
-            $ref: "#/components/schemas/JSONSchema"
-        additionalProperties:
-          type: boolean
-        items:
-          $ref: "#/components/schemas/JSONSchema"
-        enum:
-          type: array
-          items: {}
-        minimum:
-          type: number
-        maximum:
-          type: number
-        minLength:
-          type: integer
-        maxLength:
-          type: integer
-    FunctionManifest:
-      type: object
-      required:
-        - name
-        - version
-        - digest
-        - category
-        - execution_context
-        - side_effects
-        - timeout
-        - input_schema
-        - output_schema
-      properties:
-        name:
-          type: string
-        version:
-          type: string
-        digest:
-          type: string
-        category:
-          type: string
-        description:
-          type: string
-        execution_context:
-          type: string
-          enum:
-            - none
-            - http_attempt
-            - browser_attempt
-            - existing_session
-            - browser_or_session
-        side_effects:
-          type: string
-          enum: [pure, idempotent, non_idempotent]
-        timeout:
-          type: object
-          required: [default_ms, maximum_ms]
-          properties:
-            default_ms:
-              type: integer
-              format: int64
-            maximum_ms:
-              type: integer
-              format: int64
-        capabilities:
-          type: array
-          items:
-            type: string
-        permissions:
-          type: array
-          items:
-            type: string
-        input_schema:
-          $ref: "#/components/schemas/JSONSchema"
-        output_schema:
-          $ref: "#/components/schemas/JSONSchema"
-        resource_policy:
-          type: object
-          additionalProperties: true
-        artifacts:
-          type: object
-          additionalProperties: true
-        redaction:
-          type: object
-          additionalProperties: true
-        retry:
-          type: object
-          additionalProperties: true
-        telemetry:
-          type: object
-          additionalProperties: true
-    FunctionList:
-      type: object
-      required: [functions]
-      properties:
-        functions:
-          type: array
-          items:
-            $ref: "#/components/schemas/FunctionManifest"
-    FunctionDefinition:
-      type: object
-      required: [name, versions]
-      properties:
-        name:
-          type: string
-        versions:
-          type: array
-          items:
-            $ref: "#/components/schemas/FunctionManifest"
-    ManifestBundle:
-      type: object
-      required: [schema_version, bundle_version, digest, manifests]
-      properties:
-        schema_version:
-          type: string
-        bundle_version:
-          type: string
-        digest:
-          type: string
-        signature:
-          type: string
-        manifests:
-          type: array
-          items:
-            $ref: "#/components/schemas/FunctionManifest"
-    InvocationContextInput:
-      type: object
-      description: |
-        Public correlation context accepted on a direct invocation. Job,
-        attempt, session, ephemeral runtime, and capability authority are
-        assigned exclusively by Neurun.
-      properties:
-        project_id:
-          type: string
-          description: Must be omitted or match the authenticated project.
-        workflow_step_id:
-          type: string
-      additionalProperties: false
-    ExecutionContext:
-      type: object
-      readOnly: true
-      description: |
-        Server-assigned execution context returned with an invocation snapshot.
-        Authority-bearing fields are observable here but cannot be supplied
-        through InvocationContextInput.
-      properties:
-        project_id:
-          type: string
-        job_id:
-          type: string
-        attempt_id:
-          type: string
-        session_id:
-          type: string
-        workflow_step_id:
-          type: string
-        ephemeral_http:
-          type: boolean
-        ephemeral_browser:
-          type: boolean
-        capabilities:
-          type: array
-          items:
-            type: string
-      additionalProperties: false
-    InvokeFunctionRequest:
-      type: object
-      required: [input]
-      properties:
-        project_id:
-          type: string
-          description: Must be omitted or match the authenticated project.
-        version:
-          type: string
-          default: stable
-        digest:
-          type: string
-          pattern: "^sha256:[0-9a-f]{64}$"
-        execution:
-          type: string
-          enum: [sync, async]
-          default: sync
-        context:
-          $ref: "#/components/schemas/InvocationContextInput"
-        input: {}
-        timeout_ms:
-          type: integer
-          format: int64
-          minimum: 1
-        max_attempts:
-          type: integer
-          minimum: 1
-          maximum: 10
-      additionalProperties: false
-    InvocationStatus:
-      type: string
-      enum:
-        - accepted
-        - running
-        - succeeded
-        - rejected
-        - failed
-        - timed_out
-        - canceled
-    Failure:
-      type: object
-      required: [category, message, retryable]
-      properties:
-        category:
-          type: string
-        code:
-          type: string
-        message:
-          type: string
-        retryable:
-          type: boolean
-        details:
-          type: object
-          additionalProperties:
-            type: string
-    Usage:
-      type: object
-      required: [duration_ms]
-      properties:
-        duration_ms:
-          type: integer
-          format: int64
-        cpu_seconds:
-          type: number
-        peak_rss_bytes:
-          type: integer
-          format: int64
-        network_bytes:
-          type: integer
-          format: int64
-        artifact_bytes:
-          type: integer
-          format: int64
-    Invocation:
-      type: object
-      required:
-        - invocation_id
-        - project_id
-        - function
-        - status
-        - output_schema_valid
-        - usage
-        - trace_id
-        - span_id
-        - created_at
-      properties:
-        invocation_id:
-          type: string
-        request_id:
-          type: string
-          description: Present on the direct mutation response.
-        project_id:
-          type: string
-        function:
-          $ref: "#/components/schemas/FunctionRef"
-        status:
-          $ref: "#/components/schemas/InvocationStatus"
-        side_effect_class:
-          type: string
-        input_hash:
-          type: string
-        redacted_input: {}
-        output: {}
-        output_schema_valid:
-          type: boolean
-        failure:
-          $ref: "#/components/schemas/Failure"
-        usage:
-          $ref: "#/components/schemas/Usage"
-        artifacts:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-        trace_id:
-          type: string
-        span_id:
-          type: string
-        context:
-          $ref: "#/components/schemas/ExecutionContext"
-        created_at:
-          type: string
-          format: date-time
-        started_at:
-          type: string
-          format: date-time
-        finished_at:
-          type: string
-          format: date-time
-    InvocationList:
-      type: object
-      required: [invocations, next_cursor]
-      properties:
-        invocations:
-          type: array
-          items:
-            $ref: "#/components/schemas/Invocation"
-        next_cursor:
-          type: string
-    CreateJobRequest:
-      type: object
-      required: [function, input]
-      properties:
-        project_id:
-          type: string
-          description: Must be omitted or match the authenticated project.
-        function:
-          $ref: "#/components/schemas/RequestedFunctionRef"
-        input: {}
-        max_attempts:
-          type: integer
-          minimum: 1
-          maximum: 10
-      additionalProperties: false
-    DurableRequest:
-      type: object
-      required:
-        - project_id
-        - function
-        - input
-        - max_attempts
-        - retry_policy
-        - digest
-      properties:
-        project_id:
-          type: string
-        function:
-          $ref: "#/components/schemas/FunctionRef"
-        input: {}
-        max_attempts:
-          type: integer
-        retry_policy:
-          type: object
-          required: [initial_backoff, max_backoff]
-          properties:
-            initial_backoff:
-              type: integer
-              format: int64
-              description: Go duration encoded as nanoseconds.
-            max_backoff:
-              type: integer
-              format: int64
-              description: Go duration encoded as nanoseconds.
-        digest:
-          type: string
-    JobState:
-      type: string
-      enum:
-        - accepted
-        - queued
-        - leased
-        - running
-        - retry_wait
-        - succeeded
-        - rejected
-        - failed
-        - canceled
-        - dead_lettered
-    Job:
-      type: object
-      required:
-        - id
-        - project_id
-        - request
-        - state
-        - attempt_count
-        - max_attempts
-        - version
-        - created_at
-        - updated_at
-      properties:
-        id:
-          type: string
-        project_id:
-          type: string
-        request:
-          $ref: "#/components/schemas/DurableRequest"
-        state:
-          $ref: "#/components/schemas/JobState"
-        attempt_count:
-          type: integer
-        max_attempts:
-          type: integer
-        current_attempt_id:
-          type: string
-        terminal_attempt_id:
-          type: string
-        next_attempt_at:
-          type: string
-          format: date-time
-        last_failure:
-          type: object
-          additionalProperties: true
-        last_retry:
-          type: object
-          additionalProperties: true
-        result: {}
-        version:
-          type: integer
-          format: int64
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-        completed_at:
-          type: string
-          format: date-time
-        canceled_at:
-          type: string
-          format: date-time
-    AcceptedJob:
-      type: object
-      required: [job, job_id, duplicate, durability, request_id]
-      properties:
-        job:
-          $ref: "#/components/schemas/Job"
-        job_id:
-          type: string
-        duplicate:
-          type: boolean
-        durability:
-          $ref: "#/components/schemas/JobDurability"
-        request_id:
-          type: string
-    JobDurability:
-      type: string
-      enum: [durable, process_local]
-      description: |
-        `durable` survives process restarts through persistent adapters.
-        `process_local` is an explicitly enabled development mode and does not.
-    JobList:
-      type: object
-      required: [jobs, next_cursor]
-      properties:
-        jobs:
-          type: array
-          items:
-            $ref: "#/components/schemas/Job"
-        next_cursor:
-          type: string
-    JobEvent:
-      type: object
-      required: [id, job_id, sequence, type, state, created_at]
-      properties:
-        id:
-          type: string
-        job_id:
-          type: string
-        attempt_id:
-          type: string
-        sequence:
-          type: integer
-          format: int64
-        type:
-          type: string
-        state:
-          $ref: "#/components/schemas/JobState"
-        payload: {}
-        created_at:
-          type: string
-          format: date-time
-    JobAttempt:
-      type: object
-      required:
-        - id
-        - job_id
-        - number
-        - agent_id
-        - state
-        - fence
-        - lease_expires_at
-        - created_at
-      properties:
-        id:
-          type: string
-        job_id:
-          type: string
-        number:
-          type: integer
-        agent_id:
-          type: string
-        state:
-          type: string
-          enum:
-            - leased
-            - running
-            - succeeded
-            - rejected
-            - failed
-            - canceled
-            - lease_expired
-        fence:
-          type: integer
-          format: int64
-        lease_expires_at:
-          type: string
-          format: date-time
-        trace_id:
-          type: string
-        failure:
-          type: object
-          additionalProperties: true
-        retry:
-          type: object
-          additionalProperties: true
-        result: {}
-        created_at:
-          type: string
-          format: date-time
-        started_at:
-          type: string
-          format: date-time
-        finished_at:
-          type: string
-          format: date-time
-    CancelJobRequest:
-      type: object
-      properties:
-        reason:
-          type: string
-          maxLength: 512
-      additionalProperties: false
-    HTTPFetchInput:
-      type: object
-      required: [url]
-      properties:
-        url:
-          type: string
-          format: uri
-        method:
-          type: string
-          enum: [GET, HEAD]
-          default: GET
-        headers:
-          type: object
-          additionalProperties:
-            type: string
-      additionalProperties: false
-    FetchRequest:
-      type: object
-      required: [request]
-      properties:
-        project_id:
-          type: string
-          description: Must be omitted or match the authenticated project.
-        mode:
-          type: string
-          enum: [auto, http]
-          default: auto
-        version:
-          type: string
-          default: stable
-        execution:
-          type: string
-          enum: [sync, async]
-          default: sync
-        request:
-          $ref: "#/components/schemas/HTTPFetchInput"
-        timeout_ms:
-          type: integer
-          format: int64
-          minimum: 1
-        max_attempts:
-          type: integer
-          minimum: 1
-          maximum: 10
-      additionalProperties: false
+        error: {$ref: "#/components/schemas/Problem"}
+        request_id: {type: string}

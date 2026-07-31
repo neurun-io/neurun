@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dagflows/neurun-io/internal/auth"
-	"github.com/dagflows/neurun-io/internal/operator"
+	"github.com/neurun-io/neurun/internal/auth"
+	"github.com/neurun-io/neurun/internal/operator"
 )
 
 // SessionCookieName carries the operator session token.
@@ -73,7 +73,7 @@ func sessionToken(request *http.Request) string {
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if raw, ok := auth.BearerToken(request.Header.Get("Authorization")); ok {
-			principal, valid := s.apiKeys.Authenticate(raw)
+			principal, valid := s.apiKeys.AuthenticateContext(request.Context(), raw)
 			if !valid {
 				s.writeUnauthenticated(w, request, "the supplied API key was rejected")
 				return

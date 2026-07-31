@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// LocalStore persists immutable artifact payloads beneath one operator-owned
+// LocalStore persists immutable artifact payloads beneath one server-owned
 // directory. Storage keys remain slash-separated and portable at the boundary;
 // they are converted to native paths only after validation.
 type LocalStore struct {

@@ -104,6 +104,10 @@ func (a *Authenticator) Authenticate(raw string) (Principal, bool) {
 	return principal, true
 }
 
+func (a *Authenticator) AuthenticateContext(_ context.Context, raw string) (Principal, bool) {
+	return a.Authenticate(raw)
+}
+
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		raw, ok := BearerToken(request.Header.Get("Authorization"))
