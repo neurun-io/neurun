@@ -122,7 +122,9 @@ async function forward(request: NextRequest, segments: string[]): Promise<Respon
   });
 }
 
-type Context = RouteContext<"/api/proxy/[...path]">;
+type Context = {
+  params: Promise<{ path: string[] }>;
+};
 
 export async function GET(request: NextRequest, context: Context) {
   const { path } = await context.params;

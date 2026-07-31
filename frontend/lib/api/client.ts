@@ -23,7 +23,7 @@ import type { z } from "zod";
 export const PROXY_PREFIX = "/api/proxy";
 
 export interface RequestOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   /** Path below the control-plane root, e.g. `/v1/jobs`. */
   path: string;
   query?: Record<string, string | number | string[] | undefined>;
@@ -105,7 +105,8 @@ export async function request<T>(
   const url = `${PROXY_PREFIX}${path}${buildQuery(options.query)}`;
 
   const headers = new Headers({ Accept: "application/json" });
-  if (options.body !== undefined) {
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (options.body !== undefined && !isFormData) {
     headers.set("Content-Type", "application/json");
   }
   if (options.idempotent) {
@@ -117,7 +118,12 @@ export async function request<T>(
     response = await fetch(url, {
       method,
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        options.body === undefined
+          ? undefined
+          : isFormData
+            ? (options.body as FormData)
+            : JSON.stringify(options.body),
       signal: options.signal,
       // Never let a browser or intermediary cache an operator's evidence.
       cache: "no-store",

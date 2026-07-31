@@ -11,13 +11,16 @@ import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from "@ta
 import { sessionScope, useSession } from "@/lib/session/store";
 import { useCapability } from "@/lib/session/capability";
 import * as api from "./endpoints";
+import * as resources from "./resources";
 import { NeurunApiError } from "./errors";
 import { LIVE_POLL_INTERVAL_MS } from "./query-client";
 import { isTerminalInvocationStatus, isTerminalJobState } from "./types";
+import { isTerminalExecutionStatus } from "./resource-types";
 import type { CreateJobRequest, FetchRequest, InvokeFunctionRequest, Job, JobState } from "./types";
+import type { UserRole } from "./resource-types";
 
 /* -------------------------------------------------------------------------- */
-/* Keys                                                                        */
+/* Query keys                                                                  */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -33,6 +36,24 @@ export const queryKeys = {
   scope: (scope: string) => ["neurun", scope] as const,
 
   version: (scope: string) => [...queryKeys.scope(scope), "version"] as const,
+
+  projects: (scope: string) => [...queryKeys.scope(scope), "projects"] as const,
+  project: (scope: string, id: string) => [...queryKeys.projects(scope), id] as const,
+  apps: (scope: string) => [...queryKeys.scope(scope), "apps"] as const,
+  app: (scope: string, id: string) => [...queryKeys.apps(scope), id] as const,
+  deployments: (scope: string, appId?: string) =>
+    [...queryKeys.scope(scope), "deployments", appId ?? "all"] as const,
+  deployment: (scope: string, id: string) =>
+    [...queryKeys.scope(scope), "deployment", id] as const,
+  builds: (scope: string, deploymentId?: string) =>
+    [...queryKeys.scope(scope), "builds", deploymentId ?? "all"] as const,
+  build: (scope: string, id: string) => [...queryKeys.scope(scope), "build", id] as const,
+  executions: (scope: string, deploymentId?: string) =>
+    [...queryKeys.scope(scope), "executions", deploymentId ?? "all"] as const,
+  execution: (scope: string, id: string) =>
+    [...queryKeys.scope(scope), "execution", id] as const,
+  users: (scope: string) => [...queryKeys.scope(scope), "users"] as const,
+  apiKeys: (scope: string) => [...queryKeys.scope(scope), "api-keys"] as const,
 
   functions: (scope: string, params?: api.ListFunctionsParams) =>
     [...queryKeys.scope(scope), "functions", params ?? {}] as const,
@@ -68,6 +89,259 @@ export function useVersionQuery(options?: { enabled?: boolean }) {
     enabled: status === "authenticated" && (options?.enabled ?? true),
     staleTime: 60_000,
     refetchInterval: 60_000,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Projects, deployments, builds, and executions                              */
+/* -------------------------------------------------------------------------- */
+
+export function useProjectsQuery() {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.projects(scope),
+    queryFn: async ({ signal }) => (await resources.listProjects(signal)).data,
+  });
+}
+
+export function useProjectQuery(id: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.project(scope, id),
+    queryFn: async ({ signal }) => (await resources.getProject(id, signal)).data,
+    enabled: Boolean(id),
+  });
+}
+
+export function useAppsQuery() {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.apps(scope),
+    queryFn: async ({ signal }) => (await resources.listApps(signal)).data,
+  });
+}
+
+export function useAppQuery(id: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.app(scope, id),
+    queryFn: async ({ signal }) => (await resources.getApp(id, signal)).data,
+    enabled: Boolean(id),
+  });
+}
+
+export function useDeploymentsQuery(appId?: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.deployments(scope, appId),
+    queryFn: async ({ signal }) => (await resources.listDeployments(appId, signal)).data,
+    refetchInterval: LIVE_POLL_INTERVAL_MS,
+  });
+}
+
+export function useDeploymentQuery(id: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.deployment(scope, id),
+    queryFn: async ({ signal }) => (await resources.getDeployment(id, signal)).data,
+    enabled: Boolean(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return !status || status === "uploaded" || status === "building"
+        ? LIVE_POLL_INTERVAL_MS
+        : false;
+    },
+  });
+}
+
+export function useBuildsQuery(deploymentId?: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.builds(scope, deploymentId),
+    queryFn: async ({ signal }) => (await resources.listBuilds(deploymentId, signal)).data,
+    refetchInterval: LIVE_POLL_INTERVAL_MS,
+  });
+}
+
+export function useBuildQuery(id: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.build(scope, id),
+    queryFn: async ({ signal }) => (await resources.getBuild(id, signal)).data,
+    enabled: Boolean(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === "building" ? LIVE_POLL_INTERVAL_MS : false,
+  });
+}
+
+export function useExecutionsQuery(deploymentId?: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.executions(scope, deploymentId),
+    queryFn: async ({ signal }) => (await resources.listExecutions(deploymentId, signal)).data,
+    refetchInterval: LIVE_POLL_INTERVAL_MS,
+  });
+}
+
+export function useExecutionQuery(id: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.execution(scope, id),
+    queryFn: async ({ signal }) => (await resources.getExecution(id, signal)).data,
+    enabled: Boolean(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && isTerminalExecutionStatus(status) ? false : LIVE_POLL_INTERVAL_MS;
+    },
+  });
+}
+
+export function useUsersQuery() {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.users(scope),
+    queryFn: async ({ signal }) => (await resources.listUsers(signal)).data,
+  });
+}
+
+export function useAPIKeysQuery() {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.apiKeys(scope),
+    queryFn: async ({ signal }) => (await resources.listAPIKeys(signal)).data,
+  });
+}
+
+export function useUpdateProjectMutation(id: string) {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ name }: { name: string }) => (await resources.updateProject(id, name)).data,
+    onSuccess: (project) => {
+      queryClient.setQueryData(queryKeys.project(scope, id), project);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects(scope) });
+    },
+  });
+}
+
+export function useCreateAppMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ name }: { name: string }) => (await resources.createApp(name)).data,
+    onSuccess: (app) => {
+      queryClient.setQueryData(queryKeys.app(scope, app.id), app);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.apps(scope) });
+    },
+  });
+}
+
+export function useUpdateAppMutation(id: string) {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ name }: { name: string }) => (await resources.updateApp(id, name)).data,
+    onSuccess: (app) => {
+      queryClient.setQueryData(queryKeys.app(scope, id), app);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.apps(scope) });
+    },
+  });
+}
+
+export function useCreateDeploymentMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      appId,
+      source,
+      entrypoint,
+    }: {
+      appId: string;
+      source: File;
+      entrypoint: string;
+    }) => (await resources.createDeployment(appId, source, entrypoint)).data,
+    onSuccess: (deployment) => {
+      queryClient.setQueryData(queryKeys.deployment(scope, deployment.id), deployment);
+      void queryClient.invalidateQueries({ queryKey: [...queryKeys.scope(scope), "deployments"] });
+      void queryClient.invalidateQueries({ queryKey: [...queryKeys.scope(scope), "builds"] });
+    },
+  });
+}
+
+export function useCreateExecutionMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ deploymentId, input }: { deploymentId: string; input: unknown }) =>
+      (await resources.createExecution(deploymentId, input)).data,
+    onSuccess: (execution) => {
+      queryClient.setQueryData(queryKeys.execution(scope, execution.id), execution);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.executions(scope, execution.deployment_id),
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.executions(scope) });
+    },
+  });
+}
+
+export function useRerunExecutionMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => (await resources.rerunExecution(id)).data,
+    onSuccess: (execution) => {
+      queryClient.setQueryData(queryKeys.execution(scope, execution.id), execution);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.executions(scope) });
+    },
+  });
+}
+
+export function useCreateUserMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      username: string;
+      display_name: string;
+      role: UserRole;
+      password: string;
+    }) => (await resources.createUser(body)).data,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.users(scope) }),
+  });
+}
+
+export function useUpdateUserMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: { display_name?: string; role?: UserRole; disabled?: boolean };
+    }) => (await resources.updateUser(id, body)).data,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.users(scope) }),
+  });
+}
+
+export function useCreateAPIKeyMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { name: string; user_id?: string; scopes: string[] }) =>
+      (await resources.createAPIKey(body)).data,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys(scope) }),
+  });
+}
+
+export function useRevokeAPIKeyMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => (await resources.revokeAPIKey(id)).data,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys(scope) }),
   });
 }
 

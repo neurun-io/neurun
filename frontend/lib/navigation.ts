@@ -24,32 +24,70 @@ export interface NavSection {
 
 export const NAV_SECTIONS: NavSection[] = [
   {
-    label: "Execution",
+    label: "Runtime",
     items: [
-      { href: "/", label: "Overview", icon: "layout-dashboard", availability: "future" },
-      { href: "/jobs", label: "Jobs", icon: "list-checks", availability: "current" },
-      { href: "/invocations", label: "Invocations", icon: "activity", availability: "current" },
-      { href: "/functions", label: "Functions", icon: "box", availability: "current" },
-      { href: "/fetch", label: "HTTP fetch", icon: "globe", availability: "current" },
+      { href: "/projects", label: "Projects", icon: "folder", availability: "current" },
+      { href: "/apps", label: "Apps", icon: "server", availability: "current" },
+      { href: "/deployments", label: "Deployments", icon: "box", availability: "current" },
+      { href: "/builds", label: "Builds", icon: "list-checks", availability: "current" },
+      { href: "/executions", label: "Executions", icon: "activity", availability: "current" },
     ],
   },
   {
-    label: "Fleet",
+    label: "Access",
     items: [
+      { href: "/users", label: "Users", icon: "user-round", availability: "current" },
+      { href: "/api-keys", label: "API keys", icon: "key", availability: "current" },
+    ],
+  },
+  {
+    label: "Roadmap",
+    items: [
+      { href: "/", label: "Overview", icon: "layout-dashboard", availability: "future" },
       { href: "/sessions", label: "Sessions", icon: "monitor", availability: "future" },
       { href: "/proxies", label: "Proxies", icon: "route", availability: "future" },
       { href: "/agents", label: "Agents", icon: "server", availability: "future" },
     ],
   },
   {
-    label: "Settings",
+    label: "Roadmap settings",
     items: [
-      { href: "/settings/projects", label: "Projects", icon: "folder", availability: "future" },
-      { href: "/settings/api-keys", label: "API keys", icon: "key", availability: "future" },
-      { href: "/settings/identities", label: "Identities", icon: "fingerprint", availability: "future" },
-      { href: "/settings/profiles", label: "Profiles", icon: "user-round", availability: "future" },
-      { href: "/settings/webhooks", label: "Webhooks", icon: "webhook", availability: "future" },
-      { href: "/settings/audit", label: "Audit", icon: "scroll-text", availability: "future" },
+      {
+        href: "/settings/projects",
+        label: "Project settings",
+        icon: "folder",
+        availability: "future",
+      },
+      {
+        href: "/settings/api-keys",
+        label: "API key settings",
+        icon: "key",
+        availability: "future",
+      },
+      {
+        href: "/settings/identities",
+        label: "Identities",
+        icon: "fingerprint",
+        availability: "future",
+      },
+      {
+        href: "/settings/profiles",
+        label: "Profiles",
+        icon: "user-round",
+        availability: "future",
+      },
+      {
+        href: "/settings/webhooks",
+        label: "Webhooks",
+        icon: "webhook",
+        availability: "future",
+      },
+      {
+        href: "/settings/audit",
+        label: "Audit",
+        icon: "scroll-text",
+        availability: "future",
+      },
     ],
   },
 ];
@@ -63,14 +101,17 @@ export function isActiveRoute(pathname: string, href: string): boolean {
 /**
  * Route an operator-pasted identifier to its detail page.
  *
- * The prefixes are the ones the contract declares: `job_`, `fni_`. Anything
+ * The prefixes are the ones the focused contract declares. Anything
  * else is not guessed at — a wrong guess sends the operator to a 404 and wastes
  * their time.
  */
 export function routeForIdentifier(raw: string): string | null {
   const value = raw.trim();
   if (!value) return null;
-  if (value.startsWith("job_")) return `/jobs/${value}`;
-  if (value.startsWith("fni_")) return `/invocations/${value}`;
+  if (value.startsWith("prj_")) return `/projects/${value}`;
+  if (value.startsWith("app_")) return `/apps/${value}`;
+  if (value.startsWith("dep_")) return `/deployments/${value}`;
+  if (value.startsWith("bld_")) return `/builds/${value}`;
+  if (value.startsWith("exe_")) return `/executions/${value}`;
   return null;
 }
