@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func testAuthenticator(t *testing.T, accounts ...Account) (*Authenticator, *MemoryStore) {
@@ -24,9 +26,9 @@ func testAuthenticator(t *testing.T, accounts ...Account) (*Authenticator, *Memo
 func adminAccount(t *testing.T, username string) Account {
 	t.Helper()
 
-	// A low iteration count keeps the suite fast; the cost is exercised
+	// The minimum cost keeps the suite fast; cost handling is exercised
 	// separately in the password tests.
-	hash, err := hashPasswordWithIterations(testPassword, 1_000)
+	hash, err := hashPasswordWithCost(testPassword, bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,58 +106,22 @@ func TestLoginRejectsBadCredentialsIndistinguishably(t *testing.T) {
 	}
 }
 
-func TestLoginThrottlesRepeatedFailures(t *testing.T) {
+func TestRepeatedFailuresDoNotLockTheAccountOut(t *testing.T) {
 	t.Parallel()
 
 	authenticator, _ := testAuthenticator(t, adminAccount(t, "alice"))
-	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
-	authenticator.Now = func() time.Time { return now }
 
-	// The first MaxAttempts failures are allowed without delay.
-	for i := 0; i < authenticator.Throttle.MaxAttempts; i++ {
-		_, _, err := authenticator.Login(context.Background(), "alice", "wrong")
-		if !errors.Is(err, ErrInvalidCredentials) {
-			t.Fatalf("attempt %d: error = %v, want ErrInvalidCredentials", i+1, err)
+	// Sign-in throttling was removed: rate limiting belongs at the edge, not in
+	// the authenticator, and an in-process counter never covered a multi-replica
+	// deployment anyway. Repeated failures must therefore stay plain credential
+	// errors, and the correct password must still work immediately afterwards.
+	for range 10 {
+		if _, _, err := authenticator.Login(context.Background(), "alice", "wrong"); !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("error = %v, want ErrInvalidCredentials", err)
 		}
 	}
-
-	// One more failure trips the lockout.
-	if _, _, err := authenticator.Login(context.Background(), "alice", "wrong"); !errors.Is(err, ErrInvalidCredentials) {
-		t.Fatalf("error = %v, want ErrInvalidCredentials", err)
-	}
-
-	var lockedOut *LockedOutError
-	_, _, err := authenticator.Login(context.Background(), "alice", testPassword)
-	if !errors.As(err, &lockedOut) {
-		t.Fatalf("error = %v, want LockedOutError", err)
-	}
-	if lockedOut.RetryAfter <= 0 {
-		t.Fatalf("retry after = %v, want positive", lockedOut.RetryAfter)
-	}
-
-	// Waiting out the lockout lets the correct password through again.
-	now = now.Add(lockedOut.RetryAfter + time.Second)
 	if _, _, err := authenticator.Login(context.Background(), "alice", testPassword); err != nil {
-		t.Fatalf("login after lockout expiry failed: %v", err)
-	}
-}
-
-func TestSuccessfulLoginClearsFailureHistory(t *testing.T) {
-	t.Parallel()
-
-	authenticator, _ := testAuthenticator(t, adminAccount(t, "alice"))
-
-	for range 3 {
-		_, _, _ = authenticator.Login(context.Background(), "alice", "wrong")
-	}
-	if got := authenticator.Throttle.Failures("alice"); got != 3 {
-		t.Fatalf("failures = %d, want 3", got)
-	}
-	if _, _, err := authenticator.Login(context.Background(), "alice", testPassword); err != nil {
-		t.Fatal(err)
-	}
-	if got := authenticator.Throttle.Failures("alice"); got != 0 {
-		t.Fatalf("failures after success = %d, want 0", got)
+		t.Fatalf("login after repeated failures failed: %v", err)
 	}
 }
 

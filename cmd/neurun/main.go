@@ -79,14 +79,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if !cfg.TrustedCodeExecution {
 		return errors.New("local Python execution is disabled; set NEURUN_TRUSTED_CODE_EXECUTION=true only when uploaded code is trusted")
 	}
+	if err := migrations.Apply(cfg.DatabaseURL); err != nil {
+		return err
+	}
 	database, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open PostgreSQL: %w", err)
 	}
 	defer database.Close()
-	if err := applyMigrations(ctx, database); err != nil {
-		return err
-	}
 	metadataStore, err := deployment.NewPostgresStore(database)
 	if err != nil {
 		return fmt.Errorf("configure PostgreSQL metadata: %w", err)
@@ -223,51 +223,6 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	background.Wait()
 	return errors.Join(serveErr, shutdownErr)
-}
-
-func applyMigrations(ctx context.Context, database *sql.DB) error {
-	tableNames := []string{"users", "api_keys", "projects", "apps", "deployments", "builds", "executions"}
-	existing := make([]sql.NullString, len(tableNames))
-	if err := database.QueryRowContext(ctx, `SELECT
-		to_regclass('public.users')::text,
-		to_regclass('public.api_keys')::text,
-		to_regclass('public.projects')::text,
-		to_regclass('public.apps')::text,
-		to_regclass('public.deployments')::text,
-		to_regclass('public.builds')::text,
-		to_regclass('public.executions')::text`).Scan(
-		&existing[0], &existing[1], &existing[2], &existing[3],
-		&existing[4], &existing[5], &existing[6],
-	); err != nil {
-		return fmt.Errorf("check PostgreSQL schema: %w", err)
-	}
-	present := make([]string, 0, len(tableNames))
-	missing := make([]string, 0, len(tableNames))
-	for index, table := range tableNames {
-		if existing[index].Valid {
-			present = append(present, table)
-		} else {
-			missing = append(missing, table)
-		}
-	}
-	if len(present) == len(tableNames) {
-		return nil
-	}
-	if len(present) != 0 {
-		return fmt.Errorf(
-			"incompatible PostgreSQL schema: required seven-table schema is incomplete "+
-				"(present: %s; missing: %s)",
-			strings.Join(present, ", "), strings.Join(missing, ", "),
-		)
-	}
-	body, err := migrations.FS.ReadFile("000001_core.sql")
-	if err != nil {
-		return fmt.Errorf("read embedded migration: %w", err)
-	}
-	if _, err := database.ExecContext(ctx, string(body)); err != nil {
-		return fmt.Errorf("apply PostgreSQL schema: %w", err)
-	}
-	return nil
 }
 
 func operatorAuthenticator(

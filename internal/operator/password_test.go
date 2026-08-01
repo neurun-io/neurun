@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const testPassword = "correct horse battery staple"
@@ -15,8 +17,9 @@ func TestHashPasswordRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(hash, hashAlgorithm+"$") {
-		t.Fatalf("hash %q does not declare its algorithm", hash)
+	// Every bcrypt hash declares its variant and cost in this prefix.
+	if !strings.HasPrefix(hash, "$2") {
+		t.Fatalf("hash %q is not a bcrypt hash", hash)
 	}
 	// The plaintext must not survive anywhere in the encoded form.
 	if strings.Contains(hash, testPassword) {
@@ -35,7 +38,7 @@ func TestHashPasswordRoundTrip(t *testing.T) {
 func TestVerifyPasswordRejectsWrongPassword(t *testing.T) {
 	t.Parallel()
 
-	hash, err := HashPassword(testPassword)
+	hash, err := hashPasswordWithCost(testPassword, bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,11 +62,11 @@ func TestVerifyPasswordRejectsWrongPassword(t *testing.T) {
 func TestHashPasswordUsesAFreshSalt(t *testing.T) {
 	t.Parallel()
 
-	first, err := HashPassword(testPassword)
+	first, err := hashPasswordWithCost(testPassword, bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := HashPassword(testPassword)
+	second, err := hashPasswordWithCost(testPassword, bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,13 +86,18 @@ func TestValidatePassword(t *testing.T) {
 	if err := ValidatePassword(strings.Repeat("a", MinimumPasswordLength-1)); !errors.Is(err, ErrPasswordTooShort) {
 		t.Fatalf("short password error = %v, want ErrPasswordTooShort", err)
 	}
-	if err := ValidatePassword(strings.Repeat("a", MaximumPasswordLength+1)); !errors.Is(err, ErrPasswordTooLong) {
+	if err := ValidatePassword(strings.Repeat("a", MaximumPasswordBytes+1)); !errors.Is(err, ErrPasswordTooLong) {
 		t.Fatalf("long password error = %v, want ErrPasswordTooLong", err)
 	}
-	// Length is counted in runes, so a short multi-byte passphrase is not
+	// The minimum is counted in runes, so a short multi-byte passphrase is not
 	// rejected for its byte count.
 	if err := ValidatePassword(strings.Repeat("é", MinimumPasswordLength)); err != nil {
 		t.Fatalf("multi-byte password of valid rune length rejected: %v", err)
+	}
+	// The maximum is counted in bytes, because that is the limit bcrypt itself
+	// imposes: 40 two-byte runes is 80 bytes and cannot be hashed.
+	if err := ValidatePassword(strings.Repeat("é", 40)); !errors.Is(err, ErrPasswordTooLong) {
+		t.Fatalf("multi-byte password over the byte limit error = %v, want ErrPasswordTooLong", err)
 	}
 }
 
@@ -97,13 +105,14 @@ func TestVerifyPasswordRejectsMalformedHash(t *testing.T) {
 	t.Parallel()
 
 	for name, hash := range map[string]string{
-		"empty":              "",
-		"missing fields":     "pbkdf2-sha256$650000",
-		"unknown algorithm":  "scrypt$650000$c2FsdA$a2V5",
-		"zero iterations":    "pbkdf2-sha256$0$c2FsdA$a2V5",
-		"negative iteration": "pbkdf2-sha256$-1$c2FsdA$a2V5",
-		"bad base64 salt":    "pbkdf2-sha256$650000$!!!$a2V5",
-		"empty key":          "pbkdf2-sha256$650000$c2FsdA$",
+		"empty":            "",
+		"not a hash":       "hunter2",
+		"truncated":        "$2a$10$",
+		"unknown variant":  "$9z$10$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV",
+		"impossible cost":  "$2a$99$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV",
+		"retired pbkdf2":   "pbkdf2-sha256$650000$c2FsdA$a2V5",
+		"missing cost":     "$2a$$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV",
+		"plausible length": strings.Repeat("x", 60),
 	} {
 		matched, err := VerifyPassword(hash, testPassword)
 		if err == nil {
@@ -119,10 +128,29 @@ func TestVerifyPasswordRejectsMalformedHash(t *testing.T) {
 	}
 }
 
+func TestVerifyPasswordTreatsAnOverLongPasswordAsNoMatch(t *testing.T) {
+	t.Parallel()
+
+	hash, err := hashPasswordWithCost(testPassword, bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// bcrypt refuses to hash more than 72 bytes. That makes an over-long input
+	// impossible to be the stored password, but it is not a malformed hash and
+	// must not surface as a configuration fault.
+	matched, err := VerifyPassword(hash, strings.Repeat("a", MaximumPasswordBytes+1))
+	if err != nil {
+		t.Fatalf("over-long password returned %v, want nil", err)
+	}
+	if matched {
+		t.Fatal("over-long password reported a match")
+	}
+}
+
 func TestValidateHashAcceptsGeneratedHash(t *testing.T) {
 	t.Parallel()
 
-	hash, err := HashPassword(testPassword)
+	hash, err := hashPasswordWithCost(testPassword, bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,17 +162,24 @@ func TestValidateHashAcceptsGeneratedHash(t *testing.T) {
 func TestVerifyPasswordAcceptsALowerCostHash(t *testing.T) {
 	t.Parallel()
 
-	// The encoded form carries its own iteration count, so raising the default
-	// must not invalidate hashes written at an older cost.
-	hash, err := hashPasswordWithIterations(testPassword, 1_000)
+	// Every hash carries its own cost, so raising the default must not
+	// invalidate hashes written at an older one.
+	hash, err := hashPasswordWithCost(testPassword, bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
+	}
+	cost, err := bcrypt.Cost([]byte(hash))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cost != bcrypt.MinCost {
+		t.Fatalf("cost = %d, want %d", cost, bcrypt.MinCost)
 	}
 	matched, err := VerifyPassword(hash, testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !matched {
-		t.Fatal("hash written at a lower iteration count did not verify")
+		t.Fatal("hash written at a lower cost did not verify")
 	}
 }

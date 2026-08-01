@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -178,18 +177,7 @@ func (s *Server) operatorLogin(w http.ResponseWriter, request *http.Request) {
 
 	session, token, err := s.operators.Login(request.Context(), username, body.Password)
 	if err != nil {
-		var lockedOut *operator.LockedOutError
 		switch {
-		case errors.As(err, &lockedOut):
-			retryAfter := int(lockedOut.RetryAfter.Round(time.Second).Seconds())
-			if retryAfter < 1 {
-				retryAfter = 1
-			}
-			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-			WriteProblem(w, request, http.StatusTooManyRequests, Problem{
-				Code:    "too_many_attempts",
-				Message: lockedOut.Error(),
-			})
 		case errors.Is(err, operator.ErrInvalidCredentials):
 			// One message for unknown user, wrong password and disabled account
 			// alike: the response must not be usable to enumerate accounts.

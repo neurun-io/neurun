@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ErrInvalidCredentials is returned for an unknown username, a wrong password,
@@ -12,34 +15,25 @@ import (
 // the caller so the response cannot be used to enumerate accounts.
 var ErrInvalidCredentials = errors.New("invalid username or password")
 
-// LockedOutError reports that too many failed attempts have been made.
-type LockedOutError struct {
-	RetryAfter time.Duration
-}
-
-func (e *LockedOutError) Error() string {
-	return fmt.Sprintf("too many failed sign-in attempts; retry in %s", e.RetryAfter.Round(time.Second))
-}
-
-// A hash of a value no password will match, used to spend the same CPU time on a
-// missing account as on a real one. Without it, "user not found" returns
-// noticeably faster than "wrong password" and the login endpoint becomes a
-// username oracle. Generated once at startup, not a constant, so it carries a
-// real salt and iteration count.
-var timingDecoyHash = func() string {
-	hash, err := hashPasswordWithIterations("timing-decoy-never-matches", DefaultIterations)
+// timingDecoyHash spends the same CPU on a missing or disabled account as on a
+// real one. Without it, "user not found" returns noticeably faster than "wrong
+// password" and the login endpoint becomes a username oracle.
+//
+// Computed on first use rather than at package init, so importing this package —
+// which every test binary does — does not pay bcrypt's cost up front.
+var timingDecoyHash = sync.OnceValue(func() string {
+	hash, err := hashPasswordWithCost("timing-decoy-never-matches", bcrypt.DefaultCost)
 	if err != nil {
-		// Only reachable if the platform's RNG is unavailable, in which case the
-		// process has larger problems than login timing.
+		// Only reachable if the platform's RNG is unavailable, in which case
+		// the process has larger problems than login timing.
 		return ""
 	}
 	return hash
-}()
+})
 
 // Authenticator performs the username/password exchange and validates sessions.
 type Authenticator struct {
-	Store    Store
-	Throttle *Throttle
+	Store Store
 	// SessionTTL is the absolute lifetime of an issued session.
 	SessionTTL time.Duration
 	// Now is injectable for tests; defaults to time.Now().UTC().
@@ -53,11 +47,7 @@ func NewAuthenticator(store Store, sessionTTL time.Duration) (*Authenticator, er
 	if sessionTTL <= 0 {
 		return nil, errors.New("operator session TTL must be positive")
 	}
-	return &Authenticator{
-		Store:      store,
-		Throttle:   NewThrottle(),
-		SessionTTL: sessionTTL,
-	}, nil
+	return &Authenticator{Store: store, SessionTTL: sessionTTL}, nil
 }
 
 func (a *Authenticator) now() time.Time {
@@ -77,27 +67,19 @@ func (a *Authenticator) Login(
 ) (Session, string, error) {
 	now := a.now()
 
-	if a.Throttle != nil {
-		if retryAfter, ok := a.Throttle.Allowed(username, now); !ok {
-			return Session{}, "", &LockedOutError{RetryAfter: retryAfter}
-		}
-	}
-
 	account, err := a.Store.AccountByUsername(ctx, username)
 	switch {
 	case errors.Is(err, ErrAccountNotFound):
 		// Spend comparable time before failing, so timing does not reveal
 		// whether the username exists.
-		_, _ = VerifyPassword(timingDecoyHash, password)
-		a.recordFailure(username, now)
+		_, _ = VerifyPassword(timingDecoyHash(), password)
 		return Session{}, "", ErrInvalidCredentials
 	case err != nil:
 		return Session{}, "", err
 	}
 
 	if account.Disabled {
-		_, _ = VerifyPassword(timingDecoyHash, password)
-		a.recordFailure(username, now)
+		_, _ = VerifyPassword(timingDecoyHash(), password)
 		return Session{}, "", ErrInvalidCredentials
 	}
 
@@ -107,7 +89,6 @@ func (a *Authenticator) Login(
 		return Session{}, "", fmt.Errorf("verify operator password: %w", err)
 	}
 	if !matched {
-		a.recordFailure(username, now)
 		return Session{}, "", ErrInvalidCredentials
 	}
 
@@ -115,13 +96,18 @@ func (a *Authenticator) Login(
 	if err != nil {
 		return Session{}, "", err
 	}
+	return a.issue(ctx, account, token, now)
+}
+
+func (a *Authenticator) issue(
+	ctx context.Context,
+	account Account,
+	token string,
+	now time.Time,
+) (Session, string, error) {
 	session, err := a.Store.CreateSession(ctx, account, token, now.Add(a.SessionTTL))
 	if err != nil {
 		return Session{}, "", err
-	}
-
-	if a.Throttle != nil {
-		a.Throttle.RecordSuccess(username)
 	}
 	return session, token, nil
 }
@@ -146,10 +132,4 @@ func (a *Authenticator) Logout(ctx context.Context, token string) error {
 // PruneSessions removes expired sessions, for periodic maintenance.
 func (a *Authenticator) PruneSessions(ctx context.Context) (int, error) {
 	return a.Store.DeleteExpiredSessions(ctx, a.now())
-}
-
-func (a *Authenticator) recordFailure(username string, now time.Time) {
-	if a.Throttle != nil {
-		a.Throttle.RecordFailure(username, now)
-	}
 }
