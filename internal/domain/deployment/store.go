@@ -69,7 +69,7 @@ func (store *MemoryStore) EnsureProject(
 	if err := contextError(ctx); err != nil {
 		return Project{}, err
 	}
-	if err := validateProject(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return Project{}, err
 	}
 	store.mu.Lock()
@@ -96,7 +96,7 @@ func (store *MemoryStore) GetProject(
 	if err := contextError(ctx); err != nil {
 		return Project{}, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return Project{}, err
 	}
 	store.mu.RLock()
@@ -133,7 +133,7 @@ func (store *MemoryStore) UpdateProject(
 	if err := contextError(ctx); err != nil {
 		return Project{}, err
 	}
-	if err := validateProject(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return Project{}, err
 	}
 	store.mu.Lock()
@@ -162,7 +162,7 @@ func (store *MemoryStore) CreateApp(ctx context.Context, record App) (App, error
 	if err := contextError(ctx); err != nil {
 		return App{}, err
 	}
-	if err := validateApp(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return App{}, err
 	}
 	store.mu.Lock()
@@ -194,10 +194,10 @@ func (store *MemoryStore) GetApp(
 	if err := contextError(ctx); err != nil {
 		return App{}, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return App{}, err
 	}
-	if err := validateIdentifier("app_id", appID); err != nil {
+	if err := ValidateIdentifier("app_id", appID); err != nil {
 		return App{}, err
 	}
 	store.mu.RLock()
@@ -218,10 +218,10 @@ func (store *MemoryStore) ListApps(
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return nil, err
 	}
-	if err := validateOptionalAppNameFilter(name); err != nil {
+	if err := ValidateAppNameFilter(name); err != nil {
 		return nil, err
 	}
 	store.mu.RLock()
@@ -248,7 +248,7 @@ func (store *MemoryStore) UpdateApp(ctx context.Context, record App) (App, error
 	if err := contextError(ctx); err != nil {
 		return App{}, err
 	}
-	if err := validateApp(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return App{}, err
 	}
 	store.mu.Lock()
@@ -275,7 +275,7 @@ func (store *MemoryStore) SaveDeployment(ctx context.Context, record Deployment)
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if err := validateDeploymentRecord(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return err
 	}
 	store.mu.Lock()
@@ -298,10 +298,10 @@ func (store *MemoryStore) GetDeployment(
 	if err := contextError(ctx); err != nil {
 		return Deployment{}, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return Deployment{}, err
 	}
-	if err := validateIdentifier("deployment_id", deploymentID); err != nil {
+	if err := ValidateIdentifier("deployment_id", deploymentID); err != nil {
 		return Deployment{}, err
 	}
 	store.mu.RLock()
@@ -322,11 +322,11 @@ func (store *MemoryStore) ListDeployments(
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return nil, err
 	}
 	if appID != "" {
-		if err := validateIdentifier("app_id", appID); err != nil {
+		if err := ValidateIdentifier("app_id", appID); err != nil {
 			return nil, err
 		}
 	}
@@ -353,10 +353,10 @@ func (store *MemoryStore) GetBuild(
 	if err := contextError(ctx); err != nil {
 		return Build{}, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return Build{}, err
 	}
-	if err := validateIdentifier("build_id", buildID); err != nil {
+	if err := ValidateIdentifier("build_id", buildID); err != nil {
 		return Build{}, err
 	}
 	store.mu.RLock()
@@ -381,11 +381,11 @@ func (store *MemoryStore) ListBuilds(
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return nil, err
 	}
 	if deploymentID != "" {
-		if err := validateIdentifier("deployment_id", deploymentID); err != nil {
+		if err := ValidateIdentifier("deployment_id", deploymentID); err != nil {
 			return nil, err
 		}
 	}
@@ -416,7 +416,7 @@ func (store *MemoryStore) RecoverBuildingDeployments(
 	if err := contextError(ctx); err != nil {
 		return 0, err
 	}
-	if err := validateRecovery(now, failure); err != nil {
+	if err := ValidateRecovery(now, failure); err != nil {
 		return 0, err
 	}
 	now = now.UTC().Round(0)
@@ -427,7 +427,7 @@ func (store *MemoryStore) RecoverBuildingDeployments(
 		if !failInterruptedBuild(&record, now, failure) {
 			continue
 		}
-		if err := validateDeploymentRecord(record); err != nil {
+		if err := record.Validate(); err != nil {
 			return recovered, err
 		}
 		store.deployments[key] = cloneDeployment(record)
@@ -440,7 +440,7 @@ func (store *MemoryStore) CreateRun(ctx context.Context, record Run) error {
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if err := validateRunRecord(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return err
 	}
 	if record.Status != RunQueued {
@@ -455,7 +455,7 @@ func (store *MemoryStore) CreateRun(ctx context.Context, record Run) error {
 	if _, exists := store.runs[key]; exists {
 		return fmt.Errorf("%w: execution %s already exists", ErrRunConflict, record.ID)
 	}
-	store.runs[key] = cloneRun(record)
+	store.runs[key] = CloneRun(record)
 	return nil
 }
 
@@ -463,7 +463,7 @@ func (store *MemoryStore) FinalizeRun(ctx context.Context, record Run) error {
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if err := validateRunRecord(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return err
 	}
 	store.mu.Lock()
@@ -473,10 +473,10 @@ func (store *MemoryStore) FinalizeRun(ctx context.Context, record Run) error {
 	if !exists {
 		return fmt.Errorf("%w: %s", ErrRunNotFound, record.ID)
 	}
-	if err := validateRunFinalization(current, record); err != nil {
+	if err := current.ValidateTransitionTo(record); err != nil {
 		return err
 	}
-	store.runs[key] = cloneRun(record)
+	store.runs[key] = CloneRun(record)
 	return nil
 }
 
@@ -488,10 +488,10 @@ func (store *MemoryStore) GetRun(
 	if err := contextError(ctx); err != nil {
 		return Run{}, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return Run{}, err
 	}
-	if err := validateIdentifier("execution_id", runID); err != nil {
+	if err := ValidateIdentifier("execution_id", runID); err != nil {
 		return Run{}, err
 	}
 	store.mu.RLock()
@@ -500,7 +500,7 @@ func (store *MemoryStore) GetRun(
 	if !exists {
 		return Run{}, fmt.Errorf("%w: %s", ErrRunNotFound, runID)
 	}
-	return cloneRun(record), nil
+	return CloneRun(record), nil
 }
 
 func (store *MemoryStore) ListRuns(
@@ -512,11 +512,11 @@ func (store *MemoryStore) ListRuns(
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return nil, err
 	}
 	if deploymentID != "" {
-		if err := validateIdentifier("deployment_id", deploymentID); err != nil {
+		if err := ValidateIdentifier("deployment_id", deploymentID); err != nil {
 			return nil, err
 		}
 	}
@@ -525,7 +525,7 @@ func (store *MemoryStore) ListRuns(
 	for _, record := range store.runs {
 		if record.ProjectID == projectID &&
 			(deploymentID == "" || record.DeploymentID == deploymentID) {
-			records = append(records, cloneRun(record))
+			records = append(records, CloneRun(record))
 		}
 	}
 	store.mu.RUnlock()
@@ -571,8 +571,8 @@ func (store *MemoryStore) ClaimQueuedRun(
 	selected.FinishedAt = nil
 	selected.Output = nil
 	selected.Failure = nil
-	store.runs[selectedKey] = cloneRun(selected)
-	return cloneRun(selected), nil
+	store.runs[selectedKey] = CloneRun(selected)
+	return CloneRun(selected), nil
 }
 
 func (store *MemoryStore) RecoverRunningRuns(
@@ -583,7 +583,7 @@ func (store *MemoryStore) RecoverRunningRuns(
 	if err := contextError(ctx); err != nil {
 		return 0, err
 	}
-	if err := validateRecovery(now, failure); err != nil {
+	if err := ValidateRecovery(now, failure); err != nil {
 		return 0, err
 	}
 	now = now.UTC().Round(0)
@@ -595,22 +595,22 @@ func (store *MemoryStore) RecoverRunningRuns(
 			continue
 		}
 		record.Status = RunFailed
-		record.Failure = cloneFailure(&failure)
+		record.Failure = CloneFailure(&failure)
 		record.FinishedAt = &now
-		store.runs[key] = cloneRun(record)
+		store.runs[key] = CloneRun(record)
 		recovered++
 	}
 	return recovered, nil
 }
 
-func validateDeploymentRecord(record Deployment) error {
-	if err := validateIdentifier("project_id", record.ProjectID); err != nil {
+func (record Deployment) Validate() error {
+	if err := ValidateIdentifier("project_id", record.ProjectID); err != nil {
 		return err
 	}
-	if err := validateIdentifier("deployment_id", record.ID); err != nil {
+	if err := ValidateIdentifier("deployment_id", record.ID); err != nil {
 		return err
 	}
-	if err := validateIdentifier("app_id", record.AppID); err != nil {
+	if err := ValidateIdentifier("app_id", record.AppID); err != nil {
 		return err
 	}
 	if !record.Runtime.Valid() {
@@ -646,7 +646,7 @@ func validateDeploymentRecord(record Deployment) error {
 }
 
 func validateBuild(build Build, expectedNumber int, record Deployment) error {
-	if err := validateIdentifier("build_id", build.ID); err != nil {
+	if err := ValidateIdentifier("build_id", build.ID); err != nil {
 		return err
 	}
 	if build.ProjectID != record.ProjectID || build.DeploymentID != record.ID {
@@ -703,7 +703,7 @@ func validateBuild(build Build, expectedNumber int, record Deployment) error {
 }
 
 func validateArtifact(record Artifact, expectedKind string) error {
-	if err := validateIdentifier("artifact_id", record.ID); err != nil {
+	if err := ValidateIdentifier("artifact_id", record.ID); err != nil {
 		return err
 	}
 	if expectedKind != "" && record.Kind != expectedKind {
@@ -726,21 +726,21 @@ func validateArtifact(record Artifact, expectedKind string) error {
 	return nil
 }
 
-func validateRunRecord(record Run) error {
-	if err := validateIdentifier("project_id", record.ProjectID); err != nil {
+func (record Run) Validate() error {
+	if err := ValidateIdentifier("project_id", record.ProjectID); err != nil {
 		return err
 	}
-	if err := validateIdentifier("execution_id", record.ID); err != nil {
+	if err := ValidateIdentifier("execution_id", record.ID); err != nil {
 		return err
 	}
-	if err := validateIdentifier("deployment_id", record.DeploymentID); err != nil {
+	if err := ValidateIdentifier("deployment_id", record.DeploymentID); err != nil {
 		return err
 	}
-	if err := validateIdentifier("build_id", record.BuildID); err != nil {
+	if err := ValidateIdentifier("build_id", record.BuildID); err != nil {
 		return err
 	}
 	if record.RerunOfRunID != "" {
-		if err := validateIdentifier("rerun_of_execution_id", record.RerunOfRunID); err != nil {
+		if err := ValidateIdentifier("rerun_of_execution_id", record.RerunOfRunID); err != nil {
 			return err
 		}
 	}
@@ -782,7 +782,7 @@ func validateRunRecord(record Run) error {
 	return validateFailure(record.Failure)
 }
 
-func validateRunFinalization(current Run, next Run) error {
+func (current Run) ValidateTransitionTo(next Run) error {
 	if current.Status != RunRunning || !next.Status.Terminal() {
 		return fmt.Errorf(
 			"%w: execution must transition from running to a terminal status",
@@ -815,7 +815,7 @@ func validateFailure(failure *Failure) error {
 	return nil
 }
 
-func validateRecovery(now time.Time, failure Failure) error {
+func ValidateRecovery(now time.Time, failure Failure) error {
 	if now.IsZero() {
 		return fmt.Errorf("%w: recovery time is required", ErrInvalid)
 	}
@@ -831,14 +831,14 @@ func failInterruptedBuild(record *Deployment, now time.Time, failure Failure) bo
 		return false
 	}
 	record.Builds[index].Status = StatusFailed
-	record.Builds[index].Failure = cloneFailure(&failure)
+	record.Builds[index].Failure = CloneFailure(&failure)
 	record.Builds[index].FinishedAt = &now
 	record.Status = StatusFailed
 	record.UpdatedAt = now
 	return true
 }
 
-func validateIdentifier(field, value string) error {
+func ValidateIdentifier(field, value string) error {
 	if value == "" || len(value) > 255 || !utf8.ValidString(value) ||
 		value != strings.TrimSpace(value) || value == "." || value == ".." {
 		return fmt.Errorf("%w: %s is invalid", ErrInvalid, field)
@@ -911,7 +911,7 @@ func sortBuilds(records []Build) {
 	})
 }
 
-func cloneFailure(failure *Failure) *Failure {
+func CloneFailure(failure *Failure) *Failure {
 	if failure == nil {
 		return nil
 	}

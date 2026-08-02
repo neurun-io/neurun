@@ -31,7 +31,7 @@ func (service *Service) EnsureProject(
 	projectID string,
 	name string,
 ) (Project, error) {
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return Project{}, err
 	}
 	name, err := normalizeProjectName(name)
@@ -88,8 +88,8 @@ func (service *Service) UpdateProject(
 	return service.store.UpdateProject(ctx, record)
 }
 
-func validateProject(record Project) error {
-	if err := validateIdentifier("project_id", record.ID); err != nil {
+func (record Project) Validate() error {
+	if err := ValidateIdentifier("project_id", record.ID); err != nil {
 		return err
 	}
 	name, err := normalizeProjectName(record.Name)

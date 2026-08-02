@@ -13,7 +13,7 @@ func (store *PostgresStore) CreateRun(ctx context.Context, record Run) error {
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if err := validateRunRecord(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return err
 	}
 	if record.Status != RunQueued {
@@ -46,7 +46,7 @@ func (store *PostgresStore) FinalizeRun(ctx context.Context, record Run) error {
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if err := validateRunRecord(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return err
 	}
 	return store.transaction(ctx, func(transaction *sql.Tx) error {
@@ -56,7 +56,7 @@ func (store *PostgresStore) FinalizeRun(ctx context.Context, record Run) error {
 		if err != nil {
 			return err
 		}
-		if err := validateRunFinalization(current, record); err != nil {
+		if err := current.ValidateTransitionTo(record); err != nil {
 			return err
 		}
 		return updateExecutionTx(
@@ -73,10 +73,10 @@ func (store *PostgresStore) GetRun(
 	if err := contextError(ctx); err != nil {
 		return Run{}, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return Run{}, err
 	}
-	if err := validateIdentifier("execution_id", executionID); err != nil {
+	if err := ValidateIdentifier("execution_id", executionID); err != nil {
 		return Run{}, err
 	}
 	record, _, err := scanExecution(store.database.QueryRowContext(
@@ -103,13 +103,13 @@ func (store *PostgresStore) ListRuns(
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return nil, err
 	}
 	query := executionSelect + ` WHERE project_id = $1`
 	arguments := []any{projectID}
 	if deploymentID != "" {
-		if err := validateIdentifier("deployment_id", deploymentID); err != nil {
+		if err := ValidateIdentifier("deployment_id", deploymentID); err != nil {
 			return nil, err
 		}
 		query += ` AND deployment_id = $2 ORDER BY created_at DESC, id DESC LIMIT $3`
@@ -179,7 +179,7 @@ func (store *PostgresStore) ClaimQueuedRun(
 	if err != nil {
 		return Run{}, err
 	}
-	return cloneRun(claimed), nil
+	return CloneRun(claimed), nil
 }
 
 func (store *PostgresStore) RecoverRunningRuns(
@@ -190,7 +190,7 @@ func (store *PostgresStore) RecoverRunningRuns(
 	if err := contextError(ctx); err != nil {
 		return 0, err
 	}
-	if err := validateRecovery(now, failure); err != nil {
+	if err := ValidateRecovery(now, failure); err != nil {
 		return 0, err
 	}
 	now = postgresTime(now)
@@ -227,7 +227,7 @@ func (store *PostgresStore) RecoverRunningRuns(
 				return err
 			}
 			record.Status = RunFailed
-			record.Failure = cloneFailure(&failure)
+			record.Failure = CloneFailure(&failure)
 			record.FinishedAt = &now
 			if err := updateExecutionTx(
 				ctx, transaction, record, version, RunRunning,
@@ -271,7 +271,7 @@ func updateExecutionTx(
 	currentVersion int64,
 	expectedStatus RunStatus,
 ) error {
-	if err := validateRunRecord(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return err
 	}
 	failureJSON, err := nullableJSON(record.Failure)
@@ -370,7 +370,7 @@ func scanExecution(scanner rowScanner) (Run, int64, error) {
 	if rerunOf.Valid {
 		record.RerunOfRunID = rerunOf.String
 	}
-	if err := validateRunRecord(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return Run{}, 0, fmt.Errorf("invalid persisted execution: %w", err)
 	}
 	return record, version, nil

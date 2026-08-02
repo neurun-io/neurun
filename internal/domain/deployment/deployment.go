@@ -365,7 +365,7 @@ func cloneArtifact(record Artifact) Artifact {
 	return record
 }
 
-func cloneRun(record Run) Run {
+func CloneRun(record Run) Run {
 	cloned := record
 	cloned.Input = append(json.RawMessage(nil), record.Input...)
 	cloned.Output = append(json.RawMessage(nil), record.Output...)

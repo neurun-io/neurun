@@ -45,7 +45,7 @@ func (store *PostgresStore) EnsureProject(
 	if err := contextError(ctx); err != nil {
 		return Project{}, err
 	}
-	if err := validateProject(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return Project{}, err
 	}
 	_, err := store.database.ExecContext(
@@ -71,7 +71,7 @@ func (store *PostgresStore) GetProject(
 	if err := contextError(ctx); err != nil {
 		return Project{}, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return Project{}, err
 	}
 	var record Project
@@ -86,7 +86,7 @@ func (store *PostgresStore) GetProject(
 	if err != nil {
 		return Project{}, fmt.Errorf("read project: %w", err)
 	}
-	if err := validateProject(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return Project{}, fmt.Errorf("invalid persisted project: %w", err)
 	}
 	return record, nil
@@ -117,7 +117,7 @@ func (store *PostgresStore) UpdateProject(
 	if err := contextError(ctx); err != nil {
 		return Project{}, err
 	}
-	if err := validateProject(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return Project{}, err
 	}
 	var updated Project
@@ -144,7 +144,7 @@ func (store *PostgresStore) CreateApp(ctx context.Context, record App) (App, err
 	if err := contextError(ctx); err != nil {
 		return App{}, err
 	}
-	if err := validateApp(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return App{}, err
 	}
 	var created App
@@ -173,10 +173,10 @@ func (store *PostgresStore) GetApp(
 	if err := contextError(ctx); err != nil {
 		return App{}, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return App{}, err
 	}
-	if err := validateIdentifier("app_id", appID); err != nil {
+	if err := ValidateIdentifier("app_id", appID); err != nil {
 		return App{}, err
 	}
 	var record App
@@ -193,7 +193,7 @@ func (store *PostgresStore) GetApp(
 	if err != nil {
 		return App{}, fmt.Errorf("read app: %w", err)
 	}
-	if err := validateApp(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return App{}, fmt.Errorf("invalid persisted app: %w", err)
 	}
 	return record, nil
@@ -208,10 +208,10 @@ func (store *PostgresStore) ListApps(
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return nil, err
 	}
-	if err := validateOptionalAppNameFilter(name); err != nil {
+	if err := ValidateAppNameFilter(name); err != nil {
 		return nil, err
 	}
 	rows, err := store.database.QueryContext(
@@ -236,7 +236,7 @@ func (store *PostgresStore) ListApps(
 		); err != nil {
 			return nil, err
 		}
-		if err := validateApp(record); err != nil {
+		if err := record.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid persisted app: %w", err)
 		}
 		records = append(records, record)
@@ -251,7 +251,7 @@ func (store *PostgresStore) UpdateApp(ctx context.Context, record App) (App, err
 	if err := contextError(ctx); err != nil {
 		return App{}, err
 	}
-	if err := validateApp(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return App{}, err
 	}
 	var updated App
@@ -282,7 +282,7 @@ func (store *PostgresStore) SaveDeployment(
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if err := validateDeploymentRecord(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return err
 	}
 	if _, err := store.GetApp(ctx, record.ProjectID, record.AppID); err != nil {
@@ -421,11 +421,11 @@ func (store *PostgresStore) ListDeployments(
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return nil, err
 	}
 	if appID != "" {
-		if err := validateIdentifier("app_id", appID); err != nil {
+		if err := ValidateIdentifier("app_id", appID); err != nil {
 			return nil, err
 		}
 	}
@@ -474,10 +474,10 @@ func (store *PostgresStore) GetBuild(
 	if err := contextError(ctx); err != nil {
 		return Build{}, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return Build{}, err
 	}
-	if err := validateIdentifier("build_id", buildID); err != nil {
+	if err := ValidateIdentifier("build_id", buildID); err != nil {
 		return Build{}, err
 	}
 	row := store.database.QueryRowContext(
@@ -505,13 +505,13 @@ func (store *PostgresStore) ListBuilds(
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return nil, err
 	}
 	query := buildSelect + ` WHERE d.project_id = $1`
 	arguments := []any{projectID}
 	if deploymentID != "" {
-		if err := validateIdentifier("deployment_id", deploymentID); err != nil {
+		if err := ValidateIdentifier("deployment_id", deploymentID); err != nil {
 			return nil, err
 		}
 		query += ` AND b.deployment_id = $2 ORDER BY b.started_at DESC, b.id DESC LIMIT $3`
@@ -547,7 +547,7 @@ func (store *PostgresStore) RecoverBuildingDeployments(
 	if err := contextError(ctx); err != nil {
 		return 0, err
 	}
-	if err := validateRecovery(now, failure); err != nil {
+	if err := ValidateRecovery(now, failure); err != nil {
 		return 0, err
 	}
 	now = now.UTC().Round(0)
@@ -605,10 +605,10 @@ func getDeployment(
 	projectID string,
 	deploymentID string,
 ) (Deployment, error) {
-	if err := validateIdentifier("project_id", projectID); err != nil {
+	if err := ValidateIdentifier("project_id", projectID); err != nil {
 		return Deployment{}, err
 	}
-	if err := validateIdentifier("deployment_id", deploymentID); err != nil {
+	if err := ValidateIdentifier("deployment_id", deploymentID); err != nil {
 		return Deployment{}, err
 	}
 	var record Deployment
@@ -669,7 +669,7 @@ func getDeployment(
 	if record.Builds == nil {
 		record.Builds = []Build{}
 	}
-	if err := validateDeploymentRecord(record); err != nil {
+	if err := record.Validate(); err != nil {
 		return Deployment{}, fmt.Errorf("invalid persisted deployment: %w", err)
 	}
 	return record, nil
@@ -755,7 +755,7 @@ func (store *PostgresStore) transaction(
 
 // advisoryKey joins the parts of a lock name into one text value.
 //
-// The separator has to be a character validateIdentifier rejects, so that
+// The separator has to be a character ValidateIdentifier rejects, so that
 // distinct part sequences cannot collide into one lock. It cannot be NUL:
 // PostgreSQL refuses a NUL byte in any text value, so hashing such a key fails
 // the whole transaction with SQLSTATE 22021 rather than locking anything.
@@ -780,7 +780,7 @@ func advisoryLock(ctx context.Context, transaction *sql.Tx, key string) error {
 // PostgreSQL stores microseconds and the driver truncates on the way in, while
 // Go carries nanoseconds. Handing a caller the untruncated value while the
 // database keeps the truncated one makes the two disagree by up to a
-// microsecond, and validateRunFinalization compares StartedAt exactly — so an
+// microsecond, and ValidateTransitionTo compares StartedAt exactly — so an
 // untruncated claim time rejected every finalization as changed metadata.
 // Round(0) alone is not enough: it strips the monotonic reading, not precision.
 func postgresTime(value time.Time) time.Time {

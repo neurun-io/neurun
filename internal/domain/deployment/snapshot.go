@@ -97,7 +97,7 @@ func deploymentToSnapshot(record Deployment) deploymentEnvelope {
 			Number:       build.Number, Status: build.Status,
 			Runtime: build.Runtime, EntryPoint: build.EntryPoint,
 			SourceSHA256: build.SourceSHA256, Artifacts: artifacts,
-			Failure: cloneFailure(build.Failure), StartedAt: build.StartedAt,
+			Failure: CloneFailure(build.Failure), StartedAt: build.StartedAt,
 			FinishedAt: cloneTime(build.FinishedAt),
 		}
 	}
@@ -126,7 +126,7 @@ func deploymentFromSnapshot(snapshot deploymentSnapshot) Deployment {
 			Number:       build.Number, Status: build.Status,
 			Runtime: build.Runtime, EntryPoint: build.EntryPoint,
 			SourceSHA256: build.SourceSHA256, Artifacts: artifacts,
-			Failure: cloneFailure(build.Failure), StartedAt: build.StartedAt,
+			Failure: CloneFailure(build.Failure), StartedAt: build.StartedAt,
 			FinishedAt: cloneTime(build.FinishedAt),
 		}
 	}
@@ -170,7 +170,7 @@ func runToSnapshot(record Run) runEnvelope {
 			Status:  record.Status,
 			Input:   append(json.RawMessage(nil), record.Input...),
 			Output:  append(json.RawMessage(nil), record.Output...),
-			Failure: cloneFailure(record.Failure), CreatedAt: record.CreatedAt,
+			Failure: CloneFailure(record.Failure), CreatedAt: record.CreatedAt,
 			Logs:         record.Logs,
 			StartedAt:    cloneTime(record.StartedAt),
 			FinishedAt:   cloneTime(record.FinishedAt),
@@ -186,7 +186,7 @@ func runFromSnapshot(snapshot runSnapshot) Run {
 		Status:  snapshot.Status,
 		Input:   append(json.RawMessage(nil), snapshot.Input...),
 		Output:  append(json.RawMessage(nil), snapshot.Output...),
-		Failure: cloneFailure(snapshot.Failure), CreatedAt: snapshot.CreatedAt,
+		Failure: CloneFailure(snapshot.Failure), CreatedAt: snapshot.CreatedAt,
 		Logs:         snapshot.Logs,
 		StartedAt:    cloneTime(snapshot.StartedAt),
 		FinishedAt:   cloneTime(snapshot.FinishedAt),

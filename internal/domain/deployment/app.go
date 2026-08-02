@@ -37,7 +37,7 @@ func (service *Service) CreateApp(
 	ctx context.Context,
 	request CreateAppRequest,
 ) (App, error) {
-	if err := validateIdentifier("project_id", request.ProjectID); err != nil {
+	if err := ValidateIdentifier("project_id", request.ProjectID); err != nil {
 		return App{}, err
 	}
 	name, err := normalizeAppName(request.Name)
@@ -75,7 +75,7 @@ func (service *Service) ListApps(
 	if limit < 1 || limit > 200 {
 		return nil, fmt.Errorf("%w: limit must be between 1 and 200", ErrInvalid)
 	}
-	if err := validateOptionalAppNameFilter(name); err != nil {
+	if err := ValidateAppNameFilter(name); err != nil {
 		return nil, err
 	}
 	if _, err := service.store.GetProject(ctx, projectID); err != nil {
@@ -108,11 +108,11 @@ func (service *Service) UpdateApp(
 	return service.store.UpdateApp(ctx, record)
 }
 
-func validateApp(record App) error {
-	if err := validateIdentifier("project_id", record.ProjectID); err != nil {
+func (record App) Validate() error {
+	if err := ValidateIdentifier("project_id", record.ProjectID); err != nil {
 		return err
 	}
-	if err := validateIdentifier("app_id", record.ID); err != nil {
+	if err := ValidateIdentifier("app_id", record.ID); err != nil {
 		return err
 	}
 	name, err := normalizeAppName(record.Name)
@@ -139,7 +139,7 @@ func normalizeAppName(raw string) (string, error) {
 	return name, nil
 }
 
-func validateOptionalAppNameFilter(name string) error {
+func ValidateAppNameFilter(name string) error {
 	if name == "" {
 		return nil
 	}

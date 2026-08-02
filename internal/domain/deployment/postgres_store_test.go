@@ -20,7 +20,7 @@ func TestAdvisoryKeyIsValidPostgresText(t *testing.T) {
 
 // A minted timestamp must already carry the precision PostgreSQL will keep.
 // Claiming an execution with a nanosecond StartedAt stored a truncated value but
-// returned the untruncated one, so validateRunFinalization saw the two differ and
+// returned the untruncated one, so ValidateTransitionTo saw the two differ and
 // rejected every finalization — which killed the worker, and with it the server.
 func TestPostgresTimeMatchesStoredPrecision(t *testing.T) {
 	t.Parallel()
@@ -87,7 +87,7 @@ func TestBuildFailureDecodesJSONNullAsAbsent(t *testing.T) {
 	}
 }
 
-// The separator must be a character validateIdentifier rejects, otherwise two
+// The separator must be a character ValidateIdentifier rejects, otherwise two
 // different part sequences could hash to the same lock.
 func TestAdvisoryKeySeparatorCannotAppearInIdentifiers(t *testing.T) {
 	t.Parallel()
@@ -98,7 +98,7 @@ func TestAdvisoryKeySeparatorCannotAppearInIdentifiers(t *testing.T) {
 	}
 	// Joining two empty parts yields the separator on its own.
 	separator := advisoryKey("", "")
-	if err := validateIdentifier("separator", separator); err == nil {
+	if err := ValidateIdentifier("separator", separator); err == nil {
 		t.Fatalf("separator %q is a legal identifier character", separator)
 	}
 }

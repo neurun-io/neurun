@@ -181,13 +181,13 @@ func TestRunClaimAndFinalizeUsesCompareAndSet(t *testing.T) {
 	if claimed.Status != RunRunning || claimed.StartedAt == nil {
 		t.Fatalf("unexpected claimed execution: %#v", claimed)
 	}
-	first := cloneRun(claimed)
+	first := CloneRun(claimed)
 	first.Status = RunSucceeded
 	first.Output = json.RawMessage(`{"winner":1}`)
 	first.Logs = "one line\n"
 	finished := created.CreatedAt.Add(3 * time.Second)
 	first.FinishedAt = &finished
-	second := cloneRun(first)
+	second := CloneRun(first)
 	second.Output = json.RawMessage(`{"winner":2}`)
 
 	start := make(chan struct{})
@@ -290,12 +290,12 @@ func TestIdentifiersRejectWindowsReservedDeviceNames(t *testing.T) {
 		"CON", "con.txt", "PrN", "AUX.json", "NUL", "COM1", "com9.log",
 		"LPT1", "lpt9.bin",
 	} {
-		if err := validateIdentifier("id", value); !errors.Is(err, ErrInvalid) {
-			t.Fatalf("validateIdentifier(%q) = %v", value, err)
+		if err := ValidateIdentifier("id", value); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("ValidateIdentifier(%q) = %v", value, err)
 		}
 	}
 	for _, value := range []string{"CONSOLE", "COM10", "LPT0", "prn_job"} {
-		if err := validateIdentifier("id", value); err != nil {
+		if err := ValidateIdentifier("id", value); err != nil {
 			t.Fatalf("valid identifier %q rejected: %v", value, err)
 		}
 	}

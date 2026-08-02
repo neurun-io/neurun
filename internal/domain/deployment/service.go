@@ -145,10 +145,10 @@ func (service *Service) Create(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := validateIdentifier("project_id", request.ProjectID); err != nil {
+	if err := ValidateIdentifier("project_id", request.ProjectID); err != nil {
 		return Deployment{}, err
 	}
-	if err := validateIdentifier("app_id", request.AppID); err != nil {
+	if err := ValidateIdentifier("app_id", request.AppID); err != nil {
 		return Deployment{}, err
 	}
 	if _, err := service.store.GetApp(ctx, request.ProjectID, request.AppID); err != nil {
@@ -245,7 +245,7 @@ func (service *Service) List(
 		return nil, fmt.Errorf("%w: limit must be between 1 and 200", ErrInvalid)
 	}
 	if appID != "" {
-		if err := validateIdentifier("app_id", appID); err != nil {
+		if err := ValidateIdentifier("app_id", appID); err != nil {
 			return nil, err
 		}
 		if _, err := service.store.GetApp(ctx, projectID, appID); err != nil {
@@ -300,10 +300,10 @@ func (service *Service) CreateRun(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := validateIdentifier("project_id", request.ProjectID); err != nil {
+	if err := ValidateIdentifier("project_id", request.ProjectID); err != nil {
 		return Run{}, err
 	}
-	if err := validateIdentifier("deployment_id", request.DeploymentID); err != nil {
+	if err := ValidateIdentifier("deployment_id", request.DeploymentID); err != nil {
 		return Run{}, err
 	}
 	input, err := NormalizeJSON(request.Input, service.maxRunInputBytes)
@@ -335,7 +335,7 @@ func (service *Service) CreateRun(
 	if err := service.store.CreateRun(ctx, run); err != nil {
 		return Run{}, fmt.Errorf("persist queued deployment execution: %w", err)
 	}
-	return cloneRun(run), nil
+	return CloneRun(run), nil
 }
 
 func (service *Service) GetRun(
@@ -407,7 +407,7 @@ func (service *Service) Rerun(
 	if err := service.store.CreateRun(ctx, rerun); err != nil {
 		return Run{}, fmt.Errorf("persist queued rerun: %w", err)
 	}
-	return cloneRun(rerun), nil
+	return CloneRun(rerun), nil
 }
 
 func (service *Service) CreateExecution(
@@ -708,7 +708,7 @@ func (service *Service) allocateID(prefix string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("allocate %s ID: %w", prefix, err)
 	}
-	if err := validateIdentifier(prefix+"_id", value); err != nil {
+	if err := ValidateIdentifier(prefix+"_id", value); err != nil {
 		return "", err
 	}
 	return value, nil
