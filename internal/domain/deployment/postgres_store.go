@@ -305,7 +305,7 @@ func saveDeploymentTx(
 	); err != nil {
 		return err
 	}
-	source, err := json.Marshal(artifactToSnapshot(record.Source))
+	source, err := json.Marshal(record.Source.Snapshot())
 	if err != nil {
 		return fmt.Errorf("encode deployment source metadata: %w", err)
 	}
@@ -352,9 +352,9 @@ func saveDeploymentTx(
 }
 
 func saveBuildTx(ctx context.Context, transaction *sql.Tx, build Build) error {
-	artifacts := make([]artifactSnapshot, len(build.Artifacts))
+	artifacts := make([]ArtifactSnapshot, len(build.Artifacts))
 	for index, stored := range build.Artifacts {
-		artifacts[index] = artifactToSnapshot(stored)
+		artifacts[index] = stored.Snapshot()
 	}
 	artifactsJSON, err := json.Marshal(artifacts)
 	if err != nil {
@@ -640,11 +640,11 @@ func getDeployment(
 	}
 	record.Runtime = Runtime(runtimeText)
 	record.Status = Status(statusText)
-	var source artifactSnapshot
+	var source ArtifactSnapshot
 	if err := json.Unmarshal(sourceJSON, &source); err != nil {
 		return Deployment{}, fmt.Errorf("decode deployment source: %w", err)
 	}
-	record.Source = artifactFromSnapshot(source)
+	record.Source = ArtifactFromSnapshot(source)
 	rows, err := database.QueryContext(
 		ctx,
 		buildSelect+` WHERE d.project_id = $1 AND b.deployment_id = $2
@@ -708,13 +708,13 @@ func scanBuild(scanner rowScanner) (Build, error) {
 	}
 	record.Status = Status(statusText)
 	record.Runtime = Runtime(runtimeText)
-	var snapshots []artifactSnapshot
+	var snapshots []ArtifactSnapshot
 	if err := json.Unmarshal(artifactsJSON, &snapshots); err != nil {
 		return Build{}, fmt.Errorf("decode build artifacts: %w", err)
 	}
 	record.Artifacts = make([]Artifact, len(snapshots))
 	for index, snapshot := range snapshots {
-		record.Artifacts[index] = artifactFromSnapshot(snapshot)
+		record.Artifacts[index] = ArtifactFromSnapshot(snapshot)
 	}
 	// Decoding through the pointer leaves Failure nil for a JSON null, which is
 	// how rows written before nullableJSON was corrected represent "no failure".

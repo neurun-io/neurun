@@ -29,7 +29,7 @@ type runEnvelope struct {
 	Record runSnapshot `json:"record"`
 }
 
-type artifactSnapshot struct {
+type ArtifactSnapshot struct {
 	ID         string    `json:"id"`
 	Kind       string    `json:"kind"`
 	Name       string    `json:"name"`
@@ -49,7 +49,7 @@ type buildSnapshot struct {
 	Runtime      Runtime            `json:"runtime"`
 	EntryPoint   string             `json:"entrypoint"`
 	SourceSHA256 string             `json:"source_sha256"`
-	Artifacts    []artifactSnapshot `json:"artifacts"`
+	Artifacts    []ArtifactSnapshot `json:"artifacts"`
 	Failure      *Failure           `json:"failure,omitempty"`
 	StartedAt    time.Time          `json:"started_at"`
 	FinishedAt   *time.Time         `json:"finished_at,omitempty"`
@@ -62,7 +62,7 @@ type deploymentSnapshot struct {
 	Runtime    Runtime          `json:"runtime"`
 	EntryPoint string           `json:"entrypoint"`
 	Status     Status           `json:"status"`
-	Source     artifactSnapshot `json:"source"`
+	Source     ArtifactSnapshot `json:"source"`
 	Builds     []buildSnapshot  `json:"builds"`
 	CreatedAt  time.Time        `json:"created_at"`
 	UpdatedAt  time.Time        `json:"updated_at"`
@@ -87,9 +87,9 @@ type runSnapshot struct {
 func deploymentToSnapshot(record Deployment) deploymentEnvelope {
 	builds := make([]buildSnapshot, len(record.Builds))
 	for index, build := range record.Builds {
-		artifacts := make([]artifactSnapshot, len(build.Artifacts))
+		artifacts := make([]ArtifactSnapshot, len(build.Artifacts))
 		for artifactIndex, stored := range build.Artifacts {
-			artifacts[artifactIndex] = artifactToSnapshot(stored)
+			artifacts[artifactIndex] = stored.Snapshot()
 		}
 		builds[index] = buildSnapshot{
 			ID: build.ID, ProjectID: build.ProjectID,
@@ -107,7 +107,7 @@ func deploymentToSnapshot(record Deployment) deploymentEnvelope {
 			ID: record.ID, ProjectID: record.ProjectID, AppID: record.AppID,
 			Runtime:    record.Runtime,
 			EntryPoint: record.EntryPoint, Status: record.Status,
-			Source: artifactToSnapshot(record.Source), Builds: builds,
+			Source: record.Source.Snapshot(), Builds: builds,
 			CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 		},
 	}
@@ -118,7 +118,7 @@ func deploymentFromSnapshot(snapshot deploymentSnapshot) Deployment {
 	for index, build := range snapshot.Builds {
 		artifacts := make([]Artifact, len(build.Artifacts))
 		for artifactIndex, stored := range build.Artifacts {
-			artifacts[artifactIndex] = artifactFromSnapshot(stored)
+			artifacts[artifactIndex] = ArtifactFromSnapshot(stored)
 		}
 		builds[index] = Build{
 			ID: build.ID, ProjectID: build.ProjectID,
@@ -134,13 +134,13 @@ func deploymentFromSnapshot(snapshot deploymentSnapshot) Deployment {
 		ID: snapshot.ID, ProjectID: snapshot.ProjectID, AppID: snapshot.AppID,
 		Runtime:    snapshot.Runtime,
 		EntryPoint: snapshot.EntryPoint, Status: snapshot.Status,
-		Source: artifactFromSnapshot(snapshot.Source), Builds: builds,
+		Source: ArtifactFromSnapshot(snapshot.Source), Builds: builds,
 		CreatedAt: snapshot.CreatedAt, UpdatedAt: snapshot.UpdatedAt,
 	}
 }
 
-func artifactToSnapshot(record Artifact) artifactSnapshot {
-	return artifactSnapshot{
+func (record Artifact) Snapshot() ArtifactSnapshot {
+	return ArtifactSnapshot{
 		ID: record.ID, Kind: record.Kind, Name: record.Name,
 		MediaType: record.MediaType, SizeBytes: record.SizeBytes,
 		SHA256: record.SHA256, StorageKey: record.storageKey,
@@ -148,7 +148,7 @@ func artifactToSnapshot(record Artifact) artifactSnapshot {
 	}
 }
 
-func artifactFromSnapshot(snapshot artifactSnapshot) Artifact {
+func ArtifactFromSnapshot(snapshot ArtifactSnapshot) Artifact {
 	return newArtifact(
 		snapshot.ID,
 		snapshot.Kind,
