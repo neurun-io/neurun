@@ -5,7 +5,7 @@
 // command, so the in-process implementation can be replaced by a shared one
 // without any caller changing. Values are opaque bytes — encoding belongs to the
 // caller, not here.
-package cache
+package storage
 
 import (
 	"context"

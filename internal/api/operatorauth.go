@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/auth"
-	"github.com/neurun-io/neurun/internal/operator"
+	"github.com/neurun-io/neurun/internal/domain/auth"
+	"github.com/neurun-io/neurun/internal/domain/operator"
 )
 
 // SessionCookieName carries the operator session token.

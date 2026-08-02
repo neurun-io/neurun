@@ -18,9 +18,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/neurun-io/neurun/internal/auth"
+	"github.com/neurun-io/neurun/internal/domain/auth"
 	"github.com/neurun-io/neurun/internal/ids"
-	"github.com/neurun-io/neurun/internal/operator"
+	"github.com/neurun-io/neurun/internal/domain/operator"
 )
 
 var (
@@ -77,14 +77,14 @@ type Store struct {
 
 type OperatorStore struct {
 	accounts *Store
-	sessions *operator.MemoryStore
+	sessions *operator.ConfigStore
 }
 
 func NewOperatorStore(accounts *Store) (*OperatorStore, error) {
 	if accounts == nil {
 		return nil, errors.New("account store is required")
 	}
-	sessions, err := operator.NewMemoryStore()
+	sessions, err := operator.NewConfigStore()
 	if err != nil {
 		return nil, err
 	}

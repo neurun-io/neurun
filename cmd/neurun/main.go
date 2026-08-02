@@ -21,15 +21,15 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/neurun-io/neurun/internal/account"
+	"github.com/neurun-io/neurun/internal/domain/account"
 	"github.com/neurun-io/neurun/internal/api"
 	"github.com/neurun-io/neurun/internal/artifact"
-	"github.com/neurun-io/neurun/internal/builder"
+	"github.com/neurun-io/neurun/internal/domain/builder"
 	"github.com/neurun-io/neurun/internal/buildinfo"
 	"github.com/neurun-io/neurun/internal/config"
-	"github.com/neurun-io/neurun/internal/deployment"
-	"github.com/neurun-io/neurun/internal/operator"
-	"github.com/neurun-io/neurun/internal/worker"
+	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/operator"
+	"github.com/neurun-io/neurun/internal/domain/worker"
 	"github.com/neurun-io/neurun/migrations"
 )
 

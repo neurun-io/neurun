@@ -1,23 +1,23 @@
-package cache
+package memory
 
 import (
 	"context"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/neurun-io/neurun/internal/storage"
 )
 
-// Memory is the process-local Cache.
-//
-// Entries live only in this process, so a restart empties it and every operator
-// session ends. That is the honest consequence of having no shared adapter yet,
-// and it is the reason the Cache interface exists: a Redis implementation
-// replaces this type without any caller changing.
-type Memory struct {
+// Cache is the process-local storage.Cache. Entries live only in this process, so
+// a restart empties it and every session ends.
+type Cache struct {
 	mu      sync.RWMutex
 	entries map[string]entry
 	now     func() time.Time
 }
+
+var _ storage.Cache = (*Cache)(nil)
 
 type entry struct {
 	value []byte
@@ -29,22 +29,20 @@ func (e entry) expired(now time.Time) bool {
 	return !e.expiresAt.IsZero() && !now.Before(e.expiresAt)
 }
 
-var _ Cache = (*Memory)(nil)
-
-func NewMemory() *Memory {
-	return &Memory{entries: make(map[string]entry), now: time.Now}
+func New() *Cache {
+	return &Cache{entries: make(map[string]entry), now: time.Now}
 }
 
-// NewMemoryWithClock builds a Memory reading time from now, so expiry can be
+// NewWithClock builds a Cache reading time from now, so expiry can be
 // tested without sleeping.
-func NewMemoryWithClock(now func() time.Time) *Memory {
+func NewWithClock(now func() time.Time) *Cache {
 	if now == nil {
 		now = time.Now
 	}
-	return &Memory{entries: make(map[string]entry), now: now}
+	return &Cache{entries: make(map[string]entry), now: now}
 }
 
-func (m *Memory) Get(ctx context.Context, key string) ([]byte, bool, error) {
+func (m *Cache) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
@@ -65,7 +63,7 @@ func (m *Memory) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	return append([]byte(nil), found.value...), true, nil
 }
 
-func (m *Memory) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+func (m *Cache) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -81,7 +79,7 @@ func (m *Memory) Set(ctx context.Context, key string, value []byte, ttl time.Dur
 	return nil
 }
 
-func (m *Memory) Delete(ctx context.Context, key string) error {
+func (m *Cache) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -91,7 +89,7 @@ func (m *Memory) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (m *Memory) Keys(ctx context.Context, prefix string) ([]string, error) {
+func (m *Cache) Keys(ctx context.Context, prefix string) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -114,7 +112,7 @@ func (m *Memory) Keys(ctx context.Context, prefix string) ([]string, error) {
 // Get evicts lazily, which is enough for correctness but leaves the map holding
 // entries nobody reads again. A caller on a ticker reclaims that memory. Redis
 // expires keys on its own, so its implementation of this is a no-op.
-func (m *Memory) Sweep() int {
+func (m *Cache) Sweep() int {
 	now := m.now()
 
 	m.mu.Lock()
@@ -131,7 +129,7 @@ func (m *Memory) Sweep() int {
 }
 
 // Len reports the number of live entries, for tests and operational logging.
-func (m *Memory) Len() int {
+func (m *Cache) Len() int {
 	now := m.now()
 
 	m.mu.RLock()

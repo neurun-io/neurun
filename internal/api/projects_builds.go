@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/neurun-io/neurun/internal/auth"
-	"github.com/neurun-io/neurun/internal/deployment"
+	"github.com/neurun-io/neurun/internal/domain/auth"
+	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
 func (s *Server) listProjects(w http.ResponseWriter, request *http.Request) {

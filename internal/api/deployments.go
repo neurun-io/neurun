@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/neurun-io/neurun/internal/auth"
-	"github.com/neurun-io/neurun/internal/deployment"
+	"github.com/neurun-io/neurun/internal/domain/auth"
+	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
 const deploymentMultipartOverhead = int64(1 << 20)

@@ -12,25 +12,25 @@ import (
 	"github.com/neurun-io/neurun/internal/ids"
 )
 
-// MemoryStore is the process-local Store adapter.
+// ConfigStore is the process-local Store adapter.
 //
 // Accounts are fixed at construction from configuration. Sessions live only in
 // this process, so a restart logs every operator out — the honest consequence of
 // having no durable adapter yet, and a mild security benefit in development.
-type MemoryStore struct {
+type ConfigStore struct {
 	mu       sync.RWMutex
 	accounts map[string]Account            // lowercased username → account
 	sessions map[[sha256.Size]byte]Session // token digest → session
 }
 
-var _ Store = (*MemoryStore)(nil)
+var _ Store = (*ConfigStore)(nil)
 
-// NewMemoryStore builds a store from the supplied accounts.
+// NewConfigStore builds a store from the supplied accounts.
 //
 // Usernames are compared case-insensitively, so two accounts differing only in
 // case are rejected rather than silently shadowing one another.
-func NewMemoryStore(accounts ...Account) (*MemoryStore, error) {
-	store := &MemoryStore{
+func NewConfigStore(accounts ...Account) (*ConfigStore, error) {
+	store := &ConfigStore{
 		accounts: make(map[string]Account, len(accounts)),
 		sessions: make(map[[sha256.Size]byte]Session),
 	}
@@ -68,7 +68,7 @@ func NewMemoryStore(accounts ...Account) (*MemoryStore, error) {
 
 // Accounts returns every configured account, for startup reporting. Password
 // hashes are cleared: nothing outside this package needs them.
-func (s *MemoryStore) Accounts() []Account {
+func (s *ConfigStore) Accounts() []Account {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -80,7 +80,7 @@ func (s *MemoryStore) Accounts() []Account {
 	return accounts
 }
 
-func (s *MemoryStore) AccountByUsername(_ context.Context, username string) (Account, error) {
+func (s *ConfigStore) AccountByUsername(_ context.Context, username string) (Account, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -91,7 +91,7 @@ func (s *MemoryStore) AccountByUsername(_ context.Context, username string) (Acc
 	return account, nil
 }
 
-func (s *MemoryStore) CreateSession(
+func (s *ConfigStore) CreateSession(
 	_ context.Context,
 	account Account,
 	token string,
@@ -121,7 +121,7 @@ func (s *MemoryStore) CreateSession(
 	return session, nil
 }
 
-func (s *MemoryStore) SessionByToken(
+func (s *ConfigStore) SessionByToken(
 	_ context.Context,
 	token string,
 	now time.Time,
@@ -143,14 +143,14 @@ func (s *MemoryStore) SessionByToken(
 	return session, nil
 }
 
-func (s *MemoryStore) DeleteSession(_ context.Context, token string) error {
+func (s *ConfigStore) DeleteSession(_ context.Context, token string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, TokenDigest(token))
 	return nil
 }
 
-func (s *MemoryStore) DeleteExpiredSessions(_ context.Context, now time.Time) (int, error) {
+func (s *ConfigStore) DeleteExpiredSessions(_ context.Context, now time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -165,7 +165,7 @@ func (s *MemoryStore) DeleteExpiredSessions(_ context.Context, now time.Time) (i
 }
 
 // SessionCount reports live sessions, for tests and operational logging.
-func (s *MemoryStore) SessionCount() int {
+func (s *ConfigStore) SessionCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.sessions)

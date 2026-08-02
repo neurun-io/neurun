@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/neurun-io/neurun/internal/account"
-	"github.com/neurun-io/neurun/internal/auth"
+	"github.com/neurun-io/neurun/internal/domain/account"
+	"github.com/neurun-io/neurun/internal/domain/auth"
 )
 
 type updateUserBody struct {

@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/neurun-io/neurun/internal/auth"
-	"github.com/neurun-io/neurun/internal/deployment"
+	"github.com/neurun-io/neurun/internal/domain/auth"
+	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
 func (s *Server) appsCollection(w http.ResponseWriter, request *http.Request) {

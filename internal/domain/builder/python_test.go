@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/neurun-io/neurun/internal/deployment"
+	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
 func TestPythonBuilderProducesStableCodeLayer(t *testing.T) {

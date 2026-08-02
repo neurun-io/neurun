@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/operator"
+	"github.com/neurun-io/neurun/internal/domain/operator"
 )
 
 const (

@@ -1,4 +1,4 @@
-package cache
+package memory
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 func TestMemoryStoresAndReadsBackAValue(t *testing.T) {
 	t.Parallel()
-	memory := NewMemory()
+	memory := New()
 
 	if err := memory.Set(context.Background(), "session:a", []byte("payload"), time.Minute); err != nil {
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func TestMemoryStoresAndReadsBackAValue(t *testing.T) {
 func TestMemoryReportsExpiredEntriesAsAbsentAndDropsThem(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	memory := NewMemoryWithClock(func() time.Time { return now })
+	memory := NewWithClock(func() time.Time { return now })
 
 	if err := memory.Set(context.Background(), "session:a", []byte("payload"), time.Minute); err != nil {
 		t.Fatal(err)
@@ -47,7 +47,7 @@ func TestMemoryReportsExpiredEntriesAsAbsentAndDropsThem(t *testing.T) {
 func TestMemoryTreatsNonPositiveTTLAsNoExpiry(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	memory := NewMemoryWithClock(func() time.Time { return now })
+	memory := NewWithClock(func() time.Time { return now })
 
 	if err := memory.Set(context.Background(), "key", []byte("value"), 0); err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestMemoryTreatsNonPositiveTTLAsNoExpiry(t *testing.T) {
 
 func TestMemoryDoesNotAliasStoredBytes(t *testing.T) {
 	t.Parallel()
-	memory := NewMemory()
+	memory := New()
 	original := []byte("payload")
 
 	if err := memory.Set(context.Background(), "key", original, time.Minute); err != nil {
@@ -89,7 +89,7 @@ func TestMemoryDoesNotAliasStoredBytes(t *testing.T) {
 
 func TestMemoryDeleteIsIdempotent(t *testing.T) {
 	t.Parallel()
-	memory := NewMemory()
+	memory := New()
 
 	if err := memory.Delete(context.Background(), "absent"); err != nil {
 		t.Fatalf("deleting an absent key returned %v, want nil", err)
@@ -99,7 +99,7 @@ func TestMemoryDeleteIsIdempotent(t *testing.T) {
 func TestMemoryKeysFiltersByPrefixAndSkipsExpired(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	memory := NewMemoryWithClock(func() time.Time { return now })
+	memory := NewWithClock(func() time.Time { return now })
 	ctx := context.Background()
 
 	for key, ttl := range map[string]time.Duration{
@@ -125,7 +125,7 @@ func TestMemoryKeysFiltersByPrefixAndSkipsExpired(t *testing.T) {
 func TestMemorySweepReclaimsExpiredEntries(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	memory := NewMemoryWithClock(func() time.Time { return now })
+	memory := NewWithClock(func() time.Time { return now })
 	ctx := context.Background()
 
 	if err := memory.Set(ctx, "a", []byte("v"), time.Minute); err != nil {
@@ -146,7 +146,7 @@ func TestMemorySweepReclaimsExpiredEntries(t *testing.T) {
 
 func TestMemoryRespectsCancelledContext(t *testing.T) {
 	t.Parallel()
-	memory := NewMemory()
+	memory := New()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

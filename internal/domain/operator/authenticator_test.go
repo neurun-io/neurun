@@ -9,10 +9,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func testAuthenticator(t *testing.T, accounts ...Account) (*Authenticator, *MemoryStore) {
+func testAuthenticator(t *testing.T, accounts ...Account) (*Authenticator, *ConfigStore) {
 	t.Helper()
 
-	store, err := NewMemoryStore(accounts...)
+	store, err := NewConfigStore(accounts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,25 +250,25 @@ func TestNewMemoryStoreRejectsBadAccounts(t *testing.T) {
 
 	duplicate := valid
 	duplicate.Username = "ALICE"
-	if _, err := NewMemoryStore(valid, duplicate); err == nil {
+	if _, err := NewConfigStore(valid, duplicate); err == nil {
 		t.Fatal("duplicate username differing only in case was accepted")
 	}
 
 	badRole := valid
 	badRole.Role = Role("root")
-	if _, err := NewMemoryStore(badRole); err == nil {
+	if _, err := NewConfigStore(badRole); err == nil {
 		t.Fatal("invalid role was accepted")
 	}
 
 	badHash := valid
 	badHash.PasswordHash = "not-a-hash"
-	if _, err := NewMemoryStore(badHash); err == nil {
+	if _, err := NewConfigStore(badHash); err == nil {
 		t.Fatal("malformed password hash was accepted")
 	}
 
 	empty := valid
 	empty.Username = "   "
-	if _, err := NewMemoryStore(empty); err == nil {
+	if _, err := NewConfigStore(empty); err == nil {
 		t.Fatal("empty username was accepted")
 	}
 }

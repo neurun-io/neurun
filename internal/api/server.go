@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/neurun-io/neurun/internal/account"
-	"github.com/neurun-io/neurun/internal/auth"
+	"github.com/neurun-io/neurun/internal/domain/account"
+	"github.com/neurun-io/neurun/internal/domain/auth"
 	"github.com/neurun-io/neurun/internal/buildinfo"
-	"github.com/neurun-io/neurun/internal/deployment"
-	"github.com/neurun-io/neurun/internal/operator"
+	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/operator"
 )
 
 const (

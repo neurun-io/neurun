@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/neurun-io/neurun/internal/artifact"
-	"github.com/neurun-io/neurun/internal/deployment"
+	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
 type PythonOptions struct {

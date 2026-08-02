@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/neurun-io/neurun/internal/account"
-	"github.com/neurun-io/neurun/internal/auth"
-	"github.com/neurun-io/neurun/internal/deployment"
+	"github.com/neurun-io/neurun/internal/domain/account"
+	"github.com/neurun-io/neurun/internal/domain/auth"
+	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
 const testAPIKey = "neu_test.local-secret"
