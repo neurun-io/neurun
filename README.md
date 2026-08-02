@@ -48,14 +48,15 @@ PostgreSQL, JetStream, and artifact payloads persist in Docker-managed local
 volumes. Artifact payloads use the filesystem-backed `neurun-data` volume;
 there is no MinIO or other object-storage service in the local stack.
 
-Check the API with the development key:
+Check the API is up — this needs no credential:
 
 ```sh
-curl -H "Authorization: Bearer neu_live_local.development-only-change-me" \
-  http://localhost:1267/v1/functions
+curl http://localhost:1267/healthz
 ```
 
-Never use the example key outside local development.
+Everything under `/v1` requires either a session cookie or a bearer API key.
+There is no preinstalled key: create an account with `neurun user create`, sign
+in, then issue keys through `POST /v1/api-keys`.
 
 ```sh
 docker compose logs -f
@@ -80,21 +81,35 @@ starts the dashboard on `:3001`. Ctrl-C stops both. The dashboard proxies
 same-origin to the control plane, because the server ships no CORS middleware —
 see `frontend/README.md`.
 
-To run only the development binary, export at least
-`NEURUN_API_KEY=neu_live_local.development-only-change-me` and
-`NEURUN_ALLOW_VOLATILE_JOBS=true` before `go run ./cmd/neurun`.
+To run only the development binary, export
+`NEURUN_TRUSTED_CODE_EXECUTION=true` before `go run ./cmd/neurun`.
 
-Sign in with an operator account. Create one first:
+### First account
+
+There are no credentials in configuration, and the server creates nothing on
+boot — no account, no project, no API key. A fresh install has no way in until
+you make one:
 
 ```sh
-scripts/create-operator.sh admin admin
+neurun user create admin
 ```
 
-It prompts for a password (minimum 12 characters), hashes it, and writes only
-the hash to `NEURUN_OPERATOR_ACCOUNTS` in `.env`. Roles are `admin` (all
-scopes), `operator` (read plus submit and cancel), and `viewer` (read only).
-Without an account the dashboard says sign-in is unconfigured rather than
-showing a form that cannot succeed; API-key access is unaffected.
+It prompts for a password (minimum 12 characters) on stdin, so the plaintext
+never reaches a process listing or shell history. Pipe it for non-interactive
+use:
+
+```sh
+printf '%s' 'a-long-dev-password' | neurun user create admin
+```
+
+Roles are `admin` (all scopes), `operator` (read plus submit and cancel), and
+`viewer` (read only); the default is `admin`. Until an account exists the
+dashboard reports sign-in as unconfigured rather than showing a form that
+cannot succeed.
+
+Everything after that is ordinary API work: sign in, then create projects,
+apps, and API keys through the endpoints. A key is granted scopes explicitly
+and can never be granted a scope the caller does not already hold.
 
 ## User application delivery
 

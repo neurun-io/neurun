@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -89,4 +91,45 @@ func Prefix(value string) string {
 		return ""
 	}
 	return prefix
+}
+
+// Validate reports whether value is usable as a record identifier.
+//
+// Identifiers reach object storage keys and filesystem paths, so the character
+// set is deliberately narrower than the ID generator's own output.
+func Validate(field, value string) error {
+	if value == "" || len(value) > 255 || !utf8.ValidString(value) ||
+		value != strings.TrimSpace(value) || value == "." || value == ".." {
+		return fmt.Errorf("%s is invalid", field)
+	}
+	for _, character := range value {
+		if (character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			character == '_' || character == '-' || character == '.' {
+			continue
+		}
+		return fmt.Errorf("%s contains an unsafe character", field)
+	}
+	if windowsDeviceName(value) {
+		return fmt.Errorf("%s uses a reserved device name", field)
+	}
+	return nil
+}
+
+// windowsDeviceName guards the legacy DOS device names, which resolve to a
+// device rather than a file on Windows regardless of the directory or suffix.
+func windowsDeviceName(value string) bool {
+	base := value
+	if index := strings.IndexByte(base, '.'); index >= 0 {
+		base = base[:index]
+	}
+	switch strings.ToUpper(base) {
+	case "CON", "PRN", "AUX", "NUL",
+		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9":
+		return true
+	default:
+		return false
+	}
 }

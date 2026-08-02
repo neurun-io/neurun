@@ -1,13 +1,9 @@
 package deployment
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 )
 
 var (
@@ -24,88 +20,29 @@ type App struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type CreateAppRequest struct {
-	ProjectID string
-	Name      string
-}
-
-type UpdateAppRequest struct {
-	Name *string
-}
-
-func (service *Service) CreateApp(
-	ctx context.Context,
-	request CreateAppRequest,
-) (App, error) {
-	if err := ValidateIdentifier("project_id", request.ProjectID); err != nil {
-		return App{}, err
-	}
-	name, err := normalizeAppName(request.Name)
+func NewApp(id, projectID, name string, now time.Time) (App, error) {
+	normalized, err := normalizeAppName(name)
 	if err != nil {
 		return App{}, err
 	}
-	if _, err := service.store.GetProject(ctx, request.ProjectID); err != nil {
-		return App{}, err
-	}
-	id, err := service.allocateID("app")
-	if err != nil {
-		return App{}, err
-	}
-	now := service.now().UTC().Round(0)
-	return service.store.CreateApp(ctx, App{
-		ID: id, ProjectID: request.ProjectID, Name: name,
+	record := App{
+		ID: id, ProjectID: projectID, Name: normalized,
 		CreatedAt: now, UpdatedAt: now,
-	})
-}
-
-func (service *Service) GetApp(
-	ctx context.Context,
-	projectID string,
-	appID string,
-) (App, error) {
-	return service.store.GetApp(ctx, projectID, appID)
-}
-
-func (service *Service) ListApps(
-	ctx context.Context,
-	projectID string,
-	name string,
-	limit int,
-) ([]App, error) {
-	if limit < 1 || limit > 200 {
-		return nil, fmt.Errorf("%w: limit must be between 1 and 200", ErrInvalid)
 	}
-	if err := ValidateAppNameFilter(name); err != nil {
-		return nil, err
-	}
-	if _, err := service.store.GetProject(ctx, projectID); err != nil {
-		return nil, err
-	}
-	return service.store.ListApps(ctx, projectID, name, limit)
-}
-
-func (service *Service) UpdateApp(
-	ctx context.Context,
-	projectID string,
-	appID string,
-	request UpdateAppRequest,
-) (App, error) {
-	if request.Name == nil {
-		return App{}, fmt.Errorf("%w: app update is empty", ErrInvalid)
-	}
-	record, err := service.store.GetApp(ctx, projectID, appID)
-	if err != nil {
+	if err := record.Validate(); err != nil {
 		return App{}, err
 	}
-	record.Name, err = normalizeAppName(*request.Name)
+	return record, nil
+}
+
+func (record *App) Rename(name string, now time.Time) error {
+	normalized, err := normalizeAppName(name)
 	if err != nil {
-		return App{}, err
+		return err
 	}
-	record.UpdatedAt = service.now().UTC().Round(0)
-	if record.UpdatedAt.Before(record.CreatedAt) {
-		record.UpdatedAt = record.CreatedAt
-	}
-	return service.store.UpdateApp(ctx, record)
+	record.Name = normalized
+	record.UpdatedAt = notBefore(now, record.CreatedAt)
+	return record.Validate()
 }
 
 func (record App) Validate() error {
@@ -127,18 +64,12 @@ func (record App) Validate() error {
 }
 
 func normalizeAppName(raw string) (string, error) {
-	name := strings.TrimSpace(raw)
-	if name == "" || len(name) > 120 || !utf8.ValidString(name) {
-		return "", fmt.Errorf("%w: app name must contain 1 to 120 bytes", ErrInvalid)
-	}
-	for _, character := range name {
-		if unicode.IsControl(character) {
-			return "", fmt.Errorf("%w: app name contains a control character", ErrInvalid)
-		}
-	}
-	return name, nil
+	return normalizeDisplayName("app", raw)
 }
 
+// ValidateAppNameFilter accepts an empty filter, and otherwise requires the
+// caller to have sent the exact stored form — a list filter that silently
+// trimmed its argument would not match what a rename wrote.
 func ValidateAppNameFilter(name string) error {
 	if name == "" {
 		return nil
@@ -152,5 +83,3 @@ func ValidateAppNameFilter(name string) error {
 	}
 	return nil
 }
-
-func cloneApp(record App) App { return record }

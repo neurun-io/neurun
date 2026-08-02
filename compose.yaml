@@ -21,14 +21,12 @@ services:
     environment:
       NEURUN_HTTP_ADDR: :1267
       NEURUN_PUBLIC_URL: ${NEURUN_PUBLIC_URL:-http://localhost:1267}
-      NEURUN_API_KEY: ${NEURUN_API_KEY:?set NEURUN_API_KEY in .env}
       NEURUN_DEFAULT_PROJECT_ID: ${NEURUN_DEFAULT_PROJECT_ID:-prj_local}
       NEURUN_DATA_DIRECTORY: /var/lib/neurun
       NEURUN_PYTHON_EXECUTABLE: python3
       NEURUN_DATABASE_URL: postgres://neurun:${POSTGRES_PASSWORD:-neurun-local-change-me}@postgres:5432/neurun?sslmode=disable
       # Local subprocess execution is for trusted uploaded code only.
       NEURUN_TRUSTED_CODE_EXECUTION: "true"
-      NEURUN_OPERATOR_ACCOUNTS: ${NEURUN_OPERATOR_ACCOUNTS:-}
       NEURUN_OPERATOR_SESSION_TTL: ${NEURUN_OPERATOR_SESSION_TTL:-12h}
       NEURUN_OPERATOR_COOKIE_SECURE: ${NEURUN_OPERATOR_COOKIE_SECURE:-false}
     depends_on:

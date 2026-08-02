@@ -1,68 +1,70 @@
 package auth
 
 import (
-	"net/http"
-	"net/http/httptest"
+	"context"
 	"testing"
 )
 
-func TestAuthenticator(t *testing.T) {
+// "*" has to grant scopes that did not exist when the key was issued, or every
+// new endpoint would silently lock out existing admin keys.
+func TestScopeAllGrantsEverythingIncludingUnknownScopes(t *testing.T) {
 	t.Parallel()
-
-	authenticator, err := New(Credential{
-		ID:        "key_1",
-		ProjectID: "prj_1",
-		RawKey:    "neu_live_prefix.secret",
-		Scopes:    []string{"functions:invoke"},
-	})
-	if err != nil {
-		t.Fatal(err)
+	admin := Principal{Kind: KindAPIKey, Scopes: []string{ScopeAll}}
+	for _, scope := range []string{
+		"deployments:read", "executions:write", "a:scope:added:next:year",
+	} {
+		if !admin.HasScope(scope) {
+			t.Fatalf("ScopeAll did not grant %q", scope)
+		}
 	}
 
-	principal, ok := authenticator.Authenticate("neu_live_prefix.secret")
-	if !ok {
-		t.Fatal("expected authentication to succeed")
+	limited := Principal{Kind: KindAPIKey, Scopes: []string{"deployments:read"}}
+	if !limited.HasScope("deployments:read") {
+		t.Fatal("granted scope was refused")
 	}
-	if principal.ProjectID != "prj_1" || !principal.HasScope("functions:invoke") {
-		t.Fatalf("unexpected principal: %#v", principal)
+	if limited.HasScope("deployments:write") {
+		t.Fatal("ungranted scope was allowed")
 	}
-	if _, ok := authenticator.Authenticate("neu_live_prefix.wrong"); ok {
-		t.Fatal("invalid secret authenticated")
+	if (Principal{}).HasScope("deployments:read") {
+		t.Fatal("the zero principal granted a scope")
 	}
 }
 
-func TestMiddleware(t *testing.T) {
+func TestPrincipalRoundTripsThroughContext(t *testing.T) {
 	t.Parallel()
-
-	authenticator, err := New(Credential{
-		ID:        "key_1",
-		ProjectID: "prj_1",
-		RawKey:    "neu_live_prefix.secret",
-		Scopes:    []string{"*"},
-	})
-	if err != nil {
-		t.Fatal(err)
+	if _, ok := FromContext(context.Background()); ok {
+		t.Fatal("bare context reported a principal")
 	}
+	want := Principal{
+		Kind: KindOperator, OperatorID: "usr_1", Username: "admin",
+		Scopes: []string{ScopeAll},
+	}
+	got, ok := FromContext(WithPrincipal(context.Background(), want))
+	if !ok || got.OperatorID != want.OperatorID || got.Kind != KindOperator {
+		t.Fatalf("round trip = %#v, %v", got, ok)
+	}
+}
 
-	handler := authenticator.Middleware(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		principal, ok := FromContext(request.Context())
-		if !ok || principal.ProjectID != "prj_1" {
-			t.Fatalf("missing principal: %#v", principal)
+func TestBearerTokenAcceptsOnlyWellFormedHeaders(t *testing.T) {
+	t.Parallel()
+	for header, want := range map[string]string{
+		"Bearer neu_live_abc.secret": "neu_live_abc.secret",
+		"bearer neu_live_abc.secret": "neu_live_abc.secret",
+		" Bearer  ":                  "",
+		"Basic neu_live_abc.secret":  "",
+		"neu_live_abc.secret":        "",
+		"":                           "",
+		"Bearer with space":          "",
+	} {
+		token, ok := BearerToken(header)
+		if want == "" {
+			if ok {
+				t.Fatalf("BearerToken(%q) accepted, got %q", header, token)
+			}
+			continue
 		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-
-	unauthorized := httptest.NewRecorder()
-	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/", nil))
-	if unauthorized.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthorized status = %d", unauthorized.Code)
-	}
-
-	authorizedRequest := httptest.NewRequest(http.MethodGet, "/", nil)
-	authorizedRequest.Header.Set("Authorization", "Bearer neu_live_prefix.secret")
-	authorized := httptest.NewRecorder()
-	handler.ServeHTTP(authorized, authorizedRequest)
-	if authorized.Code != http.StatusNoContent {
-		t.Fatalf("authorized status = %d", authorized.Code)
+		if !ok || token != want {
+			t.Fatalf("BearerToken(%q) = %q, %v", header, token, ok)
+		}
 	}
 }

@@ -1,7 +1,6 @@
 package deployment
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -22,70 +21,26 @@ type Project struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type UpdateProjectRequest struct {
-	Name *string
-}
-
-func (service *Service) EnsureProject(
-	ctx context.Context,
-	projectID string,
-	name string,
-) (Project, error) {
-	if err := ValidateIdentifier("project_id", projectID); err != nil {
-		return Project{}, err
-	}
-	name, err := normalizeProjectName(name)
+func NewProject(id, name string, now time.Time) (Project, error) {
+	normalized, err := normalizeProjectName(name)
 	if err != nil {
 		return Project{}, err
 	}
-	now := service.now().UTC().Round(0)
-	return service.store.EnsureProject(ctx, Project{
-		ID: projectID, Name: name,
-		CreatedAt: now, UpdatedAt: now,
-	})
-}
-
-func (service *Service) GetProject(
-	ctx context.Context,
-	projectID string,
-) (Project, error) {
-	return service.store.GetProject(ctx, projectID)
-}
-
-func (service *Service) ListProjects(
-	ctx context.Context,
-	principalProjectID string,
-	limit int,
-) ([]Project, error) {
-	if limit < 1 || limit > 200 {
-		return nil, fmt.Errorf("%w: limit must be between 1 and 200", ErrInvalid)
-	}
-	return service.store.ListProjects(ctx, principalProjectID, limit)
-}
-
-func (service *Service) UpdateProject(
-	ctx context.Context,
-	projectID string,
-	request UpdateProjectRequest,
-) (Project, error) {
-	if request.Name == nil {
-		return Project{}, fmt.Errorf("%w: project update is empty", ErrInvalid)
-	}
-	record, err := service.store.GetProject(ctx, projectID)
-	if err != nil {
+	record := Project{ID: id, Name: normalized, CreatedAt: now, UpdatedAt: now}
+	if err := record.Validate(); err != nil {
 		return Project{}, err
 	}
-	if request.Name != nil {
-		record.Name, err = normalizeProjectName(*request.Name)
-		if err != nil {
-			return Project{}, err
-		}
+	return record, nil
+}
+
+func (record *Project) Rename(name string, now time.Time) error {
+	normalized, err := normalizeProjectName(name)
+	if err != nil {
+		return err
 	}
-	record.UpdatedAt = service.now().UTC().Round(0)
-	if record.UpdatedAt.Before(record.CreatedAt) {
-		record.UpdatedAt = record.CreatedAt
-	}
-	return service.store.UpdateProject(ctx, record)
+	record.Name = normalized
+	record.UpdatedAt = notBefore(now, record.CreatedAt)
+	return record.Validate()
 }
 
 func (record Project) Validate() error {
@@ -104,18 +59,27 @@ func (record Project) Validate() error {
 }
 
 func normalizeProjectName(raw string) (string, error) {
+	return normalizeDisplayName("project", raw)
+}
+
+// normalizeDisplayName trims a human-facing name and rejects anything that
+// would not survive a round trip through JSON or a terminal.
+func normalizeDisplayName(kind, raw string) (string, error) {
 	name := strings.TrimSpace(raw)
 	if name == "" || len(name) > 120 || !utf8.ValidString(name) {
-		return "", fmt.Errorf("%w: project name must contain 1 to 120 bytes", ErrInvalid)
+		return "", fmt.Errorf("%w: %s name must contain 1 to 120 bytes", ErrInvalid, kind)
 	}
 	for _, character := range name {
 		if unicode.IsControl(character) {
-			return "", fmt.Errorf("%w: project name contains a control character", ErrInvalid)
+			return "", fmt.Errorf("%w: %s name contains a control character", ErrInvalid, kind)
 		}
 	}
 	return name, nil
 }
 
-func cloneProject(record Project) Project {
-	return record
+func notBefore(value, floor time.Time) time.Time {
+	if value.Before(floor) {
+		return floor
+	}
+	return value
 }

@@ -22,3 +22,8 @@ __pycache__/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Agent skills are vendored from skills-lock.json and restorable; the lockfile
+# is tracked so the set stays pinned.
+.agents/
+.claude/skills/

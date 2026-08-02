@@ -1,85 +1,58 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"mime/multipart"
 	"net/http"
 	"strings"
 
-	"github.com/neurun-io/neurun/internal/domain/auth"
+	"github.com/gin-gonic/gin"
+
 	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/dto"
 )
 
+// deploymentMultipartOverhead is the slack allowed for the form's own framing
+// on top of the source archive itself.
 const deploymentMultipartOverhead = int64(1 << 20)
 
-func (s *Server) deploymentsCollection(w http.ResponseWriter, request *http.Request) {
-	switch request.Method {
-	case http.MethodGet:
-		if s.requireScope(w, request, ScopeDeploymentsRead) {
-			s.listDeployments(w, request)
-		}
-	case http.MethodPost:
-		if s.requireScope(w, request, ScopeDeploymentsWrite) {
-			s.createDeployment(w, request)
-		}
-	default:
-		methodNotAllowed(w, request, http.MethodGet, http.MethodPost)
-	}
-}
-
-func (s *Server) listExecutions(w http.ResponseWriter, request *http.Request) {
-	limit, ok := s.pageLimit(w, request)
-	if !ok {
-		return
-	}
-	principal, _ := auth.FromContext(request.Context())
-	executions, err := s.deployments.ListExecutions(
-		request.Context(), principal.ProjectID,
-		strings.TrimSpace(request.URL.Query().Get("deployment_id")), limit,
+func (server *Server) createDeployment(ctx *gin.Context) {
+	ctx.Request.Body = http.MaxBytesReader(
+		ctx.Writer, ctx.Request.Body,
+		server.maximumDeploymentBytes+deploymentMultipartOverhead,
 	)
-	if err != nil {
-		s.writeDomainError(w, request, err)
-		return
-	}
-	WriteJSON(w, http.StatusOK, map[string]any{"executions": executions})
-}
-
-func (s *Server) createDeployment(w http.ResponseWriter, request *http.Request) {
-	principal, _ := auth.FromContext(request.Context())
-	request.Body = http.MaxBytesReader(
-		w, request.Body, s.maximumDeploymentBytes+deploymentMultipartOverhead,
-	)
-	if err := request.ParseMultipartForm(1 << 20); err != nil {
-		var maximum *http.MaxBytesError
+	if err := ctx.Request.ParseMultipartForm(1 << 20); err != nil {
 		status, code := http.StatusBadRequest, "invalid_multipart"
 		message := "request must be valid multipart/form-data"
+		var maximum *http.MaxBytesError
 		if errors.As(err, &maximum) || errors.Is(err, multipart.ErrMessageTooLarge) {
 			status, code = http.StatusRequestEntityTooLarge, "deployment_too_large"
 			message = "deployment upload exceeds the configured source limit"
 		}
-		WriteProblem(w, request, status, Problem{
-			Code: code, Message: message, Details: map[string]any{"cause": err.Error()},
+		writeProblem(ctx, status, dto.Problem{
+			Code: code, Message: message,
+			Details: map[string]any{"cause": err.Error()},
 		})
 		return
 	}
-	defer request.MultipartForm.RemoveAll()
-	if problem := validateDeploymentForm(request.MultipartForm); problem != "" {
-		s.invalidRequest(w, request, problem)
+	defer ctx.Request.MultipartForm.RemoveAll()
+
+	if problem := validateDeploymentForm(ctx.Request.MultipartForm); problem != "" {
+		invalidRequest(ctx, problem)
 		return
 	}
-	runtime, err := deployment.ParseRuntime(request.MultipartForm.Value["runtime"][0])
+	runtime, err := deployment.ParseRuntime(ctx.Request.MultipartForm.Value["runtime"][0])
 	if err != nil {
-		s.writeDomainError(w, request, err)
+		writeError(ctx, err)
 		return
 	}
 	entrypoint := ""
-	if values := request.MultipartForm.Value["entrypoint"]; len(values) == 1 {
+	if values := ctx.Request.MultipartForm.Value["entrypoint"]; len(values) == 1 {
 		entrypoint = strings.TrimSpace(values[0])
 	}
-	header := request.MultipartForm.File["source"][0]
-	if header.Size > s.maximumDeploymentBytes {
-		WriteProblem(w, request, http.StatusRequestEntityTooLarge, Problem{
+	header := ctx.Request.MultipartForm.File["source"][0]
+	if header.Size > server.maximumDeploymentBytes {
+		writeProblem(ctx, http.StatusRequestEntityTooLarge, dto.Problem{
 			Code:    "deployment_too_large",
 			Message: "deployment upload exceeds the configured source limit",
 		})
@@ -87,139 +60,57 @@ func (s *Server) createDeployment(w http.ResponseWriter, request *http.Request) 
 	}
 	source, err := header.Open()
 	if err != nil {
-		WriteProblem(w, request, http.StatusBadRequest, Problem{
+		writeProblem(ctx, http.StatusBadRequest, dto.Problem{
 			Code: "invalid_multipart", Message: "could not open the uploaded source ZIP",
 		})
 		return
 	}
 	defer source.Close()
-	created, err := s.deployments.Create(request.Context(), deployment.CreateRequest{
-		ProjectID:  principal.ProjectID,
-		AppID:      strings.TrimSpace(request.MultipartForm.Value["app_id"][0]),
+
+	// app_id alone decides the project. An app that was not created first is
+	// refused, so an SDK cannot bring one into being by deploying to it.
+	created, err := server.deployments.Create(ctx.Request.Context(), dto.CreateDeploymentRequest{
+		AppID:      strings.TrimSpace(ctx.Request.MultipartForm.Value["app_id"][0]),
 		Runtime:    runtime,
 		EntryPoint: entrypoint,
 		SourceName: header.Filename,
 		Source:     source,
 	})
 	if err != nil {
-		s.writeDomainError(w, request, err)
+		writeError(ctx, err)
 		return
 	}
-	w.Header().Set("Location", "/v1/deployments/"+created.ID)
-	WriteJSON(w, http.StatusCreated, created)
+	ctx.Header("Location", "/v1/deployments/"+created.ID)
+	ctx.JSON(http.StatusCreated, dto.NewDeploymentResponse(created))
 }
 
-func (s *Server) listDeployments(w http.ResponseWriter, request *http.Request) {
-	principal, _ := auth.FromContext(request.Context())
-	limit, ok := s.pageLimit(w, request)
+func (server *Server) listDeployments(ctx *gin.Context) {
+	limit, ok := server.pageLimit(ctx)
 	if !ok {
 		return
 	}
-	records, err := s.deployments.List(
-		request.Context(), principal.ProjectID,
-		request.URL.Query().Get("app_id"), limit,
+	records, err := server.deployments.List(
+		ctx.Request.Context(),
+		strings.TrimSpace(ctx.Query("project_id")),
+		strings.TrimSpace(ctx.Query("app_id")),
+		limit,
 	)
 	if err != nil {
-		s.writeDomainError(w, request, err)
+		writeError(ctx, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"deployments": records})
+	ctx.JSON(http.StatusOK, gin.H{"deployments": dto.NewDeploymentResponses(records)})
 }
 
-func (s *Server) getDeployment(w http.ResponseWriter, request *http.Request) {
-	principal, _ := auth.FromContext(request.Context())
-	record, err := s.deployments.Get(
-		request.Context(), principal.ProjectID, request.PathValue("deployment_id"),
+func (server *Server) getDeployment(ctx *gin.Context) {
+	record, err := server.deployments.Get(
+		ctx.Request.Context(), ctx.Param("deployment_id"),
 	)
 	if err != nil {
-		s.writeDomainError(w, request, err)
+		writeError(ctx, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, record)
-}
-
-func (s *Server) deploymentRuns(w http.ResponseWriter, request *http.Request) {
-	switch request.Method {
-	case http.MethodGet:
-		if s.requireScope(w, request, ScopeExecutionsRead) {
-			s.listRuns(w, request)
-		}
-	case http.MethodPost:
-		if s.requireScope(w, request, ScopeExecutionsWrite) {
-			s.createRun(w, request)
-		}
-	default:
-		methodNotAllowed(w, request, http.MethodGet, http.MethodPost)
-	}
-}
-
-func (s *Server) createRun(w http.ResponseWriter, request *http.Request) {
-	var payload map[string]json.RawMessage
-	if !DecodeJSON(w, request, &payload, s.maximumBodyBytes) {
-		return
-	}
-	input, exists := payload["input"]
-	if !exists || len(payload) != 1 {
-		s.invalidRequest(w, request, `request must contain exactly the "input" field`)
-		return
-	}
-	principal, _ := auth.FromContext(request.Context())
-	run, err := s.deployments.CreateExecution(request.Context(), deployment.CreateExecutionRequest{
-		ProjectID:    principal.ProjectID,
-		DeploymentID: request.PathValue("deployment_id"),
-		Input:        input,
-	})
-	if err != nil {
-		s.writeDomainError(w, request, err)
-		return
-	}
-	w.Header().Set("Location", "/v1/executions/"+run.ID)
-	WriteJSON(w, http.StatusAccepted, run)
-}
-
-func (s *Server) listRuns(w http.ResponseWriter, request *http.Request) {
-	limit, ok := s.pageLimit(w, request)
-	if !ok {
-		return
-	}
-	principal, _ := auth.FromContext(request.Context())
-	runs, err := s.deployments.ListDeploymentExecutions(
-		request.Context(), principal.ProjectID, request.PathValue("deployment_id"), limit,
-	)
-	if err != nil {
-		s.writeDomainError(w, request, err)
-		return
-	}
-	WriteJSON(w, http.StatusOK, map[string]any{"executions": runs})
-}
-
-func (s *Server) getRun(w http.ResponseWriter, request *http.Request) {
-	principal, _ := auth.FromContext(request.Context())
-	run, err := s.deployments.GetExecution(
-		request.Context(), principal.ProjectID, request.PathValue("execution_id"),
-	)
-	if err != nil {
-		s.writeDomainError(w, request, err)
-		return
-	}
-	WriteJSON(w, http.StatusOK, run)
-}
-
-func (s *Server) rerun(w http.ResponseWriter, request *http.Request) {
-	if err := requireEmptyBody(request); err != nil {
-		s.invalidRequest(w, request, err.Error())
-		return
-	}
-	principal, _ := auth.FromContext(request.Context())
-	run, err := s.deployments.RerunExecution(
-		request.Context(), principal.ProjectID, request.PathValue("execution_id"),
-	)
-	if err != nil {
-		s.writeDomainError(w, request, err)
-		return
-	}
-	w.Header().Set("Location", "/v1/executions/"+run.ID)
-	WriteJSON(w, http.StatusAccepted, run)
+	ctx.JSON(http.StatusOK, dto.NewDeploymentResponse(record))
 }
 
 func validateDeploymentForm(form *multipart.Form) string {

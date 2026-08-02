@@ -3,15 +3,10 @@
 package deployment
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 )
 
 var (
@@ -71,41 +66,18 @@ const (
 	ArtifactCodeLayer    = "code_layer"
 )
 
-// Artifact is public immutable payload metadata. The backing object key is
-// deliberately private so JSON responses cannot reveal filesystem topology.
+// Artifact is immutable payload metadata. StorageKey is the blob handle
+// builders and workers open; it names internal storage topology, so the API
+// projects artifacts into a response type rather than serving this one.
 type Artifact struct {
-	ID        string    `json:"id"`
-	Kind      string    `json:"kind"`
-	Name      string    `json:"name"`
-	MediaType string    `json:"media_type"`
-	SizeBytes int64     `json:"size_bytes"`
-	SHA256    string    `json:"sha256"`
-	CreatedAt time.Time `json:"created_at"`
-
-	storageKey string
-}
-
-// StorageKey returns the internal immutable blob handle used by builders and
-// workers. It is intentionally absent from Artifact's JSON representation.
-func (artifact Artifact) StorageKey() string {
-	return artifact.storageKey
-}
-
-func newArtifact(
-	id string,
-	kind string,
-	name string,
-	mediaType string,
-	sizeBytes int64,
-	sha256 string,
-	storageKey string,
-	createdAt time.Time,
-) Artifact {
-	return Artifact{
-		ID: id, Kind: kind, Name: name, MediaType: mediaType,
-		SizeBytes: sizeBytes, SHA256: sha256, CreatedAt: createdAt,
-		storageKey: storageKey,
-	}
+	ID         string    `json:"id"`
+	Kind       string    `json:"kind"`
+	Name       string    `json:"name"`
+	MediaType  string    `json:"media_type"`
+	SizeBytes  int64     `json:"size_bytes"`
+	SHA256     string    `json:"sha256"`
+	StorageKey string    `json:"storage_key"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type Failure struct {
@@ -128,58 +100,6 @@ type Build struct {
 	FinishedAt   *time.Time `json:"finished_at,omitempty"`
 }
 
-type RunStatus string
-
-const (
-	RunQueued    RunStatus = "queued"
-	RunRunning   RunStatus = "running"
-	RunSucceeded RunStatus = "succeeded"
-	RunFailed    RunStatus = "failed"
-)
-
-func (status RunStatus) Valid() bool {
-	switch status {
-	case RunQueued, RunRunning, RunSucceeded, RunFailed:
-		return true
-	default:
-		return false
-	}
-}
-
-func (status RunStatus) Terminal() bool {
-	return status == RunSucceeded || status == RunFailed
-}
-
-// Run is persisted independently from its deployment and is pinned to one
-// immutable build. Input and output are canonical JSON values.
-type Run struct {
-	ID           string          `json:"id"`
-	ProjectID    string          `json:"project_id"`
-	DeploymentID string          `json:"deployment_id"`
-	BuildID      string          `json:"build_id"`
-	Status       RunStatus       `json:"status"`
-	Input        json.RawMessage `json:"input"`
-	Output       json.RawMessage `json:"output,omitempty"`
-	Failure      *Failure        `json:"failure,omitempty"`
-	Logs         string          `json:"logs"`
-	CreatedAt    time.Time       `json:"created_at"`
-	StartedAt    *time.Time      `json:"started_at,omitempty"`
-	FinishedAt   *time.Time      `json:"finished_at,omitempty"`
-	RerunOfRunID string          `json:"rerun_of_execution_id,omitempty"`
-}
-
-// Execution aliases retain compatibility for the worker implementation while
-// exposing first-class execution terminology to API code.
-type Execution = Run
-type ExecutionStatus = RunStatus
-
-const (
-	ExecutionQueued    = RunQueued
-	ExecutionRunning   = RunRunning
-	ExecutionSucceeded = RunSucceeded
-	ExecutionFailed    = RunFailed
-)
-
 type Deployment struct {
 	ID         string    `json:"id"`
 	ProjectID  string    `json:"project_id"`
@@ -193,193 +113,186 @@ type Deployment struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-func (deployment Deployment) LatestBuild() (Build, bool) {
-	if len(deployment.Builds) == 0 {
+// New assembles an uploaded deployment around its stored source artifact.
+func New(
+	deploymentID string,
+	projectID string,
+	appID string,
+	runtime Runtime,
+	entryPoint string,
+	source Artifact,
+	now time.Time,
+) (Deployment, error) {
+	normalized, err := NormalizeEntryPoint(runtime, entryPoint)
+	if err != nil {
+		return Deployment{}, err
+	}
+	record := Deployment{
+		ID: deploymentID, ProjectID: projectID, AppID: appID,
+		Runtime: runtime, EntryPoint: normalized, Status: StatusUploaded,
+		Source: source, Builds: []Build{}, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := record.Validate(); err != nil {
+		return Deployment{}, err
+	}
+	return record, nil
+}
+
+func (record Deployment) LatestBuild() (Build, bool) {
+	if len(record.Builds) == 0 {
 		return Build{}, false
 	}
-	return cloneBuild(deployment.Builds[len(deployment.Builds)-1]), true
+	return CloneBuild(record.Builds[len(record.Builds)-1]), true
 }
 
-func (deployment Deployment) ReadyBuild() (Build, bool) {
-	for index := len(deployment.Builds) - 1; index >= 0; index-- {
-		if deployment.Builds[index].Status == StatusReady {
-			return cloneBuild(deployment.Builds[index]), true
+func (record Deployment) ReadyBuild() (Build, bool) {
+	for index := len(record.Builds) - 1; index >= 0; index-- {
+		if record.Builds[index].Status == StatusReady {
+			return CloneBuild(record.Builds[index]), true
 		}
 	}
 	return Build{}, false
 }
 
-func (deployment Deployment) BuildByID(buildID string) (Build, bool) {
-	for _, build := range deployment.Builds {
+func (record Deployment) BuildByID(buildID string) (Build, bool) {
+	for _, build := range record.Builds {
 		if build.ID == buildID {
-			return cloneBuild(build), true
+			return CloneBuild(build), true
 		}
 	}
 	return Build{}, false
 }
 
-func defaultEntryPoint(runtime Runtime) string {
-	if runtime == RuntimePython {
-		return "main.py:handler"
+// StartBuild appends a building build numbered after the last one and moves the
+// deployment's own status with it.
+func (record *Deployment) StartBuild(buildID string, now time.Time) (Build, error) {
+	if err := ValidateIdentifier("build_id", buildID); err != nil {
+		return Build{}, err
 	}
-	return ""
+	if now.IsZero() || now.Before(record.CreatedAt) {
+		return Build{}, fmt.Errorf("%w: build start time is invalid", ErrInvalid)
+	}
+	build := Build{
+		ID: buildID, ProjectID: record.ProjectID, DeploymentID: record.ID,
+		Number: len(record.Builds) + 1, Status: StatusBuilding,
+		Runtime: record.Runtime, EntryPoint: record.EntryPoint,
+		SourceSHA256: record.Source.SHA256, Artifacts: []Artifact{},
+		StartedAt: now,
+	}
+	record.Builds = append(record.Builds, build)
+	record.Status = StatusBuilding
+	record.UpdatedAt = now
+	return CloneBuild(build), nil
 }
 
-func normalizeEntryPoint(runtime Runtime, raw string) (string, error) {
-	if runtime != RuntimePython {
-		return "", fmt.Errorf("%w: runtime must be python", ErrInvalid)
+// MarkBuildReady completes a building build with the artifacts it produced.
+func (record *Deployment) MarkBuildReady(
+	buildID string,
+	artifacts []Artifact,
+	now time.Time,
+) error {
+	build, err := record.buildInProgress(buildID)
+	if err != nil {
+		return err
 	}
-	entryPoint := strings.TrimSpace(raw)
-	if entryPoint == "" {
-		entryPoint = defaultEntryPoint(runtime)
+	if len(artifacts) == 0 {
+		return fmt.Errorf("%w: ready build requires artifacts", ErrInvalid)
 	}
-	if len(entryPoint) > 512 ||
-		!utf8.ValidString(entryPoint) ||
-		strings.ContainsRune(entryPoint, '\x00') ||
-		strings.Contains(entryPoint, "\\") {
-		return "", fmt.Errorf("%w: entrypoint is malformed", ErrInvalid)
-	}
-	subject, handler, ok := strings.Cut(entryPoint, ":")
-	if !ok || subject == "" || handler == "" || strings.Contains(handler, ":") {
-		return "", fmt.Errorf(
-			"%w: entrypoint must use module_or_file:handler",
-			ErrInvalid,
-		)
-	}
-	if err := validateHandler(handler); err != nil {
-		return "", err
-	}
-	if strings.HasSuffix(subject, ".py") || strings.Contains(subject, "/") {
-		if err := validateRelativeSlashPath("entrypoint", subject); err != nil {
-			return "", err
-		}
-		if !strings.HasSuffix(subject, ".py") {
-			return "", fmt.Errorf("%w: file entrypoint must end in .py", ErrInvalid)
-		}
-		return subject + ":" + handler, nil
-	}
-	for _, component := range strings.Split(subject, ".") {
-		if !pythonIdentifier(component) {
-			return "", fmt.Errorf("%w: entrypoint module is invalid", ErrInvalid)
-		}
-	}
-	return subject + ":" + handler, nil
-}
-
-func validateHandler(handler string) error {
-	for _, component := range strings.Split(handler, ".") {
-		if !pythonIdentifier(component) {
-			return fmt.Errorf("%w: entrypoint handler is invalid", ErrInvalid)
-		}
-	}
+	finished := now
+	build.Status = StatusReady
+	build.Artifacts = artifacts
+	build.Failure = nil
+	build.FinishedAt = &finished
+	record.Status = StatusReady
+	record.UpdatedAt = finished
 	return nil
 }
 
-func pythonIdentifier(value string) bool {
-	if value == "" {
+// FailBuild terminates a building build with the reason it stopped.
+func (record *Deployment) FailBuild(
+	buildID string,
+	failure Failure,
+	now time.Time,
+) error {
+	build, err := record.buildInProgress(buildID)
+	if err != nil {
+		return err
+	}
+	if err := validateFailure(&failure); err != nil {
+		return err
+	}
+	finished := now
+	build.Status = StatusFailed
+	build.Failure = CloneFailure(&failure)
+	build.FinishedAt = &finished
+	record.Status = StatusFailed
+	record.UpdatedAt = finished
+	return nil
+}
+
+// FailInterruptedBuild fails a build a crashed process left running, reporting
+// whether it changed anything. It never retries the build's side effects.
+func (record *Deployment) FailInterruptedBuild(now time.Time, failure Failure) bool {
+	if record.Status != StatusBuilding || len(record.Builds) == 0 {
 		return false
 	}
-	for index, character := range value {
-		if character == '_' || unicode.IsLetter(character) ||
-			(index > 0 && unicode.IsDigit(character)) {
-			continue
-		}
+	index := len(record.Builds) - 1
+	if record.Builds[index].Status != StatusBuilding {
 		return false
 	}
+	finished := now
+	record.Builds[index].Status = StatusFailed
+	record.Builds[index].Failure = CloneFailure(&failure)
+	record.Builds[index].FinishedAt = &finished
+	record.Status = StatusFailed
+	record.UpdatedAt = now
 	return true
 }
 
-func validateRelativeSlashPath(field, value string) error {
-	if value == "" || strings.HasPrefix(value, "/") ||
-		strings.HasSuffix(value, "/") || strings.Contains(value, "\\") {
-		return fmt.Errorf("%w: %s must be a relative slash path", ErrInvalid, field)
-	}
-	for _, component := range strings.Split(value, "/") {
-		if component == "" || component == "." || component == ".." {
-			return fmt.Errorf("%w: %s contains an unsafe path component", ErrInvalid, field)
+func (record *Deployment) buildInProgress(buildID string) (*Build, error) {
+	for index := range record.Builds {
+		if record.Builds[index].ID != buildID {
+			continue
 		}
+		if record.Builds[index].Status != StatusBuilding {
+			return nil, fmt.Errorf(
+				"%w: build %s is no longer building", ErrInvalid, buildID,
+			)
+		}
+		return &record.Builds[index], nil
 	}
-	return nil
+	return nil, fmt.Errorf("%w: build %s", ErrNotFound, buildID)
 }
 
-// NormalizeJSON validates one complete JSON value and returns a stable compact
-// representation. Decoding with UseNumber avoids lossy float conversion.
-func NormalizeJSON(raw json.RawMessage, maximumBytes int64) (json.RawMessage, error) {
-	if maximumBytes < 1 {
-		return nil, fmt.Errorf("%w: JSON byte limit must be positive", ErrInvalid)
-	}
-	if int64(len(raw)) > maximumBytes {
-		return nil, fmt.Errorf("%w: JSON value exceeds %d bytes", ErrInvalid, maximumBytes)
-	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	var value any
-	if err := decoder.Decode(&value); err != nil {
-		return nil, fmt.Errorf("%w: malformed JSON: %v", ErrInvalid, err)
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return nil, fmt.Errorf("%w: JSON must contain exactly one value", ErrInvalid)
-		}
-		return nil, fmt.Errorf("%w: malformed JSON: %v", ErrInvalid, err)
-	}
-	normalized, err := json.Marshal(value)
-	if err != nil {
-		return nil, fmt.Errorf("%w: normalize JSON: %v", ErrInvalid, err)
-	}
-	if int64(len(normalized)) > maximumBytes {
-		return nil, fmt.Errorf("%w: JSON value exceeds %d bytes", ErrInvalid, maximumBytes)
-	}
-	return json.RawMessage(normalized), nil
-}
-
-func cloneDeployment(record Deployment) Deployment {
+func CloneDeployment(record Deployment) Deployment {
 	cloned := record
-	cloned.Source = cloneArtifact(record.Source)
 	cloned.Builds = make([]Build, len(record.Builds))
 	for index := range record.Builds {
-		cloned.Builds[index] = cloneBuild(record.Builds[index])
+		cloned.Builds[index] = CloneBuild(record.Builds[index])
 	}
 	return cloned
 }
 
-func cloneBuild(build Build) Build {
+func CloneBuild(build Build) Build {
 	cloned := build
-	cloned.Artifacts = make([]Artifact, len(build.Artifacts))
-	for index := range build.Artifacts {
-		cloned.Artifacts[index] = cloneArtifact(build.Artifacts[index])
-	}
-	if build.Failure != nil {
-		failure := *build.Failure
-		cloned.Failure = &failure
-	}
-	if build.FinishedAt != nil {
-		finished := *build.FinishedAt
-		cloned.FinishedAt = &finished
-	}
+	cloned.Artifacts = append([]Artifact(nil), build.Artifacts...)
+	cloned.Failure = CloneFailure(build.Failure)
+	cloned.FinishedAt = cloneTime(build.FinishedAt)
 	return cloned
 }
 
-func cloneArtifact(record Artifact) Artifact {
-	return record
+func CloneFailure(failure *Failure) *Failure {
+	if failure == nil {
+		return nil
+	}
+	cloned := *failure
+	return &cloned
 }
 
-func CloneRun(record Run) Run {
-	cloned := record
-	cloned.Input = append(json.RawMessage(nil), record.Input...)
-	cloned.Output = append(json.RawMessage(nil), record.Output...)
-	if record.Failure != nil {
-		failure := *record.Failure
-		cloned.Failure = &failure
+func cloneTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
 	}
-	if record.StartedAt != nil {
-		started := *record.StartedAt
-		cloned.StartedAt = &started
-	}
-	if record.FinishedAt != nil {
-		finished := *record.FinishedAt
-		cloned.FinishedAt = &finished
-	}
-	return cloned
+	cloned := *value
+	return &cloned
 }

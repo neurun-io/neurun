@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/neurun-io/neurun/internal/domain/operator"
 )
 
 const (
@@ -41,7 +39,6 @@ type Config struct {
 	HTTPAddr                    string
 	PublicURL                   string
 	LogLevel                    string
-	APIKey                      string
 	DefaultProjectID            string
 	DataDirectory               string
 	PythonExecutable            string
@@ -63,7 +60,6 @@ type Config struct {
 	DatabaseMaxConns            int
 	DatabaseConnMaxLifetime     time.Duration
 	DatabaseConnMaxIdleTime     time.Duration
-	OperatorAccounts            []operator.Account
 	OperatorSessionTTL          time.Duration
 	OperatorCookieSecure        bool
 }
@@ -73,7 +69,6 @@ func Load() (Config, error) {
 		HTTPAddr:                    value("NEURUN_HTTP_ADDR", defaultHTTPAddr),
 		PublicURL:                   value("NEURUN_PUBLIC_URL", defaultPublicURL),
 		LogLevel:                    value("NEURUN_LOG_LEVEL", "info"),
-		APIKey:                      strings.TrimSpace(os.Getenv("NEURUN_API_KEY")),
 		DefaultProjectID:            value("NEURUN_DEFAULT_PROJECT_ID", defaultProjectID),
 		DataDirectory:               value("NEURUN_DATA_DIRECTORY", defaultDataDirectory),
 		PythonExecutable:            strings.TrimSpace(os.Getenv("NEURUN_PYTHON_EXECUTABLE")),
@@ -146,11 +141,6 @@ func Load() (Config, error) {
 	); err != nil {
 		return Config{}, err
 	}
-	if cfg.OperatorAccounts, err = parseOperatorAccounts(
-		os.Getenv("NEURUN_OPERATOR_ACCOUNTS"), cfg.DefaultProjectID,
-	); err != nil {
-		return Config{}, err
-	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -186,12 +176,6 @@ func (c Config) Validate() error {
 	default:
 		problems = append(problems,
 			errors.New("NEURUN_LOG_LEVEL must be debug, info, warn, or error"))
-	}
-	if c.APIKey == "" {
-		problems = append(problems, errors.New("NEURUN_API_KEY is required"))
-	} else if !strings.HasPrefix(c.APIKey, "neu_") || !strings.Contains(c.APIKey, ".") {
-		problems = append(problems,
-			errors.New("NEURUN_API_KEY must use the neu_<environment>_<prefix>.<secret> form"))
 	}
 	if strings.TrimSpace(c.DefaultProjectID) == "" {
 		problems = append(problems, errors.New("NEURUN_DEFAULT_PROJECT_ID is required"))
@@ -246,52 +230,6 @@ func (c Config) Validate() error {
 			errors.New("NEURUN_MAX_DEPLOYMENT_ARCHIVE_ENTRIES must be positive"))
 	}
 	return errors.Join(problems...)
-}
-
-func (c Config) OperatorSignInEnabled() bool {
-	return len(c.OperatorAccounts) > 0
-}
-
-func parseOperatorAccounts(raw, projectID string) ([]operator.Account, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-	entries := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ';' || r == '\n' || r == '\r'
-	})
-	accounts := make([]operator.Account, 0, len(entries))
-	seen := make(map[string]struct{}, len(entries))
-	for _, entry := range entries {
-		username, rest, found := strings.Cut(strings.TrimSpace(entry), ":")
-		if !found {
-			return nil, fmt.Errorf("NEURUN_OPERATOR_ACCOUNTS entry must use username:role:hash")
-		}
-		roleName, hash, found := strings.Cut(rest, ":")
-		if !found {
-			return nil, fmt.Errorf("NEURUN_OPERATOR_ACCOUNTS entry must use username:role:hash")
-		}
-		username = strings.ToLower(strings.TrimSpace(username))
-		hash = strings.TrimSpace(hash)
-		if username == "" {
-			return nil, errors.New("NEURUN_OPERATOR_ACCOUNTS contains an empty username")
-		}
-		if _, duplicate := seen[username]; duplicate {
-			return nil, fmt.Errorf("NEURUN_OPERATOR_ACCOUNTS defines %q more than once", username)
-		}
-		seen[username] = struct{}{}
-		role, err := operator.ParseRole(roleName)
-		if err != nil {
-			return nil, fmt.Errorf("NEURUN_OPERATOR_ACCOUNTS entry for %q: %w", username, err)
-		}
-		if err := operator.ValidateHash(hash); err != nil {
-			return nil, fmt.Errorf("NEURUN_OPERATOR_ACCOUNTS entry for %q: %w", username, err)
-		}
-		accounts = append(accounts, operator.Account{
-			Username: username, Role: role, ProjectID: projectID, PasswordHash: hash,
-		})
-	}
-	return accounts, nil
 }
 
 func value(key, fallback string) string {

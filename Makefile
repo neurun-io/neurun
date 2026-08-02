@@ -1,6 +1,6 @@
 .PHONY: all build test vet fmt check run clean
 
-GO_PACKAGES = ./cmd/... ./internal/... ./migrations/...
+GO_PACKAGES = ./...
 
 all: check build
 
@@ -17,7 +17,7 @@ fmt:
 	gofmt -w $$(find cmd internal -name '*.go' -type f)
 
 check:
-	test -z "$$(gofmt -l cmd internal)"
+	test -z "$$(gofmt -l cmd internal migrations)"
 	go vet $(GO_PACKAGES)
 	go test -race $(GO_PACKAGES)
 

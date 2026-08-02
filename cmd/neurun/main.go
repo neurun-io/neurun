@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -20,16 +17,15 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/neurun-io/neurun/internal/domain/account"
 	"github.com/neurun-io/neurun/internal/api"
 	"github.com/neurun-io/neurun/internal/artifact"
-	"github.com/neurun-io/neurun/internal/domain/builder"
+	"github.com/neurun-io/neurun/internal/builder"
 	"github.com/neurun-io/neurun/internal/buildinfo"
 	"github.com/neurun-io/neurun/internal/config"
-	"github.com/neurun-io/neurun/internal/domain/deployment"
-	"github.com/neurun-io/neurun/internal/domain/operator"
-	"github.com/neurun-io/neurun/internal/domain/worker"
+	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/storage"
+	"github.com/neurun-io/neurun/internal/service"
+	"github.com/neurun-io/neurun/internal/worker"
 	"github.com/neurun-io/neurun/migrations"
 )
 
@@ -41,9 +37,6 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) > 1 && os.Args[1] == "hash-password" {
-		return hashPassword(os.Args[2:])
-	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -54,9 +47,17 @@ func run() error {
 			return doctor(cfg)
 		case "version":
 			return json.NewEncoder(os.Stdout).Encode(buildinfo.Current())
+		case "user":
+			if len(os.Args) < 3 || os.Args[2] != "create" {
+				return errors.New("usage: neurun user create <username> [role]")
+			}
+			return createUser(context.Background(), cfg, os.Args[3:])
 		case "serve":
 		default:
-			return fmt.Errorf("unknown command %q (expected serve, doctor, version, or hash-password)", os.Args[1])
+			return fmt.Errorf(
+				"unknown command %q (expected serve, user, doctor, or version)",
+				os.Args[1],
+			)
 		}
 	}
 	level := slog.LevelInfo
@@ -86,28 +87,53 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	database, err := sql.Open("pgx", dsn)
+	pool, err := storage.PostgresConnect(ctx, storage.PostgresConfig{
+		DSN:             dsn,
+		MaxConns:        cfg.DatabaseMaxConns,
+		ConnMaxLifetime: cfg.DatabaseConnMaxLifetime,
+		ConnMaxIdleTime: cfg.DatabaseConnMaxIdleTime,
+	})
 	if err != nil {
-		return fmt.Errorf("open PostgreSQL: %w", err)
+		return err
 	}
-	defer database.Close()
-	database.SetMaxOpenConns(cfg.DatabaseMaxConns)
-	database.SetMaxIdleConns(cfg.DatabaseMaxConns)
-	database.SetConnMaxLifetime(cfg.DatabaseConnMaxLifetime)
-	database.SetConnMaxIdleTime(cfg.DatabaseConnMaxIdleTime)
-	metadataStore, err := deployment.NewPostgresStore(database)
+	defer pool.Close()
+
+	projects, err := repository.NewProjectRepository(pool)
 	if err != nil {
-		return fmt.Errorf("configure PostgreSQL metadata: %w", err)
+		return err
 	}
-	accounts, err := account.NewStore(database)
+	apps, err := repository.NewAppRepository(pool)
 	if err != nil {
-		return fmt.Errorf("configure account storage: %w", err)
+		return err
 	}
+	deployments, err := repository.NewDeploymentRepository(pool)
+	if err != nil {
+		return err
+	}
+	executions, err := repository.NewExecutionRepository(pool)
+	if err != nil {
+		return err
+	}
+	users, err := repository.NewUserRepository(pool)
+	if err != nil {
+		return err
+	}
+	apiKeys, err := repository.NewAPIKeyRepository(pool)
+	if err != nil {
+		return err
+	}
+	cache := repository.NewCacheRepository("neurun")
+	defer cache.Close()
+	sessions, err := repository.NewSessionRepository(cache, users)
+	if err != nil {
+		return err
+	}
+
 	blobStore, err := artifact.NewLocalStore(filepath.Join(cfg.DataDirectory, "blobs"))
 	if err != nil {
 		return fmt.Errorf("configure artifact storage: %w", err)
 	}
-	deploymentBuilder, err := builder.NewPython(builder.PythonOptions{
+	pythonBuilder, err := builder.NewPython(builder.PythonOptions{
 		MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
 		MaxArchiveExpandedBytes: cfg.MaxDeploymentExpandedBytes,
 		PythonExecutable:        cfg.PythonExecutable,
@@ -115,49 +141,60 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure Python builder: %w", err)
 	}
-	deployments, err := deployment.NewService(metadataStore, blobStore, deploymentBuilder,
-		deployment.ServiceOptions{
+
+	deploymentService, err := service.NewDeploymentService(
+		projects, apps, deployments, blobStore, pythonBuilder,
+		service.DeploymentOptions{
 			MaxSourceBytes:   cfg.MaxDeploymentSourceBytes,
 			MaxArtifactBytes: cfg.MaxDeploymentArtifactBytes,
-			MaxRunInputBytes: cfg.MaxRunInputBytes,
 			BuildTimeout:     cfg.DeploymentBuildTimeout,
-		})
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("configure deployment service: %w", err)
 	}
-	if _, err := deployments.EnsureProject(
-		ctx, cfg.DefaultProjectID, cfg.DefaultProjectID,
-	); err != nil {
-		return fmt.Errorf("bootstrap default project: %w", err)
+	executionService, err := service.NewExecutionService(
+		executions, deployments,
+		service.ExecutionOptions{MaxInputBytes: cfg.MaxRunInputBytes},
+	)
+	if err != nil {
+		return fmt.Errorf("configure execution service: %w", err)
 	}
-	if err := accounts.EnsureConfiguredKey(
-		ctx, cfg.DefaultProjectID, cfg.APIKey, []string{"*"},
-	); err != nil {
-		return fmt.Errorf("bootstrap configured API key: %w", err)
+	accountService, err := service.NewAccountService(users, apiKeys, nil, nil)
+	if err != nil {
+		return fmt.Errorf("configure account service: %w", err)
 	}
-	for _, configured := range cfg.OperatorAccounts {
-		if err := accounts.EnsureConfiguredUser(ctx, configured); err != nil {
-			return fmt.Errorf("bootstrap configured user %q: %w", configured.Username, err)
-		}
+	operatorService, err := service.NewOperatorService(
+		users, sessions, cfg.OperatorSessionTTL, nil,
+	)
+	if err != nil {
+		return fmt.Errorf("configure operator sign-in: %w", err)
 	}
-	recoveredBuilds, err := deployments.RecoverInterruptedBuilds(ctx)
+
+	recoveredBuilds, err := deploymentService.RecoverInterruptedBuilds(ctx)
 	if err != nil {
 		return fmt.Errorf("recover interrupted builds: %w", err)
 	}
 	if recoveredBuilds > 0 {
 		logger.Warn("marked interrupted builds failed", "builds", recoveredBuilds)
 	}
-	pythonRunner, err := worker.NewPythonRunner(worker.PythonOptions{Executable: cfg.PythonExecutable})
+
+	pythonRunner, err := worker.NewPythonRunner(
+		worker.PythonOptions{Executable: cfg.PythonExecutable},
+	)
 	if err != nil {
 		return fmt.Errorf("configure Python runner: %w", err)
 	}
-	executor, err := worker.New(metadataStore, blobStore, pythonRunner, worker.Options{
-		PollInterval: cfg.WorkerPollInterval, RunTimeout: cfg.RunTimeout,
-		MaxResultBytes: cfg.MaxRunResultBytes, MaxLogBytes: cfg.MaxRunLogBytes,
-		MaxArtifactBytes:        cfg.MaxDeploymentArtifactBytes,
-		MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
-		MaxArchiveExpandedBytes: cfg.MaxDeploymentExpandedBytes,
-	})
+	executor, err := worker.New(
+		executions, deployments, blobStore, pythonRunner,
+		worker.Options{
+			PollInterval: cfg.WorkerPollInterval, RunTimeout: cfg.RunTimeout,
+			MaxResultBytes: cfg.MaxRunResultBytes, MaxLogBytes: cfg.MaxRunLogBytes,
+			MaxArtifactBytes:        cfg.MaxDeploymentArtifactBytes,
+			MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
+			MaxArchiveExpandedBytes: cfg.MaxDeploymentExpandedBytes,
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("configure execution worker: %w", err)
 	}
@@ -168,25 +205,26 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if recoveredExecutions > 0 {
 		logger.Warn("marked interrupted executions failed", "executions", recoveredExecutions)
 	}
-	operators, err := operatorAuthenticator(cfg, accounts)
-	if err != nil {
-		return err
-	}
+
 	controlAPI, err := api.NewServer(api.ServerOptions{
-		Authenticator: accounts, Accounts: accounts, Deployments: deployments,
-		Operators: operators, OperatorCookieSecure: cfg.OperatorCookieSecure,
+		Deployments: deploymentService,
+		Executions:  executionService,
+		Accounts:    accountService,
+		Operators:   operatorService,
 		Ready: func(readyCtx context.Context) error {
 			return errors.Join(
-				database.PingContext(readyCtx), blobStore.Check(readyCtx),
-				metadataStore.Check(readyCtx),
+				pool.Ping(readyCtx), blobStore.Check(readyCtx),
+				deployments.Check(readyCtx),
 			)
 		},
 		MaximumBodyBytes:       cfg.MaxRequestBodyBytes,
 		MaximumDeploymentBytes: cfg.MaxDeploymentSourceBytes,
+		OperatorCookieSecure:   cfg.OperatorCookieSecure,
 	})
 	if err != nil {
 		return fmt.Errorf("configure control API: %w", err)
 	}
+
 	runtimeCtx, stopRuntime := context.WithCancel(ctx)
 	defer stopRuntime()
 	server := &http.Server{
@@ -207,7 +245,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}()
 	go func() {
 		defer background.Done()
-		pruneSessions(runtimeCtx, operators, logger)
+		pruneSessions(runtimeCtx, operatorService, logger)
 	}()
 	go func() {
 		logger.Info("neurun listening", "address", cfg.HTTPAddr,
@@ -233,29 +271,19 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	return errors.Join(serveErr, shutdownErr)
 }
 
-func operatorAuthenticator(
-	cfg config.Config, accounts *account.Store,
-) (*operator.Authenticator, error) {
-	store, err := account.NewOperatorStore(accounts)
-	if err != nil {
-		return nil, fmt.Errorf("configure operator storage: %w", err)
-	}
-	authenticator, err := operator.NewAuthenticator(store, cfg.OperatorSessionTTL)
-	if err != nil {
-		return nil, fmt.Errorf("configure operator sign-in: %w", err)
-	}
-	return authenticator, nil
-}
-
-func pruneSessions(ctx context.Context, authenticator *operator.Authenticator, logger *slog.Logger) {
-	if authenticator == nil {
+func pruneSessions(
+	ctx context.Context,
+	operators *service.OperatorService,
+	logger *slog.Logger,
+) {
+	if operators == nil {
 		<-ctx.Done()
 		return
 	}
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
-		if _, err := authenticator.PruneSessions(ctx); err != nil &&
+		if _, err := operators.PruneSessions(ctx); err != nil &&
 			!errors.Is(err, context.Canceled) {
 			logger.Error("prune expired sessions", "error", err)
 		}
@@ -265,26 +293,6 @@ func pruneSessions(ctx context.Context, authenticator *operator.Authenticator, l
 		case <-ticker.C:
 		}
 	}
-}
-
-func hashPassword(args []string) error {
-	if len(args) != 0 {
-		return errors.New("hash-password takes no arguments; pipe the password on stdin")
-	}
-	password, err := bufio.NewReader(io.LimitReader(os.Stdin, 4097)).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return err
-	}
-	password = strings.TrimRight(password, "\r\n")
-	if err := operator.ValidatePassword(password); err != nil {
-		return err
-	}
-	hash, err := operator.HashPassword(password)
-	if err != nil {
-		return err
-	}
-	fmt.Println(hash)
-	return nil
 }
 
 func doctor(cfg config.Config) error {

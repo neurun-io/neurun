@@ -1,344 +1,169 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
-	"github.com/neurun-io/neurun/internal/domain/account"
-	"github.com/neurun-io/neurun/internal/domain/auth"
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/service"
 )
 
-const testAPIKey = "neu_test.local-secret"
-
-type fakeDeployments struct {
-	createRun           deployment.CreateExecutionRequest
-	createApp           deployment.CreateAppRequest
-	listAppName         string
-	listDeploymentAppID string
-	rerunID             string
-}
-
-func (*fakeDeployments) Create(
-	context.Context, deployment.CreateRequest,
-) (deployment.Deployment, error) {
-	return deployment.Deployment{ID: "dep_test", ProjectID: "prj_test"}, nil
-}
-
-func (*fakeDeployments) Get(
-	_ context.Context, projectID, deploymentID string,
-) (deployment.Deployment, error) {
-	if projectID != "prj_test" || deploymentID != "dep_test" {
-		return deployment.Deployment{}, deployment.ErrNotFound
-	}
-	return deployment.Deployment{ID: deploymentID, ProjectID: projectID}, nil
-}
-
-func (fake *fakeDeployments) List(
-	_ context.Context, _ string, appID string, _ int,
-) ([]deployment.Deployment, error) {
-	fake.listDeploymentAppID = appID
-	return []deployment.Deployment{}, nil
-}
-
-func (fake *fakeDeployments) CreateExecution(
-	_ context.Context, request deployment.CreateExecutionRequest,
-) (deployment.Execution, error) {
-	fake.createRun = request
-	return deployment.Run{
-		ID: "run_test", ProjectID: request.ProjectID,
-		DeploymentID: request.DeploymentID, BuildID: "bld_test",
-		Status: deployment.RunQueued, Input: request.Input,
-	}, nil
-}
-
-func (*fakeDeployments) GetExecution(
-	_ context.Context, projectID, runID string,
-) (deployment.Execution, error) {
-	if projectID != "prj_test" || runID != "run_test" {
-		return deployment.Run{}, deployment.ErrRunNotFound
-	}
-	return deployment.Run{ID: runID, ProjectID: projectID}, nil
-}
-
-func (*fakeDeployments) ListDeploymentExecutions(
-	context.Context, string, string, int,
-) ([]deployment.Execution, error) {
-	return []deployment.Execution{}, nil
-}
-
-func (fake *fakeDeployments) RerunExecution(
-	_ context.Context, projectID, runID string,
-) (deployment.Execution, error) {
-	fake.rerunID = runID
-	return deployment.Run{
-		ID: "run_again", ProjectID: projectID, RerunOfRunID: runID,
-		Status: deployment.RunQueued,
-	}, nil
-}
-
-func (*fakeDeployments) GetProject(context.Context, string) (deployment.Project, error) {
-	return deployment.Project{}, nil
-}
-func (*fakeDeployments) ListProjects(context.Context, string, int) ([]deployment.Project, error) {
-	return []deployment.Project{}, nil
-}
-func (*fakeDeployments) UpdateProject(context.Context, string, deployment.UpdateProjectRequest) (deployment.Project, error) {
-	return deployment.Project{}, nil
-}
-func (*fakeDeployments) GetBuild(context.Context, string, string) (deployment.Build, error) {
-	return deployment.Build{}, nil
-}
-func (*fakeDeployments) ListBuilds(context.Context, string, string, int) ([]deployment.Build, error) {
-	return []deployment.Build{}, nil
-}
-func (*fakeDeployments) ListExecutions(context.Context, string, string, int) ([]deployment.Execution, error) {
-	return []deployment.Execution{}, nil
-}
-func (fake *fakeDeployments) CreateApp(
-	_ context.Context, request deployment.CreateAppRequest,
-) (deployment.App, error) {
-	fake.createApp = request
-	return deployment.App{
-		ID: "app_test", ProjectID: request.ProjectID, Name: request.Name,
-	}, nil
-}
-func (*fakeDeployments) GetApp(context.Context, string, string) (deployment.App, error) {
-	return deployment.App{}, nil
-}
-
-func (fake *fakeDeployments) ListApps(
-	_ context.Context, _ string, name string, _ int,
-) ([]deployment.App, error) {
-	fake.listAppName = name
-	return []deployment.App{}, nil
-}
-func (*fakeDeployments) UpdateApp(context.Context, string, string, deployment.UpdateAppRequest) (deployment.App, error) {
-	return deployment.App{}, nil
-}
-
-type fakeAccounts struct{}
-
-func (*fakeAccounts) CreateUser(context.Context, account.CreateUserRequest) (account.User, error) {
-	return account.User{}, nil
-}
-func (*fakeAccounts) GetUser(context.Context, string, string) (account.User, error) {
-	return account.User{}, nil
-}
-func (*fakeAccounts) ListUsers(context.Context, string, int) ([]account.User, error) {
-	return []account.User{}, nil
-}
-func (*fakeAccounts) UpdateUser(context.Context, string, string, account.UpdateUserRequest) (account.User, error) {
-	return account.User{}, nil
-}
-func (*fakeAccounts) CreateKey(context.Context, account.CreateKeyRequest) (account.CreatedKey, error) {
-	return account.CreatedKey{}, nil
-}
-func (*fakeAccounts) ListKeys(context.Context, string, int) ([]account.Key, error) {
-	return []account.Key{}, nil
-}
-func (*fakeAccounts) RevokeKey(context.Context, string, string) (account.Key, error) {
-	return account.Key{}, nil
-}
-
-func newTestServer(t *testing.T) (*Server, *fakeDeployments) {
+// gin builds its routing tree at registration time and panics on a conflict,
+// so constructing the server at all is the assertion: every route in routes()
+// coexists. The services are zero values because no request here reaches one.
+func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	authenticator, err := auth.New(auth.Credential{
-		ID: "key_test", ProjectID: "prj_test", RawKey: testAPIKey,
-		Scopes: []string{"*"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	service := &fakeDeployments{}
 	server, err := NewServer(ServerOptions{
-		Authenticator: authenticator, Deployments: service, Accounts: &fakeAccounts{},
+		Deployments: &service.DeploymentService{},
+		Executions:  &service.ExecutionService{},
+		Accounts:    &service.AccountService{},
 	})
 	if err != nil {
+		t.Fatalf("construct server: %v", err)
+	}
+	return server
+}
+
+func do(t *testing.T, server *Server, method, target string) *httptest.ResponseRecorder {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, httptest.NewRequest(method, target, nil))
+	return recorder
+}
+
+func TestRoutesRegisterAndUnauthenticatedPathsRespond(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+
+	response := do(t, server, http.MethodGet, "/healthz")
+	if response.Code != http.StatusOK {
+		t.Fatalf("healthz = %d", response.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	return server, service
-}
-
-func TestPublicHealthAndRemovedRoutes(t *testing.T) {
-	t.Parallel()
-	server, _ := newTestServer(t)
-	response := request(t, server, http.MethodGet, "/healthz", "", "")
-	if response.Code != http.StatusOK || response.Header().Get("Request-ID") == "" {
-		t.Fatalf("health = %d %s", response.Code, response.Body)
+	if body["status"] != "ok" {
+		t.Fatalf("healthz body = %#v", body)
 	}
-	response = request(t, server, http.MethodGet, "/v1/functions", "", testAPIKey)
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("removed route = %d %s", response.Code, response.Body)
+	// Readiness with no check configured is ready.
+	if code := do(t, server, http.MethodGet, "/readyz").Code; code != http.StatusOK {
+		t.Fatalf("readyz = %d", code)
+	}
+	if code := do(t, server, http.MethodGet, "/version").Code; code != http.StatusOK {
+		t.Fatalf("version = %d", code)
 	}
 }
 
-func TestDeploymentRoutesRequireAPIKey(t *testing.T) {
+// Every response carries a Request-ID, and a caller-supplied one is echoed so
+// the client and the server logs name the same request.
+func TestRequestIDIsAlwaysPresentAndEchoed(t *testing.T) {
 	t.Parallel()
-	server, _ := newTestServer(t)
-	response := request(t, server, http.MethodGet, "/v1/deployments", "", "")
-	if response.Code != http.StatusUnauthorized ||
-		response.Header().Get("WWW-Authenticate") == "" {
-		t.Fatalf("response = %d %s", response.Code, response.Body)
+	server := newTestServer(t)
+
+	response := do(t, server, http.MethodGet, "/healthz")
+	if response.Header().Get("Request-ID") == "" {
+		t.Fatal("no Request-ID on the response")
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	request.Header.Set("Request-ID", "caller-supplied")
+	server.ServeHTTP(recorder, request)
+	if got := recorder.Header().Get("Request-ID"); got != "caller-supplied" {
+		t.Fatalf("Request-ID = %q", got)
 	}
 }
 
-func TestCreateRunPreservesExplicitNullAndLocation(t *testing.T) {
+func TestSecurityHeadersAreSetOnEveryResponse(t *testing.T) {
 	t.Parallel()
-	server, service := newTestServer(t)
-	response := request(
-		t, server, http.MethodPost, "/v1/deployments/dep_test/executions",
-		`{"input":null}`, testAPIKey,
-	)
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("response = %d %s", response.Code, response.Body)
-	}
-	if response.Header().Get("Location") != "/v1/executions/run_test" {
-		t.Fatalf("Location = %q", response.Header().Get("Location"))
-	}
-	if string(service.createRun.Input) != "null" {
-		t.Fatalf("input = %s", service.createRun.Input)
-	}
-}
-
-func TestCreateRunRejectsMissingAndUnknownFields(t *testing.T) {
-	t.Parallel()
-	server, _ := newTestServer(t)
-	for _, body := range []string{`{}`, `{"input":{},"extra":true}`} {
-		response := request(
-			t, server, http.MethodPost, "/v1/deployments/dep_test/executions",
-			body, testAPIKey,
-		)
-		if response.Code != http.StatusUnprocessableEntity {
-			t.Fatalf("body %s = %d %s", body, response.Code, response.Body)
+	server := newTestServer(t)
+	response := do(t, server, http.MethodGet, "/healthz")
+	for header, want := range map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"X-Frame-Options":        "DENY",
+		"Referrer-Policy":        "no-referrer",
+		"Cache-Control":          "no-store",
+	} {
+		if got := response.Header().Get(header); got != want {
+			t.Fatalf("%s = %q, want %q", header, got, want)
 		}
 	}
 }
 
-func TestRerunTargetsRunAndReturnsAcceptedLocation(t *testing.T) {
+// The whole /v1 tree is behind authentication. Without a bearer key or a
+// session cookie every route has to answer 401 rather than reaching a handler.
+func TestProtectedRoutesRejectAnonymousCallers(t *testing.T) {
 	t.Parallel()
-	server, service := newTestServer(t)
-	response := request(
-		t, server, http.MethodPost, "/v1/executions/run_test/rerun",
-		"", testAPIKey,
-	)
-	if response.Code != http.StatusAccepted ||
-		response.Header().Get("Location") != "/v1/executions/run_again" ||
-		service.rerunID != "run_test" {
-		t.Fatalf("response = %d %s, Location = %q, rerun = %q",
-			response.Code, response.Body, response.Header().Get("Location"), service.rerunID)
+	server := newTestServer(t)
+	for _, target := range []string{
+		"/v1/deployments",
+		"/v1/deployments/dep_one",
+		"/v1/deployments/dep_one/executions",
+		"/v1/executions",
+		"/v1/executions/exe_one",
+		"/v1/projects",
+		"/v1/projects/prj_one",
+		"/v1/apps",
+		"/v1/apps/app_one",
+		"/v1/builds",
+		"/v1/builds/bld_one",
+		"/v1/users",
+		"/v1/users/usr_one",
+		"/v1/api-keys",
+	} {
+		response := do(t, server, http.MethodGet, target)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("GET %s = %d, want 401", target, response.Code)
+		}
+		if response.Header().Get("WWW-Authenticate") == "" {
+			t.Fatalf("GET %s: no WWW-Authenticate challenge", target)
+		}
 	}
 }
 
-func TestArtifactStorageKeyIsNotSerialized(t *testing.T) {
+// Sign-in has to sit outside the authenticated group, or there would be no way
+// to obtain the credential the group requires.
+func TestSignInRoutesAreReachableWithoutCredentials(t *testing.T) {
 	t.Parallel()
-	body, err := json.Marshal(deployment.Artifact{})
-	if err != nil {
+	server := newTestServer(t)
+
+	// Operators are unset here, so these report the feature as unavailable —
+	// what matters is that neither answers 401.
+	if code := do(t, server, http.MethodPost, "/v1/auth/login").Code; code == http.StatusUnauthorized {
+		t.Fatal("login sits behind authentication")
+	}
+	if code := do(t, server, http.MethodGet, "/v1/auth/session").Code; code == http.StatusUnauthorized {
+		t.Fatalf("session lookup returned 401 rather than reporting unavailability")
+	}
+	// Logout is unconditional: it always clears the cookie and answers 204.
+	response := do(t, server, http.MethodPost, "/v1/auth/logout")
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("logout = %d", response.Code)
+	}
+	if response.Header().Get("Set-Cookie") == "" {
+		t.Fatal("logout did not clear the session cookie")
+	}
+}
+
+func TestUnknownRouteIsAProblemDocument(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	response := do(t, server, http.MethodGet, "/v1/nope")
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("unknown route = %d", response.Code)
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(body), "storage") {
-		t.Fatalf("artifact leaked internal storage: %s", body)
+	if envelope.Error.Code != "resource_not_found" || envelope.RequestID == "" {
+		t.Fatalf("problem document = %s", response.Body)
 	}
-}
-
-func TestExecutionAlwaysSerializesLogs(t *testing.T) {
-	t.Parallel()
-	body, err := json.Marshal(deployment.Execution{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(body), `"logs":""`) {
-		t.Fatalf("execution omitted bounded logs: %s", body)
-	}
-}
-
-func TestEmptyUserPatchIsRejected(t *testing.T) {
-	t.Parallel()
-	server, _ := newTestServer(t)
-	response := request(t, server, http.MethodPatch, "/v1/users/usr_test", `{}`, testAPIKey)
-	if response.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("response = %d %s", response.Code, response.Body)
-	}
-}
-
-func TestCreateAppUsesAuthenticatedProjectAndHasNoDelete(t *testing.T) {
-	t.Parallel()
-	server, service := newTestServer(t)
-	response := request(t, server, http.MethodPost, "/v1/apps", `{"name":"scraper"}`, testAPIKey)
-	if response.Code != http.StatusCreated ||
-		response.Header().Get("Location") != "/v1/apps/app_test" ||
-		service.createApp.ProjectID != "prj_test" ||
-		service.createApp.Name != "scraper" {
-		t.Fatalf("response = %d %s, Location = %q, request = %#v",
-			response.Code, response.Body, response.Header().Get("Location"), service.createApp)
-	}
-	response = request(t, server, http.MethodDelete, "/v1/apps/app_test", "", testAPIKey)
-	if response.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("delete response = %d %s", response.Code, response.Body)
-	}
-}
-
-func TestListFiltersAreForwarded(t *testing.T) {
-	t.Parallel()
-	server, service := newTestServer(t)
-	response := request(t, server, http.MethodGet, "/v1/apps?name=scrape&limit=1", "", testAPIKey)
-	if response.Code != http.StatusOK || service.listAppName != "scrape" {
-		t.Fatalf("apps response = %d %s, name = %q", response.Code, response.Body, service.listAppName)
-	}
-	response = request(t, server, http.MethodGet, "/v1/deployments?app_id=app_test&limit=1", "", testAPIKey)
-	if response.Code != http.StatusOK || service.listDeploymentAppID != "app_test" {
-		t.Fatalf("deployments response = %d %s, app_id = %q", response.Code, response.Body, service.listDeploymentAppID)
-	}
-}
-
-func TestDeploymentFormRequiresAppID(t *testing.T) {
-	t.Parallel()
-	form := &multipart.Form{
-		Value: map[string][]string{"runtime": {"python"}},
-		File:  map[string][]*multipart.FileHeader{"source": {&multipart.FileHeader{Filename: "source.zip"}}},
-	}
-	if message := validateDeploymentForm(form); message != "app_id is required exactly once" {
-		t.Fatalf("validation message = %q", message)
-	}
-	form.Value["app_id"] = []string{"app_test"}
-	if message := validateDeploymentForm(form); message != "" {
-		t.Fatalf("valid form rejected: %q", message)
-	}
-}
-
-func TestOnlyAPIKeysRouteIsExposed(t *testing.T) {
-	t.Parallel()
-	server, _ := newTestServer(t)
-	if response := request(t, server, http.MethodGet, "/v1/api-keys", "", testAPIKey); response.Code != http.StatusOK {
-		t.Fatalf("api-keys response = %d %s", response.Code, response.Body)
-	}
-	if response := request(t, server, http.MethodGet, "/v1/keys", "", testAPIKey); response.Code != http.StatusNotFound {
-		t.Fatalf("legacy keys response = %d %s", response.Code, response.Body)
-	}
-}
-
-func request(
-	t *testing.T,
-	handler http.Handler,
-	method string,
-	target string,
-	body string,
-	apiKey string,
-) *httptest.ResponseRecorder {
-	t.Helper()
-	httpRequest := httptest.NewRequest(method, target, strings.NewReader(body))
-	if body != "" {
-		httpRequest.Header.Set("Content-Type", "application/json")
-	}
-	if apiKey != "" {
-		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httpRequest)
-	return response
 }

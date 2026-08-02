@@ -1,18 +1,22 @@
+// Package api serves the control plane over HTTP.
 package api
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/gin-gonic/gin"
+
+	"github.com/neurun-io/neurun/internal/buildinfo"
 	"github.com/neurun-io/neurun/internal/domain/account"
 	"github.com/neurun-io/neurun/internal/domain/auth"
-	"github.com/neurun-io/neurun/internal/buildinfo"
 	"github.com/neurun-io/neurun/internal/domain/deployment"
-	"github.com/neurun-io/neurun/internal/domain/operator"
+	"github.com/neurun-io/neurun/internal/domain/execution"
+	"github.com/neurun-io/neurun/internal/dto"
+	"github.com/neurun-io/neurun/internal/service"
 )
 
 const (
@@ -35,75 +39,37 @@ const (
 	maximumPageSize         = 200
 )
 
-// DeploymentService is the deployment and run application boundary consumed by
-// the HTTP API. Keeping this port local lets storage and execution evolve
-// without leaking those details into the wire contract.
-type DeploymentService interface {
-	Create(context.Context, deployment.CreateRequest) (deployment.Deployment, error)
-	Get(context.Context, string, string) (deployment.Deployment, error)
-	List(context.Context, string, string, int) ([]deployment.Deployment, error)
-	CreateExecution(context.Context, deployment.CreateExecutionRequest) (deployment.Execution, error)
-	GetExecution(context.Context, string, string) (deployment.Execution, error)
-	ListDeploymentExecutions(context.Context, string, string, int) ([]deployment.Execution, error)
-	RerunExecution(context.Context, string, string) (deployment.Execution, error)
-	GetProject(context.Context, string) (deployment.Project, error)
-	ListProjects(context.Context, string, int) ([]deployment.Project, error)
-	UpdateProject(context.Context, string, deployment.UpdateProjectRequest) (deployment.Project, error)
-	GetBuild(context.Context, string, string) (deployment.Build, error)
-	ListBuilds(context.Context, string, string, int) ([]deployment.Build, error)
-	ListExecutions(context.Context, string, string, int) ([]deployment.Execution, error)
-	CreateApp(context.Context, deployment.CreateAppRequest) (deployment.App, error)
-	GetApp(context.Context, string, string) (deployment.App, error)
-	ListApps(context.Context, string, string, int) ([]deployment.App, error)
-	UpdateApp(context.Context, string, string, deployment.UpdateAppRequest) (deployment.App, error)
-}
-
 type ReadyCheck func(context.Context) error
 
-type APIKeyAuthenticator interface {
-	AuthenticateContext(context.Context, string) (auth.Principal, bool)
-}
-
-type AccountService interface {
-	CreateUser(context.Context, account.CreateUserRequest) (account.User, error)
-	GetUser(context.Context, string, string) (account.User, error)
-	ListUsers(context.Context, string, int) ([]account.User, error)
-	UpdateUser(context.Context, string, string, account.UpdateUserRequest) (account.User, error)
-	CreateKey(context.Context, account.CreateKeyRequest) (account.CreatedKey, error)
-	ListKeys(context.Context, string, int) ([]account.Key, error)
-	RevokeKey(context.Context, string, string) (account.Key, error)
-}
-
 type ServerOptions struct {
-	Authenticator          APIKeyAuthenticator
-	Deployments            DeploymentService
-	Accounts               AccountService
+	Deployments            *service.DeploymentService
+	Executions             *service.ExecutionService
+	Accounts               *service.AccountService
+	Operators              *service.OperatorService
 	Ready                  ReadyCheck
 	MaximumBodyBytes       int64
 	MaximumDeploymentBytes int64
-	Operators              *operator.Authenticator
 	OperatorCookieSecure   bool
 }
 
-// Server exposes the health endpoints and authenticated deployment API.
 type Server struct {
-	deployments            DeploymentService
-	accounts               AccountService
+	deployments            *service.DeploymentService
+	executions             *service.ExecutionService
+	accounts               *service.AccountService
+	operators              *service.OperatorService
 	ready                  ReadyCheck
 	maximumBodyBytes       int64
 	maximumDeploymentBytes int64
-	apiKeys                APIKeyAuthenticator
-	operators              *operator.Authenticator
 	operatorCookieSecure   bool
-	handler                http.Handler
+	engine                 *gin.Engine
 }
 
 func NewServer(options ServerOptions) (*Server, error) {
 	switch {
-	case options.Authenticator == nil:
-		return nil, errors.New("API authenticator is required")
 	case options.Deployments == nil:
 		return nil, errors.New("deployment service is required")
+	case options.Executions == nil:
+		return nil, errors.New("execution service is required")
 	case options.Accounts == nil:
 		return nil, errors.New("account service is required")
 	case options.MaximumBodyBytes < 0:
@@ -111,234 +77,209 @@ func NewServer(options ServerOptions) (*Server, error) {
 	case options.MaximumDeploymentBytes < 0:
 		return nil, errors.New("maximum deployment source bytes cannot be negative")
 	}
-	maximumBodyBytes := options.MaximumBodyBytes
-	if maximumBodyBytes == 0 {
-		maximumBodyBytes = defaultMaximumBodyBytes
+	if options.MaximumBodyBytes == 0 {
+		options.MaximumBodyBytes = defaultMaximumBodyBytes
 	}
-	maximumDeploymentBytes := options.MaximumDeploymentBytes
-	if maximumDeploymentBytes == 0 {
-		maximumDeploymentBytes = deployment.DefaultMaxSourceBytes
+	if options.MaximumDeploymentBytes == 0 {
+		options.MaximumDeploymentBytes = service.DefaultMaxSourceBytes
 	}
 	server := &Server{
 		deployments:            options.Deployments,
+		executions:             options.Executions,
 		accounts:               options.Accounts,
-		ready:                  options.Ready,
-		maximumBodyBytes:       maximumBodyBytes,
-		maximumDeploymentBytes: maximumDeploymentBytes,
-		apiKeys:                options.Authenticator,
 		operators:              options.Operators,
+		ready:                  options.Ready,
+		maximumBodyBytes:       options.MaximumBodyBytes,
+		maximumDeploymentBytes: options.MaximumDeploymentBytes,
 		operatorCookieSecure:   options.OperatorCookieSecure,
 	}
-	server.handler = server.routes()
+	server.engine = server.routes()
 	return server, nil
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, request *http.Request) {
-	s.handler.ServeHTTP(w, request)
+func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	server.engine.ServeHTTP(writer, request)
 }
 
-func (s *Server) routes() http.Handler {
-	protected := http.NewServeMux()
-	protected.Handle("/v1/deployments", http.HandlerFunc(s.deploymentsCollection))
-	protected.Handle("/v1/projects", s.scoped(
-		ScopeProjectsRead, s.only(http.MethodGet, http.HandlerFunc(s.listProjects)),
-	))
-	protected.Handle("/v1/projects/{project_id}", http.HandlerFunc(s.projectItem))
-	protected.Handle("/v1/apps", http.HandlerFunc(s.appsCollection))
-	protected.Handle("/v1/apps/{app_id}", http.HandlerFunc(s.appItem))
-	protected.Handle("/v1/builds", s.scoped(
-		ScopeBuildsRead, s.only(http.MethodGet, http.HandlerFunc(s.listBuilds)),
-	))
-	protected.Handle("/v1/builds/{build_id}", s.scoped(
-		ScopeBuildsRead, s.only(http.MethodGet, http.HandlerFunc(s.getBuild)),
-	))
-	protected.Handle("/v1/executions", s.scoped(
-		ScopeExecutionsRead, s.only(http.MethodGet, http.HandlerFunc(s.listExecutions)),
-	))
-	protected.Handle("/v1/users", http.HandlerFunc(s.usersCollection))
-	protected.Handle("/v1/users/{user_id}", http.HandlerFunc(s.userItem))
-	protected.Handle("/v1/api-keys", http.HandlerFunc(s.apiKeysCollection))
-	protected.Handle("/v1/api-keys/{api_key_id}", s.scoped(
-		ScopeAPIKeysWrite, s.only(http.MethodDelete, http.HandlerFunc(s.revokeAPIKey)),
-	))
-	protected.Handle("/v1/deployments/{deployment_id}", s.scoped(
-		ScopeDeploymentsRead,
-		s.only(http.MethodGet, http.HandlerFunc(s.getDeployment)),
-	))
-	protected.Handle("/v1/deployments/{deployment_id}/executions", http.HandlerFunc(s.deploymentRuns))
-	protected.Handle("/v1/executions/{execution_id}", s.scoped(
-		ScopeExecutionsRead,
-		s.only(http.MethodGet, http.HandlerFunc(s.getRun)),
-	))
-	protected.Handle("/v1/executions/{execution_id}/rerun", s.scoped(
-		ScopeExecutionsWrite,
-		s.only(http.MethodPost, http.HandlerFunc(s.rerun)),
-	))
-	protected.Handle("/", http.HandlerFunc(notFound))
+func (server *Server) routes() *gin.Engine {
+	gin.SetMode(gin.ReleaseMode)
+	engine := gin.New()
+	engine.Use(requestID(), securityHeaders(), recovery())
+	engine.NoRoute(func(ctx *gin.Context) {
+		notFound(ctx, "resource")
+	})
+	engine.NoMethod(func(ctx *gin.Context) {
+		writeProblem(ctx, http.StatusMethodNotAllowed, dto.Problem{
+			Code:    "method_not_allowed",
+			Message: "the request method is not supported for this resource",
+		})
+	})
 
-	root := http.NewServeMux()
-	root.Handle("/healthz", s.only(http.MethodGet, http.HandlerFunc(s.health)))
-	root.Handle("/readyz", s.only(http.MethodGet, http.HandlerFunc(s.readiness)))
-	root.Handle("/version", s.only(http.MethodGet, http.HandlerFunc(s.version)))
-	root.Handle("/v1/auth/login", s.only(http.MethodPost, http.HandlerFunc(s.operatorLogin)))
-	root.Handle("/v1/auth/logout", s.only(http.MethodPost, http.HandlerFunc(s.operatorLogout)))
-	root.Handle("/v1/auth/session", s.only(http.MethodGet, http.HandlerFunc(s.operatorSession)))
-	root.Handle("/v1/", s.authenticate(protected))
-	root.Handle("/", http.HandlerFunc(notFound))
-	return RequestIDMiddleware(SecurityHeaders(Recoverer(root)))
+	engine.GET("/healthz", server.health)
+	engine.GET("/readyz", server.readiness)
+	engine.GET("/version", server.version)
+
+	// Sign-in is deliberately outside the authenticated group: it is how a
+	// caller obtains the credential the group requires.
+	engine.POST("/v1/auth/login", server.operatorLogin)
+	engine.POST("/v1/auth/logout", server.operatorLogout)
+	engine.GET("/v1/auth/session", server.operatorSession)
+
+	v1 := engine.Group("/v1", server.authenticate())
+
+	v1.GET("/deployments", server.scoped(ScopeDeploymentsRead), server.listDeployments)
+	v1.POST("/deployments", server.scoped(ScopeDeploymentsWrite), server.createDeployment)
+	v1.GET("/deployments/:deployment_id", server.scoped(ScopeDeploymentsRead), server.getDeployment)
+	v1.GET("/deployments/:deployment_id/executions", server.scoped(ScopeExecutionsRead), server.listDeploymentExecutions)
+	v1.POST("/deployments/:deployment_id/executions", server.scoped(ScopeExecutionsWrite), server.createExecution)
+
+	v1.GET("/executions", server.scoped(ScopeExecutionsRead), server.listExecutions)
+	v1.GET("/executions/:execution_id", server.scoped(ScopeExecutionsRead), server.getExecution)
+	v1.POST("/executions/:execution_id/rerun", server.scoped(ScopeExecutionsWrite), server.rerunExecution)
+
+	v1.GET("/projects", server.scoped(ScopeProjectsRead), server.listProjects)
+	v1.POST("/projects", server.scoped(ScopeProjectsWrite), server.createProject)
+	v1.GET("/projects/:project_id", server.scoped(ScopeProjectsRead), server.getProject)
+	v1.PATCH("/projects/:project_id", server.scoped(ScopeProjectsWrite), server.updateProject)
+	v1.DELETE("/projects/:project_id", server.scoped(ScopeProjectsWrite), server.deleteProject)
+
+	v1.GET("/apps", server.scoped(ScopeAppsRead), server.listApps)
+	v1.POST("/apps", server.scoped(ScopeAppsWrite), server.createApp)
+	v1.GET("/apps/:app_id", server.scoped(ScopeAppsRead), server.getApp)
+	v1.PATCH("/apps/:app_id", server.scoped(ScopeAppsWrite), server.updateApp)
+	v1.DELETE("/apps/:app_id", server.scoped(ScopeAppsWrite), server.deleteApp)
+
+	v1.GET("/builds", server.scoped(ScopeBuildsRead), server.listBuilds)
+	v1.GET("/builds/:build_id", server.scoped(ScopeBuildsRead), server.getBuild)
+
+	v1.GET("/users", server.scoped(ScopeUsersRead), server.listUsers)
+	v1.POST("/users", server.scoped(ScopeUsersWrite), server.createUser)
+	v1.GET("/users/:user_id", server.scoped(ScopeUsersRead), server.getUser)
+	v1.PATCH("/users/:user_id", server.scoped(ScopeUsersWrite), server.updateUser)
+	v1.DELETE("/users/:user_id", server.scoped(ScopeUsersWrite), server.deleteUser)
+
+	v1.GET("/api-keys", server.scoped(ScopeAPIKeysRead), server.listAPIKeys)
+	v1.POST("/api-keys", server.scoped(ScopeAPIKeysWrite), server.createAPIKey)
+	v1.DELETE("/api-keys/:api_key_id", server.scoped(ScopeAPIKeysWrite), server.revokeAPIKey)
+
+	return engine
 }
 
-func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+func (server *Server) health(ctx *gin.Context) {
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-func (s *Server) readiness(w http.ResponseWriter, request *http.Request) {
-	if s.ready != nil {
-		if err := s.ready(request.Context()); err != nil {
-			WriteProblem(w, request, http.StatusServiceUnavailable, Problem{
+func (server *Server) readiness(ctx *gin.Context) {
+	if server.ready != nil {
+		if err := server.ready(ctx.Request.Context()); err != nil {
+			writeProblem(ctx, http.StatusServiceUnavailable, dto.Problem{
 				Code: "not_ready", Message: "the server is not ready to accept work",
 			})
 			return
 		}
 	}
-	WriteJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+	ctx.JSON(http.StatusOK, gin.H{"status": "ready"})
 }
 
-func (s *Server) version(w http.ResponseWriter, _ *http.Request) {
-	WriteJSON(w, http.StatusOK, buildinfo.Current())
+func (server *Server) version(ctx *gin.Context) {
+	ctx.JSON(http.StatusOK, buildinfo.Current())
 }
 
-func (s *Server) scoped(scope string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if !s.requireScope(w, request, scope) {
-			return
-		}
-		next.ServeHTTP(w, request)
-	})
-}
-
-func (s *Server) requireScope(w http.ResponseWriter, request *http.Request, scope string) bool {
-	principal, ok := auth.FromContext(request.Context())
-	if !ok {
-		WriteProblem(w, request, http.StatusUnauthorized, Problem{
-			Code: "authentication_failed", Message: "a valid bearer API key is required",
-		})
-		return false
-	}
-	if !principal.HasScope(scope) {
-		WriteProblem(w, request, http.StatusForbidden, Problem{
-			Code:    "permission_denied",
-			Message: "the API key does not grant the required scope",
-			Details: map[string]any{"required_scope": scope},
-		})
-		return false
-	}
-	return true
-}
-
-func (s *Server) only(method string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.Method != method {
-			methodNotAllowed(w, request, method)
-			return
-		}
-		next.ServeHTTP(w, request)
-	})
-}
-
-func (s *Server) pageLimit(w http.ResponseWriter, request *http.Request) (int, bool) {
-	raw := strings.TrimSpace(request.URL.Query().Get("limit"))
+// pageLimit reads the shared limit query parameter, defaulting when absent.
+func (server *Server) pageLimit(ctx *gin.Context) (int, bool) {
+	raw := strings.TrimSpace(ctx.Query("limit"))
 	if raw == "" {
 		return defaultPageSize, true
 	}
 	limit, err := strconv.Atoi(raw)
 	if err != nil || limit < 1 || limit > maximumPageSize {
-		s.invalidQuery(w, request, "limit must be an integer between 1 and 200")
+		invalidQuery(ctx, "limit must be an integer between 1 and 200")
 		return 0, false
 	}
 	return limit, true
 }
 
-func (s *Server) writeDomainError(w http.ResponseWriter, request *http.Request, err error) {
-	switch {
-	case errors.Is(err, deployment.ErrNotFound),
-		errors.Is(err, deployment.ErrRunNotFound),
-		errors.Is(err, deployment.ErrProjectNotFound),
-		errors.Is(err, deployment.ErrAppNotFound):
-		s.resourceNotFound(w, request, "resource")
-	case errors.Is(err, deployment.ErrProjectConflict):
-		WriteProblem(w, request, http.StatusConflict, Problem{
-			Code:    "project_conflict",
-			Message: "the project conflicts with an existing project",
-		})
-	case errors.Is(err, deployment.ErrAppConflict):
-		WriteProblem(w, request, http.StatusConflict, Problem{
-			Code:    "app_conflict",
-			Message: "the app conflicts with an existing app",
-		})
-	case errors.Is(err, deployment.ErrRunConflict):
-		WriteProblem(w, request, http.StatusConflict, Problem{
-			Code:    "execution_conflict",
-			Message: "the execution changed while the operation was in progress",
-		})
-	case errors.Is(err, deployment.ErrSourceTooLarge):
-		WriteProblem(w, request, http.StatusRequestEntityTooLarge, Problem{
-			Code:    "deployment_too_large",
-			Message: "deployment upload exceeds the configured source limit",
-		})
-	case errors.Is(err, deployment.ErrInvalid),
-		errors.Is(err, deployment.ErrNoReadyBuild):
-		s.invalidRequest(w, request, err.Error())
-	case errors.Is(err, context.Canceled):
-		WriteProblem(w, request, http.StatusRequestTimeout, Problem{
-			Code: "request_canceled", Message: "the request was canceled",
-		})
-	case errors.Is(err, context.DeadlineExceeded):
-		WriteProblem(w, request, http.StatusGatewayTimeout, Problem{
-			Code: "request_timeout", Message: "the request exceeded its deadline",
-		})
-	default:
-		WriteProblem(w, request, http.StatusInternalServerError, Problem{
-			Code: "internal_error", Message: "the server could not complete the request",
-		})
-	}
+func principalOf(ctx *gin.Context) auth.Principal {
+	principal, _ := auth.FromContext(ctx.Request.Context())
+	return principal
 }
 
-func (s *Server) invalidRequest(w http.ResponseWriter, request *http.Request, message string) {
-	WriteProblem(w, request, http.StatusUnprocessableEntity, Problem{
+func writeProblem(ctx *gin.Context, status int, problem dto.Problem) {
+	ctx.AbortWithStatusJSON(status, dto.ErrorResponse{
+		Error:     problem,
+		RequestID: requestIDOf(ctx),
+	})
+}
+
+func invalidRequest(ctx *gin.Context, message string) {
+	writeProblem(ctx, http.StatusUnprocessableEntity, dto.Problem{
 		Code: "invalid_request", Message: message,
 	})
 }
 
-func (s *Server) invalidQuery(w http.ResponseWriter, request *http.Request, message string) {
-	WriteProblem(w, request, http.StatusBadRequest, Problem{
+func invalidQuery(ctx *gin.Context, message string) {
+	writeProblem(ctx, http.StatusBadRequest, dto.Problem{
 		Code: "invalid_request", Message: message,
 	})
 }
 
-func (s *Server) resourceNotFound(w http.ResponseWriter, request *http.Request, kind string) {
-	WriteProblem(w, request, http.StatusNotFound, Problem{
+func notFound(ctx *gin.Context, kind string) {
+	writeProblem(ctx, http.StatusNotFound, dto.Problem{
 		Code: "resource_not_found", Message: "the requested " + kind + " was not found",
 	})
 }
 
-func methodNotAllowed(w http.ResponseWriter, request *http.Request, allowed ...string) {
-	w.Header().Set("Allow", strings.Join(allowed, ", "))
-	WriteProblem(w, request, http.StatusMethodNotAllowed, Problem{
-		Code:    "method_not_allowed",
-		Message: "the request method is not supported for this resource",
-	})
-}
-
-func notFound(w http.ResponseWriter, request *http.Request) {
-	WriteProblem(w, request, http.StatusNotFound, Problem{
-		Code: "resource_not_found", Message: "the requested resource was not found",
-	})
-}
-
-func requireEmptyBody(request *http.Request) error {
-	if request.Body == nil || request.ContentLength == 0 {
-		return nil
+// writeError maps a domain error onto its HTTP shape. Anything unrecognised is
+// a 500 with no detail, so an internal message cannot leak through.
+func writeError(ctx *gin.Context, err error) {
+	switch {
+	case errors.Is(err, deployment.ErrNotFound),
+		errors.Is(err, deployment.ErrProjectNotFound),
+		errors.Is(err, deployment.ErrAppNotFound),
+		errors.Is(err, execution.ErrNotFound),
+		errors.Is(err, account.ErrNotFound):
+		notFound(ctx, "resource")
+	case errors.Is(err, deployment.ErrProjectConflict):
+		writeProblem(ctx, http.StatusConflict, dto.Problem{
+			Code:    "project_conflict",
+			Message: "the project conflicts with an existing project",
+		})
+	case errors.Is(err, deployment.ErrAppConflict):
+		writeProblem(ctx, http.StatusConflict, dto.Problem{
+			Code:    "app_conflict",
+			Message: "the app conflicts with an existing app",
+		})
+	case errors.Is(err, execution.ErrConflict):
+		writeProblem(ctx, http.StatusConflict, dto.Problem{
+			Code:    "execution_conflict",
+			Message: "the execution changed while the operation was in progress",
+		})
+	case errors.Is(err, account.ErrConflict):
+		writeProblem(ctx, http.StatusConflict, dto.Problem{
+			Code:    "resource_conflict",
+			Message: "the resource conflicts with an existing record",
+		})
+	case errors.Is(err, deployment.ErrSourceTooLarge):
+		writeProblem(ctx, http.StatusRequestEntityTooLarge, dto.Problem{
+			Code:    "deployment_too_large",
+			Message: "deployment upload exceeds the configured source limit",
+		})
+	case errors.Is(err, deployment.ErrInvalid),
+		errors.Is(err, deployment.ErrNoReadyBuild),
+		errors.Is(err, execution.ErrInvalid),
+		errors.Is(err, account.ErrInvalid):
+		invalidRequest(ctx, err.Error())
+	case errors.Is(err, context.Canceled):
+		writeProblem(ctx, http.StatusRequestTimeout, dto.Problem{
+			Code: "request_canceled", Message: "the request was canceled",
+		})
+	case errors.Is(err, context.DeadlineExceeded):
+		writeProblem(ctx, http.StatusGatewayTimeout, dto.Problem{
+			Code: "request_timeout", Message: "the request exceeded its deadline",
+		})
+	default:
+		writeProblem(ctx, http.StatusInternalServerError, dto.Problem{
+			Code: "internal_error", Message: "the server could not complete the request",
+		})
 	}
-	return fmt.Errorf("request body must be empty")
 }

@@ -1,170 +1,134 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 
-	"github.com/neurun-io/neurun/internal/domain/account"
-	"github.com/neurun-io/neurun/internal/domain/auth"
+	"github.com/gin-gonic/gin"
+
+	"github.com/neurun-io/neurun/internal/dto"
 )
 
-type updateUserBody struct {
-	DisplayName *string `json:"display_name"`
-	Role        *string `json:"role"`
-	Disabled    *bool   `json:"disabled"`
-}
-
-func (s *Server) usersCollection(w http.ResponseWriter, r *http.Request) {
-	principal, _ := auth.FromContext(r.Context())
-	switch r.Method {
-	case http.MethodGet:
-		if !s.requireScope(w, r, ScopeUsersRead) {
-			return
-		}
-		limit, ok := s.pageLimit(w, r)
-		if !ok {
-			return
-		}
-		users, err := s.accounts.ListUsers(r.Context(), principal.ProjectID, limit)
-		if err != nil {
-			s.writeAccountError(w, r, err)
-			return
-		}
-		WriteJSON(w, http.StatusOK, map[string]any{"users": users})
-	case http.MethodPost:
-		if !s.requireScope(w, r, ScopeUsersWrite) {
-			return
-		}
-		var body struct {
-			Username    string `json:"username"`
-			DisplayName string `json:"display_name"`
-			Role        string `json:"role"`
-			Password    string `json:"password"`
-		}
-		if !DecodeJSON(w, r, &body, s.maximumBodyBytes) {
-			return
-		}
-		user, err := s.accounts.CreateUser(r.Context(), account.CreateUserRequest{
-			ProjectID: principal.ProjectID, Username: body.Username,
-			DisplayName: body.DisplayName, Role: body.Role, Password: body.Password,
-		})
-		if err != nil {
-			s.writeAccountError(w, r, err)
-			return
-		}
-		w.Header().Set("Location", "/v1/users/"+user.ID)
-		WriteJSON(w, http.StatusCreated, user)
-	default:
-		methodNotAllowed(w, r, http.MethodGet, http.MethodPost)
-	}
-}
-
-func (s *Server) userItem(w http.ResponseWriter, r *http.Request) {
-	principal, _ := auth.FromContext(r.Context())
-	switch r.Method {
-	case http.MethodGet:
-		if !s.requireScope(w, r, ScopeUsersRead) {
-			return
-		}
-		user, err := s.accounts.GetUser(r.Context(), principal.ProjectID, r.PathValue("user_id"))
-		if err != nil {
-			s.writeAccountError(w, r, err)
-			return
-		}
-		WriteJSON(w, http.StatusOK, user)
-	case http.MethodPatch:
-		if !s.requireScope(w, r, ScopeUsersWrite) {
-			return
-		}
-		var body updateUserBody
-		if !DecodeJSON(w, r, &body, s.maximumBodyBytes) {
-			return
-		}
-		if body.DisplayName == nil && body.Role == nil && body.Disabled == nil {
-			s.invalidRequest(w, r, "user update must include at least one field")
-			return
-		}
-		user, err := s.accounts.UpdateUser(r.Context(), principal.ProjectID,
-			r.PathValue("user_id"), account.UpdateUserRequest{
-				DisplayName: body.DisplayName, Role: body.Role, Disabled: body.Disabled,
-			})
-		if err != nil {
-			s.writeAccountError(w, r, err)
-			return
-		}
-		WriteJSON(w, http.StatusOK, user)
-	default:
-		methodNotAllowed(w, r, http.MethodGet, http.MethodPatch)
-	}
-}
-
-func (s *Server) apiKeysCollection(w http.ResponseWriter, r *http.Request) {
-	principal, _ := auth.FromContext(r.Context())
-	switch r.Method {
-	case http.MethodGet:
-		if !s.requireScope(w, r, ScopeAPIKeysRead) {
-			return
-		}
-		limit, ok := s.pageLimit(w, r)
-		if !ok {
-			return
-		}
-		keys, err := s.accounts.ListKeys(r.Context(), principal.ProjectID, limit)
-		if err != nil {
-			s.writeAccountError(w, r, err)
-			return
-		}
-		WriteJSON(w, http.StatusOK, map[string]any{"api_keys": keys})
-	case http.MethodPost:
-		if !s.requireScope(w, r, ScopeAPIKeysWrite) {
-			return
-		}
-		var body struct {
-			Name   string   `json:"name"`
-			UserID string   `json:"user_id"`
-			Scopes []string `json:"scopes"`
-		}
-		if !DecodeJSON(w, r, &body, s.maximumBodyBytes) {
-			return
-		}
-		key, err := s.accounts.CreateKey(r.Context(), account.CreateKeyRequest{
-			ProjectID: principal.ProjectID, UserID: body.UserID,
-			Name: body.Name, Scopes: body.Scopes,
-		})
-		if err != nil {
-			s.writeAccountError(w, r, err)
-			return
-		}
-		w.Header().Set("Location", "/v1/api-keys/"+key.ID)
-		WriteJSON(w, http.StatusCreated, key)
-	default:
-		methodNotAllowed(w, r, http.MethodGet, http.MethodPost)
-	}
-}
-
-func (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
-	principal, _ := auth.FromContext(r.Context())
-	key, err := s.accounts.RevokeKey(r.Context(), principal.ProjectID, r.PathValue("api_key_id"))
-	if err != nil {
-		s.writeAccountError(w, r, err)
+func (server *Server) listUsers(ctx *gin.Context) {
+	limit, ok := server.pageLimit(ctx)
+	if !ok {
 		return
 	}
-	WriteJSON(w, http.StatusOK, key)
+	records, err := server.accounts.ListUsers(ctx.Request.Context(), limit)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"users": dto.NewUserResponses(records)})
 }
 
-func (s *Server) writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, account.ErrNotFound):
-		s.resourceNotFound(w, r, "resource")
-	case errors.Is(err, account.ErrInvalid):
-		s.invalidRequest(w, r, err.Error())
-	case errors.Is(err, account.ErrConflict):
-		WriteProblem(w, r, http.StatusConflict, Problem{
-			Code: "resource_conflict", Message: "the resource conflicts with an existing record",
-		})
-	default:
-		WriteProblem(w, r, http.StatusInternalServerError, Problem{
-			Code: "internal_error", Message: "the server could not complete the request",
-		})
+func (server *Server) createUser(ctx *gin.Context) {
+	var body dto.CreateUserRequest
+	if !server.bindJSON(ctx, &body) {
+		return
 	}
+	record, err := server.accounts.CreateUser(ctx.Request.Context(), body)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.Header("Location", "/v1/users/"+record.ID)
+	ctx.JSON(http.StatusCreated, dto.NewUserResponse(record))
+}
+
+func (server *Server) getUser(ctx *gin.Context) {
+	record, err := server.accounts.GetUser(ctx.Request.Context(), ctx.Param("user_id"))
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, dto.NewUserResponse(record))
+}
+
+func (server *Server) updateUser(ctx *gin.Context) {
+	var body dto.UpdateUserRequest
+	if !server.bindJSON(ctx, &body) {
+		return
+	}
+	if body.DisplayName == nil && body.Role == nil && body.Disabled == nil {
+		invalidRequest(ctx, "user update must include at least one field")
+		return
+	}
+	record, err := server.accounts.UpdateUser(
+		ctx.Request.Context(), ctx.Param("user_id"), body,
+	)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, dto.NewUserResponse(record))
+}
+
+// deleteUser removes a person and nothing else. Keys they minted keep working
+// with their attribution cleared, and every project resource stands.
+func (server *Server) deleteUser(ctx *gin.Context) {
+	userID := ctx.Param("user_id")
+	record, err := server.accounts.GetUser(ctx.Request.Context(), userID)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	if !confirmedByName(ctx, record.Username) {
+		return
+	}
+	if err := server.accounts.DeleteUser(ctx.Request.Context(), userID); err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
+}
+
+func (server *Server) listAPIKeys(ctx *gin.Context) {
+	limit, ok := server.pageLimit(ctx)
+	if !ok {
+		return
+	}
+	records, err := server.accounts.ListKeys(ctx.Request.Context(), limit)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"api_keys": dto.NewKeyResponses(records)})
+}
+
+func (server *Server) createAPIKey(ctx *gin.Context) {
+	var body dto.CreateKeyRequest
+	if !server.bindJSON(ctx, &body) {
+		return
+	}
+	// A key may only be granted scopes the caller already holds, so a limited
+	// key cannot mint an unlimited one.
+	principal := principalOf(ctx)
+	for _, scope := range body.Scopes {
+		if !principal.HasScope(scope) {
+			writeProblem(ctx, http.StatusForbidden, dto.Problem{
+				Code:    "permission_denied",
+				Message: "a key cannot be granted a scope the caller does not hold",
+				Details: map[string]any{"scope": scope},
+			})
+			return
+		}
+	}
+	record, err := server.accounts.CreateKey(ctx.Request.Context(), body)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.Header("Location", "/v1/api-keys/"+record.ID)
+	ctx.JSON(http.StatusCreated, dto.NewCreatedKeyResponse(record))
+}
+
+func (server *Server) revokeAPIKey(ctx *gin.Context) {
+	record, err := server.accounts.RevokeKey(
+		ctx.Request.Context(), ctx.Param("api_key_id"),
+	)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, dto.NewKeyResponse(record))
 }

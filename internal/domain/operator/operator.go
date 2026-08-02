@@ -1,17 +1,13 @@
-// Package operator provides human authentication for the control plane.
+// Package operator provides human identity for the control plane.
 //
-// The API key in internal/auth authenticates a *program* against a project. This
-// package authenticates a *person* against the dashboard: a username and
+// The API key in internal/domain/auth authenticates a *program* against a
+// project. This package describes a *person*: an account whose username and
 // password are exchanged for an opaque session token delivered as an HttpOnly
 // cookie. Both paths converge on auth.Principal, so scope enforcement stays in
 // one place.
-//
-// Human accounts are durable while sessions remain process-local and therefore
-// do not survive a restart.
 package operator
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -41,10 +37,8 @@ const (
 )
 
 // Scopes returns the API scopes granted by the role.
-//
-// A viewer receives only read scopes; an operator may deploy and execute code.
-func (r Role) Scopes() []string {
-	switch r {
+func (role Role) Scopes() []string {
+	switch role {
 	case RoleAdmin:
 		return []string{"*"}
 	case RoleOperator:
@@ -63,8 +57,8 @@ func (r Role) Scopes() []string {
 	}
 }
 
-func (r Role) Valid() bool {
-	switch r {
+func (role Role) Valid() bool {
+	switch role {
 	case RoleAdmin, RoleOperator, RoleViewer:
 		return true
 	default:
@@ -75,60 +69,53 @@ func (r Role) Valid() bool {
 func ParseRole(raw string) (Role, error) {
 	role := Role(strings.ToLower(strings.TrimSpace(raw)))
 	if !role.Valid() {
-		return "", fmt.Errorf("unknown operator role %q (expected admin, operator, or viewer)", raw)
+		return "", fmt.Errorf(
+			"unknown operator role %q (expected admin, operator, or viewer)", raw,
+		)
 	}
 	return role, nil
 }
 
 // Account is a human login. The plaintext password is never stored or held.
 type Account struct {
-	ID       string
-	Username string
-	Role     Role
-	// ProjectID the session acts within. The current foundation is
-	// single-project; per-operator project scoping arrives with the project API.
-	ProjectID string
-	// Encoded PBKDF2 hash — see password.go.
+	ID           string
+	Username     string
+	Role         Role
 	PasswordHash string
 	Disabled     bool
 	CreatedAt    time.Time
 }
 
+// Authenticate reports whether password signs this account in.
+//
+// A disabled account and a wrong password are both a plain false: the caller
+// must not be able to tell them apart. A malformed stored hash is an error
+// instead, because that is a configuration fault rather than a failed login.
+func (account Account) Authenticate(password string) (bool, error) {
+	if account.Disabled {
+		return false, nil
+	}
+	return VerifyPassword(account.PasswordHash, password)
+}
+
 // Session is an issued login. The token itself is not stored: only its SHA-256
 // hash, so a dump of the session store cannot be replayed as a live cookie.
 type Session struct {
-	ID        string
-	AccountID string
-	Username  string
-	Role      Role
-	ProjectID string
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	ID        string    `json:"id"`
+	AccountID string    `json:"account_id"`
+	Username  string    `json:"username"`
+	Role      Role      `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func (s Session) Expired(now time.Time) bool {
-	return !now.Before(s.ExpiresAt)
+func (session Session) Expired(now time.Time) bool {
+	return !now.Before(session.ExpiresAt)
 }
 
-// Store persists operator accounts and their sessions.
-type Store interface {
-	// AccountByUsername returns ErrAccountNotFound when no such account exists.
-	AccountByUsername(ctx context.Context, username string) (Account, error)
-	// CreateSession issues a session for account, keyed by token.
-	CreateSession(ctx context.Context, account Account, token string, expiresAt time.Time) (Session, error)
-	// SessionByToken returns ErrSessionNotFound or ErrSessionExpired as
-	// appropriate. An expired session is removed as a side effect.
-	SessionByToken(ctx context.Context, token string, now time.Time) (Session, error)
-	// DeleteSession is idempotent: deleting an unknown token is not an error.
-	DeleteSession(ctx context.Context, token string) error
-	// DeleteExpiredSessions prunes the store and reports how many it removed.
-	DeleteExpiredSessions(ctx context.Context, now time.Time) (int, error)
-}
-
-// NewToken returns a fresh opaque session token.
-//
-// 32 bytes of entropy, hex-encoded. It is a bearer secret in cookie form, so it
-// is generated here and never derived from anything guessable.
+// NewToken returns a fresh opaque session token: 32 bytes of entropy, hex
+// encoded. It is a bearer secret in cookie form, so it is generated here and
+// never derived from anything guessable.
 func NewToken() (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
