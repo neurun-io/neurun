@@ -31,6 +31,10 @@ const (
 	defaultWorkerPollInterval       = 250 * time.Millisecond
 	defaultDatabaseURL              = "postgres://neurun:neurun-local-change-me@localhost:5432/neurun?sslmode=disable"
 	defaultOperatorSessionTTL       = 12 * time.Hour
+	defaultDatabaseSchema           = "neurun"
+	defaultDatabaseMaxConns         = 25
+	defaultDatabaseConnMaxLifetime  = 5 * time.Minute
+	defaultDatabaseConnMaxIdleTime  = time.Minute
 )
 
 type Config struct {
@@ -55,6 +59,10 @@ type Config struct {
 	RunTimeout                  time.Duration
 	WorkerPollInterval          time.Duration
 	DatabaseURL                 string
+	DatabaseSchema              string
+	DatabaseMaxConns            int
+	DatabaseConnMaxLifetime     time.Duration
+	DatabaseConnMaxIdleTime     time.Duration
 	OperatorAccounts            []operator.Account
 	OperatorSessionTTL          time.Duration
 	OperatorCookieSecure        bool
@@ -83,6 +91,10 @@ func Load() (Config, error) {
 		RunTimeout:                  defaultRunTimeout,
 		WorkerPollInterval:          defaultWorkerPollInterval,
 		DatabaseURL:                 value("NEURUN_DATABASE_URL", defaultDatabaseURL),
+		DatabaseSchema:              value("NEURUN_DATABASE_SCHEMA", defaultDatabaseSchema),
+		DatabaseMaxConns:            defaultDatabaseMaxConns,
+		DatabaseConnMaxLifetime:     defaultDatabaseConnMaxLifetime,
+		DatabaseConnMaxIdleTime:     defaultDatabaseConnMaxIdleTime,
 		OperatorSessionTTL:          defaultOperatorSessionTTL,
 		OperatorCookieSecure:        false,
 	}
@@ -143,6 +155,19 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// DatabaseDSN is DatabaseURL pinned to the configured schema, so unqualified
+// table names resolve there rather than in public.
+func (c Config) DatabaseDSN() (string, error) {
+	parsed, err := url.Parse(c.DatabaseURL)
+	if err != nil {
+		return "", fmt.Errorf("parse database URL: %w", err)
+	}
+	query := parsed.Query()
+	query.Set("search_path", c.DatabaseSchema)
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
 }
 
 func (c Config) Validate() error {

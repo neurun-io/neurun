@@ -79,14 +79,22 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if !cfg.TrustedCodeExecution {
 		return errors.New("local Python execution is disabled; set NEURUN_TRUSTED_CODE_EXECUTION=true only when uploaded code is trusted")
 	}
-	if err := migrations.Apply(cfg.DatabaseURL); err != nil {
+	if err := migrations.Apply(cfg.DatabaseURL, cfg.DatabaseSchema); err != nil {
 		return err
 	}
-	database, err := sql.Open("pgx", cfg.DatabaseURL)
+	dsn, err := cfg.DatabaseDSN()
+	if err != nil {
+		return err
+	}
+	database, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return fmt.Errorf("open PostgreSQL: %w", err)
 	}
 	defer database.Close()
+	database.SetMaxOpenConns(cfg.DatabaseMaxConns)
+	database.SetMaxIdleConns(cfg.DatabaseMaxConns)
+	database.SetConnMaxLifetime(cfg.DatabaseConnMaxLifetime)
+	database.SetConnMaxIdleTime(cfg.DatabaseConnMaxIdleTime)
 	metadataStore, err := deployment.NewPostgresStore(database)
 	if err != nil {
 		return fmt.Errorf("configure PostgreSQL metadata: %w", err)
