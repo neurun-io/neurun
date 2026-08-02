@@ -88,6 +88,12 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: "scroll-text",
         availability: "future",
       },
+      {
+        href: "/settings/activity",
+        label: "Activity",
+        icon: "activity",
+        availability: "future",
+      },
     ],
   },
 ];

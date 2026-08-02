@@ -80,7 +80,6 @@ export interface Execution {
 
 export interface User {
   id: string;
-  project_id: string;
   username: string;
   display_name: string;
   role: UserRole;
@@ -91,7 +90,6 @@ export interface User {
 
 export interface ApiKey {
   id: string;
-  project_id: string;
   name: string;
   user_id?: string | null;
   scopes: string[];

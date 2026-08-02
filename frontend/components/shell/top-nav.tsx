@@ -94,7 +94,7 @@ export function TopNav() {
             <DropdownMenuLabel className="font-normal">
               <span className="block font-mono text-caption text-fg">{operator?.username}</span>
               <span className="block font-mono text-micro text-fg-muted">
-                {operator?.role} · {operator?.project_id}
+                {operator?.role}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

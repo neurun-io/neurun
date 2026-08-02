@@ -35,6 +35,7 @@ describe("focused navigation", () => {
       "/settings/profiles",
       "/settings/webhooks",
       "/settings/audit",
+      "/settings/activity",
     ]);
   });
 

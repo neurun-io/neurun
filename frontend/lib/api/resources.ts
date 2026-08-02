@@ -80,7 +80,6 @@ const appSchema = z.looseObject({
 });
 const userSchema = z.looseObject({
   id: z.string(),
-  project_id: z.string(),
   username: z.string(),
   display_name: z.string(),
   role: z.enum(["admin", "operator", "viewer"]),
@@ -90,7 +89,6 @@ const userSchema = z.looseObject({
 });
 const keySchema = z.looseObject({
   id: z.string(),
-  project_id: z.string(),
   user_id: z.string().nullish(),
   name: z.string(),
   prefix: z.string(),

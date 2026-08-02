@@ -100,4 +100,14 @@ export const ROADMAP = {
       "Security and administrative audit events need an append-only, cursor-paginated contract.",
     requires: ["GET /v1/audit-events?type=&created_after=&limit=&cursor="],
   },
+  activity: {
+    title: "Activity",
+    summary:
+      "Who changed what, and when. Distinct from Audit: audit records security and administrative events, activity records every mutating call against a resource — a deployment created, an app deleted, a key revoked. The server writes no such log today, and deriving one in the browser would mean inventing history the backend never agreed to.",
+    requires: [
+      "GET /v1/activity?actor_id=&subject_type=&subject_id=&project_id=&created_after=&limit=&cursor=",
+      "an append-only record written inside the same transaction as the change it describes, so a successful write can never lack its entry",
+      "actor attribution that survives the actor: a deleted user's entries keep their recorded username",
+    ],
+  },
 } as const satisfies Record<string, RoadmapEntry>;
