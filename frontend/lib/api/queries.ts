@@ -224,14 +224,67 @@ export function useUpdateProjectMutation(id: string) {
   });
 }
 
+export function useCreateProjectMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ name }: { name: string }) =>
+      (await resources.createProject(name)).data,
+    onSuccess: (project) => {
+      queryClient.setQueryData(queryKeys.project(scope, project.id), project);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects(scope) });
+    },
+  });
+}
+
+/**
+ * Deleting a project cascades to its apps, deployments, builds and executions,
+ * so every one of those caches is dropped rather than invalidated — refetching
+ * a deleted subtree would only produce a wave of 404s.
+ */
+export function useDeleteProjectMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      await resources.deleteProject(id);
+      return id;
+    },
+    onSuccess: (id) => {
+      queryClient.removeQueries({ queryKey: queryKeys.project(scope, id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects(scope) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.apps(scope) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.deployments(scope) });
+    },
+  });
+}
+
 export function useCreateAppMutation() {
   const scope = useScope();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ name }: { name: string }) => (await resources.createApp(name)).data,
+    mutationFn: async ({ projectId, name }: { projectId: string; name: string }) =>
+      (await resources.createApp(projectId, name)).data,
     onSuccess: (app) => {
       queryClient.setQueryData(queryKeys.app(scope, app.id), app);
       void queryClient.invalidateQueries({ queryKey: queryKeys.apps(scope) });
+    },
+  });
+}
+
+/** Cascades to the app's deployments, builds and executions. */
+export function useDeleteAppMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      await resources.deleteApp(id);
+      return id;
+    },
+    onSuccess: (id) => {
+      queryClient.removeQueries({ queryKey: queryKeys.app(scope, id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.apps(scope) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.deployments(scope) });
     },
   });
 }

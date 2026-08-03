@@ -9,26 +9,6 @@ import (
 	"github.com/neurun-io/neurun/internal/dto"
 )
 
-// confirmedByName gates an irreversible cascade behind typing the resource's
-// name, the way GitHub and AWS do.
-//
-// The name, not the identifier: the identifier is already in the URL, so
-// echoing it proves nothing about intent. The expected value is deliberately
-// absent from the error — a response that told you what to type would remove
-// the only friction this has.
-func confirmedByName(ctx *gin.Context, name string) bool {
-	if strings.TrimSpace(ctx.Query("confirm")) == name {
-		return true
-	}
-	writeProblem(ctx, http.StatusUnprocessableEntity, dto.Problem{
-		Code: "confirmation_required",
-		Message: "this deletion cannot be undone; repeat the resource's exact " +
-			`name in the "confirm" query parameter to proceed`,
-		Details: map[string]any{"expected_parameter": "confirm"},
-	})
-	return false
-}
-
 func (server *Server) listProjects(ctx *gin.Context) {
 	limit, ok := server.pageLimit(ctx)
 	if !ok {
@@ -87,14 +67,6 @@ func (server *Server) updateProject(ctx *gin.Context) {
 // install, not to a project.
 func (server *Server) deleteProject(ctx *gin.Context) {
 	projectID := ctx.Param("project_id")
-	record, err := server.deployments.GetProject(ctx.Request.Context(), projectID)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	if !confirmedByName(ctx, record.Name) {
-		return
-	}
 	if err := server.deployments.DeleteProject(ctx.Request.Context(), projectID); err != nil {
 		writeError(ctx, err)
 		return
@@ -164,14 +136,6 @@ func (server *Server) updateApp(ctx *gin.Context) {
 // deleteApp destroys an app and the deployments, builds and executions under it.
 func (server *Server) deleteApp(ctx *gin.Context) {
 	appID := ctx.Param("app_id")
-	record, err := server.deployments.GetApp(ctx.Request.Context(), appID)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	if !confirmedByName(ctx, record.Name) {
-		return
-	}
 	if err := server.deployments.DeleteApp(ctx.Request.Context(), appID); err != nil {
 		writeError(ctx, err)
 		return

@@ -108,6 +108,18 @@ export function listProjects(signal?: AbortSignal) {
   );
 }
 
+export function createProject(name: string) {
+  return request<Project>(
+    { method: "POST", path: "/v1/projects", body: { name } },
+    projectSchema as never,
+  );
+}
+
+/** Cascades to the project's apps, deployments, builds and executions. */
+export function deleteProject(id: string) {
+  return request<void>({ method: "DELETE", path: `/v1/projects/${segment(id)}` });
+}
+
 export function getProject(id: string, signal?: AbortSignal) {
   return request<Project>(
     { path: `/v1/projects/${segment(id)}`, signal },
@@ -136,11 +148,16 @@ export function getApp(id: string, signal?: AbortSignal) {
   );
 }
 
-export function createApp(name: string) {
+export function createApp(projectId: string, name: string) {
   return request<NeurunApp>(
-    { method: "POST", path: "/v1/apps", body: { name } },
+    { method: "POST", path: "/v1/apps", body: { project_id: projectId, name } },
     appSchema as never,
   );
+}
+
+/** Cascades to the app's deployments, builds and executions. */
+export function deleteApp(id: string) {
+  return request<void>({ method: "DELETE", path: `/v1/apps/${segment(id)}` });
 }
 
 export function updateApp(id: string, name: string) {

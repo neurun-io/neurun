@@ -66,16 +66,7 @@ func (server *Server) updateUser(ctx *gin.Context) {
 // deleteUser removes a person and nothing else. Keys they minted keep working
 // with their attribution cleared, and every project resource stands.
 func (server *Server) deleteUser(ctx *gin.Context) {
-	userID := ctx.Param("user_id")
-	record, err := server.accounts.GetUser(ctx.Request.Context(), userID)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	if !confirmedByName(ctx, record.Username) {
-		return
-	}
-	if err := server.accounts.DeleteUser(ctx.Request.Context(), userID); err != nil {
+	if err := server.accounts.DeleteUser(ctx.Request.Context(), ctx.Param("user_id")); err != nil {
 		writeError(ctx, err)
 		return
 	}
