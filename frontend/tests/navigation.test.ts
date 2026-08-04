@@ -28,7 +28,6 @@ describe("focused navigation", () => {
       "/",
       "/sessions",
       "/proxies",
-      "/agents",
       "/settings/projects",
       "/settings/api-keys",
       "/settings/identities",

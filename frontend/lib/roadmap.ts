@@ -46,16 +46,6 @@ export const ROADMAP = {
       "a proxy test action returning a structured result",
     ],
   },
-  agents: {
-    title: "Agents",
-    summary:
-      "Agent fleet state, capacity and bundle compatibility are not part of this release. No agent endpoint exists in the current OpenAPI.",
-    requires: [
-      "GET /v1/agents?status=&label=&limit=&cursor=",
-      "GET /v1/agents/{id}",
-      "installed function-bundle version and digest per agent, for incompatibility flagging",
-    ],
-  },
   projects: {
     title: "Projects",
     summary:

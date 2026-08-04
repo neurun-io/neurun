@@ -46,7 +46,6 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/", label: "Overview", icon: "layout-dashboard", availability: "future" },
       { href: "/sessions", label: "Sessions", icon: "monitor", availability: "future" },
       { href: "/proxies", label: "Proxies", icon: "route", availability: "future" },
-      { href: "/agents", label: "Agents", icon: "server", availability: "future" },
     ],
   },
   {
