@@ -26,11 +26,23 @@ export const ROADMAP = {
       "browser-image and compatibility versions in GET /version",
     ],
   },
+  browsers: {
+    title: "Browsers",
+    summary:
+      "The browsers available to run against. Uses what is already installed on the host rather than shipping its own: the server reports what it found, an operator can import one by pointing at an executable, enable or disable it, mark a default, and request one be added when the browser they need is not present. Sessions, identities and profiles all attach to a browser, so this is the first of the four.",
+    requires: [
+      "a discovery pass that reports installed browsers with their executable path, version and channel",
+      "import by path, with the server verifying the executable is a browser it can drive before accepting it",
+      "enable / disable and a per-project default",
+      "a request record for an absent browser, so an operator asks once rather than filing it elsewhere",
+    ],
+  },
   sessions: {
     title: "Sessions",
     summary:
-      "Browser sessions, live resource pressure and signed CDP access are not part of this release. No session endpoint or SSE usage contract exists in the current OpenAPI.",
+      "A live instance of one of those browsers, with resource pressure and signed CDP access. Depends on Browsers: a session is an instance of something, and nothing is registered yet. No session endpoint or SSE usage contract exists in the current OpenAPI.",
     requires: [
+      "a registered browser to launch",
       "session create / list / detail / keepalive / screenshot / save-profile / usage / history",
       "an authenticated session event stream (SSE) with Last-Event-ID resume",
       "session close endpoint",
@@ -65,14 +77,22 @@ export const ROADMAP = {
   identities: {
     title: "Identities",
     summary:
-      "Immutable identity version history and coherence-validation failures need an identity contract.",
-    requires: ["identity list, detail and version-history contracts"],
+      "Who a browser appears to be: the fingerprint surface a site measures — user agent, locale, timezone, screen metrics, fonts, canvas and WebGL signatures. An identity is coherent when those agree with each other and incoherent when they contradict, such as claiming macOS Safari while carrying Linux fonts and a Chrome WebGL vendor. Validating that is the whole point, so versions are immutable: changing a fingerprint mid-run makes the evidence unreadable.",
+    requires: [
+      "a registered browser to present the identity",
+      "identity list, detail and immutable version-history contracts",
+      "coherence validation, reporting which fields contradict rather than a single pass or fail",
+    ],
   },
   profiles: {
     title: "Profiles",
     summary:
-      "Profile metadata and version history need a profile contract. Import and export carry an elevated-scope warning and explicit confirmation when they ship.",
-    requires: ["profile metadata and version-history contracts", "controlled import/export endpoints"],
+      "What a browser remembers between sessions: cookies, localStorage, IndexedDB and logged-in state. The counterpart to an identity — identity is presentation, profile is state, and one identity may carry several profiles. Exporting a profile exports live session cookies, which is exporting credentials, so import and export carry an elevated-scope warning and explicit confirmation.",
+    requires: [
+      "a registered browser to own the state",
+      "profile metadata and version-history contracts",
+      "controlled import/export endpoints, scoped separately from ordinary profile reads",
+    ],
   },
   webhooks: {
     title: "Webhooks",
