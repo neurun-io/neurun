@@ -45,8 +45,13 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/", label: "Overview", icon: "layout-dashboard", availability: "future" },
       { href: "/browsers", label: "Browsers", icon: "globe", availability: "future" },
-      { href: "/sessions", label: "Sessions", icon: "monitor", availability: "future" },
       { href: "/proxies", label: "Proxies", icon: "route", availability: "future" },
+      {
+        href: "/data-health",
+        label: "Data health",
+        icon: "git-compare",
+        availability: "future",
+      },
     ],
   },
   {
@@ -71,27 +76,15 @@ export const NAV_SECTIONS: NavSection[] = [
         availability: "future",
       },
       {
-        href: "/settings/profiles",
-        label: "Profiles",
-        icon: "user-round",
-        availability: "future",
-      },
-      {
         href: "/settings/webhooks",
         label: "Webhooks",
         icon: "webhook",
         availability: "future",
       },
       {
-        href: "/settings/audit",
-        label: "Audit",
-        icon: "scroll-text",
-        availability: "future",
-      },
-      {
         href: "/settings/activity",
         label: "Activity",
-        icon: "activity",
+        icon: "scroll-text",
         availability: "future",
       },
     ],

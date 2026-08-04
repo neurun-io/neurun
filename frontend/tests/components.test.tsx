@@ -121,9 +121,9 @@ describe("StateFlow", () => {
 
 describe("RoadmapRoute", () => {
   it("states that the capability is unavailable and names what is missing", () => {
-    render(<RoadmapRoute {...ROADMAP.sessions} />);
+    render(<RoadmapRoute {...ROADMAP.browsers} />);
 
-    expect(screen.getByRole("heading", { name: "Sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Browsers" })).toBeInTheDocument();
     expect(screen.getByText("not in this release")).toBeInTheDocument();
     expect(
       screen.getByText(/session create \/ list \/ detail \/ keepalive/),

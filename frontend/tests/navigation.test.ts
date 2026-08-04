@@ -27,14 +27,12 @@ describe("focused navigation", () => {
     ).toEqual([
       "/",
       "/browsers",
-      "/sessions",
       "/proxies",
+      "/data-health",
       "/settings/projects",
       "/settings/api-keys",
       "/settings/identities",
-      "/settings/profiles",
       "/settings/webhooks",
-      "/settings/audit",
       "/settings/activity",
     ]);
   });
