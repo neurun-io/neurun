@@ -8,6 +8,7 @@ import { SideNav } from "./side-nav";
 import { Banner } from "@/components/neurun/feedback";
 import { ErrorPanel } from "@/components/neurun/error-panel";
 import { LoginScreen } from "@/components/auth/login-screen";
+import { OrganizationSetup } from "@/components/auth/organization-setup";
 import { useSession } from "@/lib/session/store";
 import { useCapability } from "@/lib/session/capability";
 
@@ -20,7 +21,7 @@ import { useCapability } from "@/lib/session/capability";
  * job they were sent.
  */
 export function DashboardShell({ children }: { children: ReactNode }) {
-  const { status, error } = useSession();
+  const { status, error, operator } = useSession();
 
   if (status === "loading") {
     return (
@@ -42,6 +43,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   }
 
   if (status !== "authenticated") return <LoginScreen />;
+
+  // Signed in, but belonging nowhere. Nothing below an organization exists yet,
+  // so this is the whole surface until there is one.
+  if (!operator?.organization_id) return <OrganizationSetup />;
 
   return (
     <div className="flex min-h-dvh flex-col">

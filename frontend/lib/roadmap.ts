@@ -38,6 +38,18 @@ export const ROADMAP = {
       "an authenticated session event stream (SSE) with Last-Event-ID resume",
     ],
   },
+  runners: {
+    title: "Runners",
+    summary:
+      "An app is executed, not hosted: a deployment produces a build, an execution invokes it once, and the compute it consumed is what gets billed. A runner inverts that. It is a server that holds one app resident and exposes an endpoint, so callers reach the app directly instead of creating an execution per call — which is the right shape for a long-lived crawler, a warm browser pool, or anything whose startup cost dwarfs its work. It is also a different billing unit: a runner is charged for the time it is up, not per invocation, so the two models cannot share a meter. Nothing here is rendered until a runner has a lifecycle the server owns; a page that lists runners it cannot start, stop or bill is a page that lies about what the account is spending.",
+    requires: [
+      "runner create / list / detail / delete, pinned to one app and one ready build",
+      "a lifecycle the server owns — starting, ready, draining, stopped — with the reason a runner left ready",
+      "the exposed endpoint and its authentication, scoped to the runner rather than to the project key",
+      "resident-time metering separate from per-execution compute, so an invoice can show both without double-counting",
+      "GET /v1/runners/{id}/logs and health, since a resident process has no execution record to attach either to",
+    ],
+  },
   proxies: {
     title: "Proxies",
     summary:
@@ -55,7 +67,7 @@ export const ROADMAP = {
     requires: [
       "a per-app output baseline derived from prior executions, versioned so a deliberate schema change resets it rather than alarming forever",
       "a deterministic structural pass — missing field, type change, cardinality collapse — that runs first, and is the only thing that runs when it already explains the drift",
-      "a semantic judge over the residue: a claude-opus-5 call under a strict JSON schema, returning per-field verdict, confidence and the offending value rather than one score",
+      "a semantic judge over the residue: an llm model call under a strict JSON schema, returning per-field verdict, confidence and the offending value rather than one score",
       "GET /v1/executions/{id}/data-health, with an operator override recorded beside the verdict rather than replacing it",
     ],
   },

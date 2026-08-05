@@ -5,7 +5,6 @@ package account
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -19,8 +18,6 @@ var (
 	ErrConflict = errors.New("account resource conflict")
 )
 
-var usernamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
-
 // Scopes an API key may carry. "*" grants everything, including scopes added
 // after the key was issued.
 var knownScopes = []string{
@@ -30,27 +27,22 @@ var knownScopes = []string{
 	"builds:read", "executions:read", "executions:write",
 }
 
+// User is a global identity. What it may do lives in an organization
+// membership, not here.
 type User struct {
-	ID          string    `json:"id"`
-	Username    string    `json:"username"`
-	DisplayName string    `json:"display_name"`
-	Role        string    `json:"role"`
-	Disabled    bool      `json:"disabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Disabled  bool      `json:"disabled"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-func NewUser(
-	id, username, displayName, role string,
-	now time.Time,
-) (User, error) {
+func NewUser(id, email string, now time.Time) (User, error) {
 	record := User{
-		ID:          id,
-		Username:    strings.ToLower(strings.TrimSpace(username)),
-		DisplayName: strings.TrimSpace(displayName),
-		Role:        strings.TrimSpace(role),
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:        id,
+		Email:     NormalizeEmail(email),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	if err := record.Validate(); err != nil {
 		return User{}, err
@@ -59,20 +51,12 @@ func NewUser(
 }
 
 // Apply folds a partial update into the user, leaving absent fields alone.
-func (record *User) Apply(
-	displayName *string,
-	role *string,
-	disabled *bool,
-	now time.Time,
-) error {
-	if displayName == nil && role == nil && disabled == nil {
+func (record *User) Apply(email *string, disabled *bool, now time.Time) error {
+	if email == nil && disabled == nil {
 		return fmt.Errorf("%w: user update is empty", ErrInvalid)
 	}
-	if displayName != nil {
-		record.DisplayName = strings.TrimSpace(*displayName)
-	}
-	if role != nil {
-		record.Role = strings.TrimSpace(*role)
+	if email != nil {
+		record.Email = NormalizeEmail(*email)
 	}
 	if disabled != nil {
 		record.Disabled = *disabled
@@ -82,26 +66,48 @@ func (record *User) Apply(
 }
 
 func (record User) Validate() error {
-	if !usernamePattern.MatchString(record.Username) {
-		return fmt.Errorf("%w: username is invalid", ErrInvalid)
-	}
-	if !validDisplayName(record.DisplayName) {
-		return fmt.Errorf("%w: display name is invalid", ErrInvalid)
-	}
-	if !ValidRole(record.Role) {
-		return fmt.Errorf("%w: role must be admin, operator, or viewer", ErrInvalid)
+	if !ValidEmail(record.Email) {
+		return fmt.Errorf("%w: email is invalid", ErrInvalid)
 	}
 	return nil
 }
 
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// ValidEmail is deliberately shallow: one @, something either side, no spaces
+// or control characters. Deliverability is proved by sending mail, not by a
+// regular expression.
+func ValidEmail(email string) bool {
+	if len(email) < 3 || len(email) > 320 || !utf8.ValidString(email) {
+		return false
+	}
+	local, domain, found := strings.Cut(email, "@")
+	if !found || local == "" || domain == "" || strings.Contains(domain, "@") {
+		return false
+	}
+	if !strings.Contains(domain, ".") || strings.HasPrefix(domain, ".") ||
+		strings.HasSuffix(domain, ".") {
+		return false
+	}
+	for _, character := range email {
+		if unicode.IsSpace(character) || unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
+}
+
 type Key struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"user_id,omitempty"`
-	Name      string     `json:"name"`
-	Prefix    string     `json:"prefix"`
-	Scopes    []string   `json:"scopes"`
-	CreatedAt time.Time  `json:"created_at"`
-	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+	ID             string     `json:"id"`
+	OrganizationID string     `json:"organization_id"`
+	UserID         string     `json:"user_id,omitempty"`
+	Name           string     `json:"name"`
+	Prefix         string     `json:"prefix"`
+	Scopes         []string   `json:"scopes"`
+	CreatedAt      time.Time  `json:"created_at"`
+	RevokedAt      *time.Time `json:"revoked_at,omitempty"`
 }
 
 // CreatedKey carries the one and only sight of a key's secret. Nothing stores
@@ -112,16 +118,17 @@ type CreatedKey struct {
 }
 
 func NewKey(
-	id, userID, name string,
+	id, organizationID, userID, name string,
 	scopes []string,
 	now time.Time,
 ) (Key, error) {
 	record := Key{
-		ID:        id,
-		UserID:    strings.TrimSpace(userID),
-		Name:      strings.TrimSpace(name),
-		Scopes:    NormalizeScopes(scopes),
-		CreatedAt: now,
+		ID:             id,
+		OrganizationID: strings.TrimSpace(organizationID),
+		UserID:         strings.TrimSpace(userID),
+		Name:           strings.TrimSpace(name),
+		Scopes:         NormalizeScopes(scopes),
+		CreatedAt:      now,
 	}
 	if err := record.Validate(); err != nil {
 		return Key{}, err
@@ -134,6 +141,9 @@ func (record Key) Revoked() bool {
 }
 
 func (record Key) Validate() error {
+	if record.OrganizationID == "" {
+		return fmt.Errorf("%w: key requires an organization", ErrInvalid)
+	}
 	if record.Name == "" || len(record.Name) > 128 {
 		return fmt.Errorf("%w: key name must contain 1 to 128 bytes", ErrInvalid)
 	}
@@ -146,22 +156,6 @@ func (record Key) Validate() error {
 		}
 	}
 	return nil
-}
-
-func ValidRole(role string) bool {
-	return role == "admin" || role == "operator" || role == "viewer"
-}
-
-func validDisplayName(name string) bool {
-	if name == "" || len(name) > 128 || !utf8.ValidString(name) {
-		return false
-	}
-	for _, character := range name {
-		if unicode.IsControl(character) {
-			return false
-		}
-	}
-	return true
 }
 
 // NormalizeScopes trims, deduplicates and sorts, so two keys granted the same

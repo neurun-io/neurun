@@ -182,14 +182,13 @@ session. No API key reaches the browser, so that blocker is closed.
 
 Two honest limits remain:
 
-- **Sessions are process-local.** Accounts come from `NEURUN_OPERATOR_ACCOUNTS`
-  and sessions live in the server's memory, so a restart signs everyone out.
-  `migrations/000001_core.sql` defines the durable `operators` and
-  `operator_sessions` tables for when the PostgreSQL adapter lands.
-- **Passwords are PBKDF2-HMAC-SHA256**, not Argon2id, to keep the Go module free
-  of third-party dependencies. The iteration count is OWASP's current floor and
-  the encoded hash is self-describing, so raising the cost later does not
-  invalidate existing accounts.
+- **Sessions are process-local.** Accounts are durable, but sessions live in the
+  server's memory, so a restart signs everyone out and more than one replica
+  does not work yet.
+- **Registration is open.** `POST /v1/auth/register` creates an account, its
+  first project, and a session, and is the only way an account comes into being
+  — there is no CLI. Per-IP limiting belongs at the edge; the server holds no
+  rate limiter of its own.
 
 A bearer API key is still accepted on every `/v1` route for scripts and CI. When
 both a header and a cookie are present, the header wins.

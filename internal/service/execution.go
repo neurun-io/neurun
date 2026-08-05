@@ -60,6 +60,7 @@ func NewExecutionService(
 // there — a later rebuild will not move it.
 func (service *ExecutionService) Create(
 	ctx context.Context,
+	organizationID string,
 	request dto.CreateExecutionRequest,
 ) (execution.Execution, error) {
 	ctx = orBackground(ctx)
@@ -71,7 +72,7 @@ func (service *ExecutionService) Create(
 		return execution.Execution{}, err
 	}
 	// The deployment carries the project; the caller does not supply one.
-	record, err := service.deployments.GetByID(ctx, request.DeploymentID)
+	record, err := service.deployments.GetByID(ctx, organizationID, request.DeploymentID)
 	if err != nil {
 		return execution.Execution{}, err
 	}
@@ -100,12 +101,13 @@ func (service *ExecutionService) Create(
 
 func (service *ExecutionService) Get(
 	ctx context.Context,
+	organizationID string,
 	executionID string,
 ) (execution.Execution, error) {
 	if err := ids.Validate("execution_id", executionID); err != nil {
 		return execution.Execution{}, fmt.Errorf("%w: %v", execution.ErrInvalid, err)
 	}
-	return service.executions.GetByID(ctx, executionID)
+	return service.executions.GetByID(ctx, organizationID, executionID)
 }
 
 // List returns executions across the principal's project, or those of one
@@ -113,6 +115,7 @@ func (service *ExecutionService) Get(
 // identifier reads as not found rather than as an empty list.
 func (service *ExecutionService) List(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 	deploymentID string,
 	limit int,
@@ -126,36 +129,40 @@ func (service *ExecutionService) List(
 		}
 	}
 	if deploymentID != "" {
-		if _, err := service.deployments.GetByID(ctx, deploymentID); err != nil {
+		if _, err := service.deployments.GetByID(
+			ctx, organizationID, deploymentID,
+		); err != nil {
 			return nil, err
 		}
 	}
-	return service.executions.List(ctx, projectID, deploymentID, limit)
+	return service.executions.List(ctx, organizationID, projectID, deploymentID, limit)
 }
 
 func (service *ExecutionService) ListForDeployment(
 	ctx context.Context,
+	organizationID string,
 	deploymentID string,
 	limit int,
 ) ([]execution.Execution, error) {
 	if deploymentID == "" {
 		return nil, fmt.Errorf("%w: deployment_id is required", execution.ErrInvalid)
 	}
-	return service.List(ctx, "", deploymentID, limit)
+	return service.List(ctx, organizationID, "", deploymentID, limit)
 }
 
 // Rerun repeats a finished execution against the build it was pinned to, which
 // must still be ready.
 func (service *ExecutionService) Rerun(
 	ctx context.Context,
+	organizationID string,
 	executionID string,
 ) (execution.Execution, error) {
 	ctx = orBackground(ctx)
-	original, err := service.Get(ctx, executionID)
+	original, err := service.Get(ctx, organizationID, executionID)
 	if err != nil {
 		return execution.Execution{}, err
 	}
-	record, err := service.deployments.GetByID(ctx, original.DeploymentID)
+	record, err := service.deployments.GetByID(ctx, organizationID, original.DeploymentID)
 	if err != nil {
 		return execution.Execution{}, err
 	}

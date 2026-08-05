@@ -80,9 +80,7 @@ export interface Execution {
 
 export interface User {
   id: string;
-  username: string;
-  display_name: string;
-  role: UserRole;
+  email: string;
   disabled: boolean;
   created_at: string;
   updated_at: string;

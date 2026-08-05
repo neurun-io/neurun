@@ -1,33 +1,42 @@
 # Neurun
 
-Neurun is a self-hosted execution and evidence plane for reliable HTTP and
-Chromium scraping workflows. This repository contains the server-side control
-API, dispatcher, agent runtime, contracts, migrations, and deployment assets.
-The public Go SDK remains an independently versioned repository and imports no
-server implementation packages.
+Neurun is an execution and evidence plane for reliable HTTP and Chromium
+scraping workflows. This repository contains the server-side control API,
+worker runtime, contracts, migrations, deployment assets, and the operator
+dashboard and public site in `frontend/`.
+
+**Source-available to nobody: this repository is proprietary and not
+distributed.** The product is commercial, priced per compute, with no free tier
+beyond a 14-day trial. Enterprise customers receive a licensed container to run
+in their own network; source code is not part of that.
+
+> The `LICENSE` file still carries Apache 2.0 from the open-source period. It
+> contradicts the paragraph above and needs replacing before anything ships
+> publicly.
 
 ## Current foundation
 
-This consolidation establishes the first deployable vertical slice of the MVP:
+The deployable vertical slice is the deployment path, end to end:
 
-- immutable, digest-addressed built-in atomic functions;
-- authenticated direct invocation and explicitly gated process-local jobs;
-- idempotent acceptance, outbox dispatch, leases, cancellation, and events;
-- an SSRF-aware HTTP runtime with bounded response bodies;
-- structured failures, trace IDs, and per-invocation usage;
-- OpenAPI and database contracts for the broader MVP;
-- a standalone frontend implementation specification;
-- an operator dashboard in `frontend/` implementing that specification against
-  this foundation, generated from `api/openapi.yaml`.
+- projects and apps, with cascading deletes that require a typed confirmation;
+- source deployments taken as a ZIP, stored immutably, and built synchronously;
+- numbered, immutable builds producing code and install layers as artifacts;
+- executions pinned to the build that was ready when they were created, claimed
+  with `FOR UPDATE SKIP LOCKED` and finalized by compare-and-set;
+- rerun against the exact original build, refused when it is no longer ready;
+- accounts from open registration, scoped API keys, and role-derived scopes;
+- an OpenAPI contract the dashboard's client is generated from.
 
-Browser sessions, persistent PostgreSQL and JetStream adapters, extraction
-breadth, profiles, and proxies remain explicit later milestones. The dashboard's
-session, proxy, agent, and settings routes name the contracts they still need
-rather than rendering placeholder data. Interfaces and contracts are kept
-stable so those adapters can replace the in-process development implementations
-without changing the public API. The all-in-one binary reports job durability as `process_local`; restarts
-discard its jobs and asynchronous routes remain disabled unless
-`NEURUN_ALLOW_VOLATILE_JOBS=true`.
+The commercial model follows the execution: an app is **executed, not hosted**,
+so the meter is the compute an execution consumes between `started_at` and
+`finished_at`. Queued time and builds are free. **Runners** — a server holding
+one app resident behind an endpoint, metered by resident time — are the next
+capability and are not built; see [docs/runner.md](docs/runner.md).
+
+Browser sessions, proxies, fleet aggregation, webhooks, an activity log and data
+health remain later milestones. The dashboard's roadmap routes name the
+contracts they still need rather than rendering placeholder data, and the public
+site's capability matrix marks the same rows rather than selling them.
 
 ## Quick start with Docker
 
@@ -55,8 +64,8 @@ curl http://localhost:1267/healthz
 ```
 
 Everything under `/v1` requires either a session cookie or a bearer API key.
-There is no preinstalled key: create an account with `neurun user create`, sign
-in, then issue keys through `POST /v1/api-keys`.
+There is no preinstalled key: register an account, which signs you in, then
+issue keys through `POST /v1/api-keys`. See [First account](#first-account).
 
 ```sh
 docker compose logs -f
@@ -87,29 +96,30 @@ To run only the development binary, export
 ### First account
 
 There are no credentials in configuration, and the server creates nothing on
-boot — no account, no project, no API key. A fresh install has no way in until
-you make one:
+boot — no account, no project, no API key. Accounts come from registration, and
+from nothing else:
 
 ```sh
-neurun user create admin
+curl -sS -X POST http://localhost:1267/v1/auth/register \
+  -d '{"username":"ada","password":"a-long-dev-password"}'
 ```
 
-It prompts for a password (minimum 12 characters) on stdin, so the plaintext
-never reaches a process listing or shell history. Pipe it for non-interactive
-use:
+Or open the dashboard and use the create-account form, which posts the same
+request. Registration creates the account as an `admin`, creates the project it
+names, and signs it in by setting the session cookie — so a fresh install goes
+from nothing to a usable dashboard in one request.
 
-```sh
-printf '%s' 'a-long-dev-password' | neurun user create admin
-```
+Sign-up is open, so **per-IP limiting belongs at the edge**. The server holds no
+rate limiter of its own, matching the sign-in throttle that was removed for the
+same reason.
 
-Roles are `admin` (all scopes), `operator` (read plus submit and cancel), and
-`viewer` (read only); the default is `admin`. Until an account exists the
-dashboard reports sign-in as unconfigured rather than showing a form that
-cannot succeed.
+Roles are `admin` (all scopes), `operator` (read plus deploy and execute), and
+`viewer` (read only). Later accounts are invited rather than registered, through
+`POST /v1/users`, which takes a role and needs `users:write`.
 
-Everything after that is ordinary API work: sign in, then create projects,
-apps, and API keys through the endpoints. A key is granted scopes explicitly
-and can never be granted a scope the caller does not already hold.
+Everything after that is ordinary API work: create apps and API keys through the
+endpoints. A key is granted scopes explicitly and can never be granted a scope
+the caller does not already hold.
 
 ## User application delivery
 

@@ -36,8 +36,9 @@ func TestPrincipalRoundTripsThroughContext(t *testing.T) {
 		t.Fatal("bare context reported a principal")
 	}
 	want := Principal{
-		Kind: KindOperator, OperatorID: "usr_1", Username: "admin",
-		Scopes: []string{ScopeAll},
+		Kind: KindOperator, OperatorID: "usr_1", Email: "ada@example.com",
+		OrganizationID: "org_1",
+		Scopes:         []string{ScopeAll},
 	}
 	got, ok := FromContext(WithPrincipal(context.Background(), want))
 	if !ok || got.OperatorID != want.OperatorID || got.Kind != KindOperator {

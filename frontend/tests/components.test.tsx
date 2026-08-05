@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { act, render, renderHook, screen, within } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
 import { ThemeProvider } from "next-themes";
 
 import { ThemeToggle } from "@/components/neurun/theme-toggle";
@@ -7,15 +7,12 @@ import { LoginScreen } from "@/components/auth/login-screen";
 
 import { StatusBadge } from "@/components/neurun/status-badge";
 import { ErrorPanel } from "@/components/neurun/error-panel";
-import { EventTimeline } from "@/components/neurun/event-timeline";
-import { StateFlow } from "@/components/neurun/state-flow";
 import { RoadmapRoute } from "@/components/neurun/feedback";
 import { NeurunApiError } from "@/lib/api/errors";
 import { useCapability } from "@/lib/session/capability";
 import { useCursorPages } from "@/lib/view/use-cursor-pages";
 import { ROADMAP } from "@/lib/roadmap";
 import { Providers } from "./utils";
-import { jobEvents } from "./msw/fixtures";
 
 describe("StatusBadge", () => {
   it("renders a known status with its treatment and a text description", () => {
@@ -79,43 +76,6 @@ describe("ErrorPanel", () => {
     expect(screen.getByText("req_01HXQ8F2INVALID")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy request ID" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy trace ID" })).toBeInTheDocument();
-  });
-});
-
-describe("EventTimeline", () => {
-  it("preserves the server's order, including the accepted step", () => {
-    render(
-      <Providers>
-        <EventTimeline events={jobEvents} />
-      </Providers>,
-    );
-
-    const items = screen.getAllByRole("listitem");
-    expect(items).toHaveLength(3);
-    expect(within(items[0]).getByText("job.accepted")).toBeInTheDocument();
-    expect(within(items[1]).getByText("job.queued")).toBeInTheDocument();
-    expect(within(items[2]).getByText("attempt.leased")).toBeInTheDocument();
-  });
-
-  it("says so plainly when nothing has been recorded", () => {
-    render(
-      <Providers>
-        <EventTimeline events={[]} />
-      </Providers>,
-    );
-    expect(screen.getByText("No events recorded yet")).toBeInTheDocument();
-  });
-});
-
-describe("StateFlow", () => {
-  it("marks the current stage for assistive technology", () => {
-    render(<StateFlow state="running" />);
-    expect(screen.getByText("running")).toHaveAttribute("aria-current", "step");
-  });
-
-  it("appends an unrecognised state as its own terminal stage", () => {
-    render(<StateFlow state="quarantined" />);
-    expect(screen.getByText("quarantined")).toBeInTheDocument();
   });
 });
 

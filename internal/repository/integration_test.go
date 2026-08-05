@@ -63,6 +63,51 @@ func testPool(t *testing.T) (*pgxpool.Pool, func()) {
 	}
 }
 
+// seedOrganization creates the user and organization every project hangs from.
+// Projects reference an organization, which references its owner, so a fixture
+// cannot start at the project any more.
+func seedOrganization(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	suffix string,
+	now time.Time,
+) string {
+	t.Helper()
+	userID := "usr_" + suffix
+	organizationID := "org_" + suffix
+	_, err := pool.Exec(
+		ctx,
+		`INSERT INTO users (id, email, password_hash, disabled, created_at, updated_at)
+		 VALUES ($1, $2, $3, false, $4, $4)`,
+		userID, suffix+"@example.com",
+		"$2a$10$abcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyz012345", now,
+	)
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	_, err = pool.Exec(
+		ctx,
+		`INSERT INTO organizations (id, owner_user_id, name, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $4)`,
+		organizationID, userID, "Org "+suffix, now,
+	)
+	if err != nil {
+		t.Fatalf("seed organization: %v", err)
+	}
+	_, err = pool.Exec(
+		ctx,
+		`INSERT INTO organization_members
+		 (organization_id, user_id, role, created_at, updated_at)
+		 VALUES ($1, $2, 'admin', $3, $3)`,
+		organizationID, userID, now,
+	)
+	if err != nil {
+		t.Fatalf("seed membership: %v", err)
+	}
+	return organizationID
+}
+
 // The full path a deployment takes through storage: project, app, upload,
 // build, then an execution claimed and finalized against the pinned build.
 func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
@@ -88,7 +133,8 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 	}
 
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	project, err := deployment.NewProject("prj_it", "Integration", now)
+	organizationID := seedOrganization(t, ctx, pool, "it", now)
+	project, err := deployment.NewProject("prj_it", organizationID, "Integration", now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +192,7 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 		t.Fatalf("save ready: %v", err)
 	}
 
-	loaded, err := deployments.GetByID(ctx, record.ID)
+	loaded, err := deployments.GetByID(ctx, organizationID, record.ID)
 	if err != nil {
 		t.Fatalf("read back: %v", err)
 	}
@@ -204,7 +250,7 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 		t.Fatal("stale finalize succeeded")
 	}
 
-	final, err := executions.GetByID(ctx, queued.ID)
+	final, err := executions.GetByID(ctx, organizationID, queued.ID)
 	if err != nil {
 		t.Fatalf("read execution: %v", err)
 	}
@@ -227,7 +273,8 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 	executions, _ := NewExecutionRepository(pool)
 
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	project, err := deployment.NewProject("prj_rec", "Recovery", now)
+	organizationID := seedOrganization(t, ctx, pool, "rec", now)
+	project, err := deployment.NewProject("prj_rec", organizationID, "Recovery", now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +314,7 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 	if err != nil || recovered != 1 {
 		t.Fatalf("recover builds = %d, %v", recovered, err)
 	}
-	loaded, err := deployments.GetByID(ctx, record.ID)
+	loaded, err := deployments.GetByID(ctx, organizationID, record.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,11 +382,11 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 	if err != nil || count != 1 {
 		t.Fatalf("recover executions = %d, %v", count, err)
 	}
-	failed, err := executions.GetByID(ctx, "exe_running")
+	failed, err := executions.GetByID(ctx, organizationID, "exe_running")
 	if err != nil || failed.Status != execution.StatusFailed || failed.Failure == nil {
 		t.Fatalf("recovered execution = %#v, %v", failed, err)
 	}
-	untouched, err := executions.GetByID(ctx, "exe_queued")
+	untouched, err := executions.GetByID(ctx, organizationID, "exe_queued")
 	if err != nil || untouched.Status != execution.StatusQueued {
 		t.Fatalf("queued execution changed = %#v, %v", untouched, err)
 	}

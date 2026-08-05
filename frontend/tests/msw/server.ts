@@ -18,9 +18,9 @@ export const OPERATOR_PASSWORD = "correct horse battery staple";
 
 export const OPERATOR = {
   operator_id: "opr_01HXQ8F2ALICE",
-  username: "alice",
+  email: "alice@example.com",
+  organization_id: "org_01HXQ8F2ACME",
   role: "admin",
-  project_id: "prj_local",
   scopes: ["*"],
   session_id: "oses_01HXQ8F2",
   expires_at: "2026-07-30T23:00:00Z",
@@ -35,8 +35,8 @@ export const handlers = [
   /* ---------------------------------- auth ---------------------------------- */
 
   http.post(proxy("/v1/auth/login"), async ({ request }) => {
-    const body = (await request.json()) as { username?: string; password?: string };
-    if (body.username !== OPERATOR.username || body.password !== OPERATOR_PASSWORD) {
+    const body = (await request.json()) as { email?: string; password?: string };
+    if (body.email !== OPERATOR.email || body.password !== OPERATOR_PASSWORD) {
       return HttpResponse.json(fixtures.invalidCredentials, { status: 401 });
     }
     return HttpResponse.json(
@@ -70,84 +70,27 @@ export const handlers = [
 
   /* -------------------------------- functions ------------------------------- */
 
-  http.get(proxy("/v1/functions"), () =>
-    HttpResponse.json({ functions: [fixtures.echoManifest, fixtures.browserManifest] }),
+  /* -------------------------------- resources ------------------------------- */
+
+  http.get(proxy("/v1/projects"), () =>
+    HttpResponse.json({ projects: [fixtures.project] }),
   ),
 
-  http.get(proxy("/v1/functions/:name/versions/:version"), () =>
-    HttpResponse.json(fixtures.echoManifest),
+  http.get(proxy("/v1/apps"), () => HttpResponse.json({ apps: [fixtures.app] })),
+
+  http.get(proxy("/v1/deployments"), () =>
+    HttpResponse.json({ deployments: [fixtures.readyDeployment] }),
   ),
 
-  http.post(proxy("/v1/functions/:name/invoke"), async ({ request }) => {
-    const body = (await request.json()) as { execution?: string };
-    if (body.execution === "async") {
-      return HttpResponse.json(fixtures.acceptedJob, {
-        status: 202,
-        headers: { "Neurun-Job-Durability": "process_local" },
-      });
-    }
-    return HttpResponse.json(fixtures.succeededInvocation);
-  }),
-
-  /* ----------------------------------- jobs --------------------------------- */
-
-  http.get(proxy("/v1/jobs"), ({ request }) => {
-    const cursor = new URL(request.url).searchParams.get("cursor");
-    // Two pages; the empty string on the last one means "no more".
-    if (cursor === "cursor-page-2") {
-      return HttpResponse.json({ jobs: [fixtures.succeededJob], next_cursor: "" });
-    }
-    return HttpResponse.json({
-      jobs: [fixtures.queuedJob, fixtures.unknownStateJob],
-      next_cursor: "cursor-page-2",
-    });
-  }),
-
-  http.post(proxy("/v1/jobs"), () =>
-    HttpResponse.json(fixtures.acceptedJob, {
-      status: 202,
-      headers: {
-        "Neurun-Job-Durability": "process_local",
-        "Request-ID": "req_01HXQ8F2ACCEPT",
-        Location: `/v1/jobs/${fixtures.JOB_ID}`,
-      },
-    }),
+  http.get(proxy("/v1/builds"), () =>
+    HttpResponse.json({ builds: [fixtures.readyBuild] }),
   ),
 
-  http.get(proxy("/v1/jobs/:jobId"), () => HttpResponse.json(fixtures.queuedJob)),
-
-  http.get(proxy("/v1/jobs/:jobId/events"), () =>
-    HttpResponse.json({ events: fixtures.jobEvents }),
-  ),
-
-  http.get(proxy("/v1/jobs/:jobId/attempts"), () =>
-    HttpResponse.json({ attempts: fixtures.jobAttempts }),
-  ),
-
-  http.post(proxy("/v1/jobs/:jobId/cancel"), () =>
+  http.get(proxy("/v1/executions"), () =>
     HttpResponse.json({
-      job: { ...fixtures.queuedJob, state: "canceled", canceled_at: "2026-07-29T10:00:05Z" },
-      duplicate: false,
-      request_id: "req_01HXQ8F2CANCEL",
+      executions: [fixtures.succeededExecution, fixtures.unknownStateExecution],
     }),
   ),
-
-  /* ------------------------------- invocations ------------------------------ */
-
-  http.get(proxy("/v1/function-invocations"), () =>
-    HttpResponse.json({
-      invocations: [fixtures.succeededInvocation, fixtures.schemaRejectedInvocation],
-      next_cursor: "",
-    }),
-  ),
-
-  http.get(proxy("/v1/function-invocations/:id"), () =>
-    HttpResponse.json(fixtures.succeededInvocation),
-  ),
-
-  /* ---------------------------------- fetch --------------------------------- */
-
-  http.post(proxy("/v1/fetch"), () => HttpResponse.json(fixtures.succeededInvocation)),
 ];
 
 export const server = setupServer(...handlers);

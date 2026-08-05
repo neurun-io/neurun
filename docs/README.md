@@ -10,7 +10,7 @@ the last.
 | [Deployment](deployment.md) | One upload of source, and the builds made from it. |
 | [Build](build.md) | One attempt at turning that source into runnable artifacts. |
 | [Artifact](artifact.md) | An immutable blob a build produced or a deploy uploaded. |
-| [Execution](execution.md) | One invocation of a built handler. |
+| [Execution](execution.md) | One invocation of a built handler. The billable unit. |
 | [User](user.md) | A person who can sign in. Global to the install. |
 | [API key](api-key.md) | A credential for a program, carrying scopes. |
 
@@ -18,5 +18,10 @@ The shape in one sentence: a **project** holds **apps**; deploying source to an
 app creates a **deployment**, which produces **builds** made of **artifacts**;
 invoking a ready build creates an **execution**.
 
+An app is **executed, not hosted** — there is no resident process between calls,
+and the meter is the compute an execution consumes. [Runners](runner.md) invert
+that and are metered by resident time instead; they are not built.
+
 Authorization is separate from all of it. **Users** and **API keys** belong to
-the install, not to a project — see [api-key.md](api-key.md).
+the install, not to a project — see [api-key.md](api-key.md). Accounts come from
+`POST /v1/auth/register` and nothing else.

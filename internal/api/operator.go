@@ -25,10 +25,11 @@ const SessionCookieName = "neurun_operator_session"
 // produces, so scope enforcement has exactly one implementation.
 func operatorPrincipal(session operator.Session) auth.Principal {
 	return auth.Principal{
-		Kind:       auth.KindOperator,
-		OperatorID: session.AccountID,
-		Username:   session.Username,
-		Scopes:     session.Role.Scopes(),
+		Kind:           auth.KindOperator,
+		OperatorID:     session.AccountID,
+		Email:          session.Email,
+		OrganizationID: session.OrganizationID,
+		Scopes:         session.Role.Scopes(),
 	}
 }
 
@@ -76,22 +77,22 @@ func (server *Server) operatorLogin(ctx *gin.Context) {
 	if !server.bindJSON(ctx, &body) {
 		return
 	}
-	username := strings.TrimSpace(body.Username)
-	if username == "" || body.Password == "" {
+	email := strings.TrimSpace(body.Email)
+	if email == "" || body.Password == "" {
 		writeProblem(ctx, http.StatusBadRequest, dto.Problem{
-			Code: "invalid_request", Message: "username and password are required",
+			Code: "invalid_request", Message: "email and password are required",
 		})
 		return
 	}
 	session, token, err := server.operators.Login(
-		ctx.Request.Context(), username, body.Password,
+		ctx.Request.Context(), email, body.Password,
 	)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidCredentials) {
 			// One message for unknown user, wrong password and disabled account
 			// alike: the response must not be usable to enumerate accounts.
 			writeProblem(ctx, http.StatusUnauthorized, dto.Problem{
-				Code: "invalid_credentials", Message: "invalid username or password",
+				Code: "invalid_credentials", Message: "invalid email or password",
 			})
 			return
 		}

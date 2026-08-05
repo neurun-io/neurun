@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -31,15 +34,47 @@ func Apply(databaseURL, schema string) (err error) {
 	if err != nil {
 		return fmt.Errorf("open migration target: %w", err)
 	}
+	migrator.Log = stepLogger{}
 	defer func() {
 		if sourceErr, databaseErr := migrator.Close(); err == nil {
 			err = errors.Join(sourceErr, databaseErr)
 		}
 	}()
-	if err := migrator.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+
+	before, dirty, err := migrator.Version()
+	if err != nil && !errors.Is(err, migrate.ErrNilVersion) {
+		return fmt.Errorf("read schema version: %w", err)
+	}
+	slog.Info("migrating schema", "schema", schema, "version", version(before), "dirty", dirty)
+
+	switch err := migrator.Up(); {
+	case errors.Is(err, migrate.ErrNoChange):
+		slog.Info("schema already current", "schema", schema, "version", version(before))
+	case err != nil:
 		return fmt.Errorf("apply migrations: %w", err)
+	default:
+		after, _, _ := migrator.Version()
+		slog.Info("schema migrated",
+			"schema", schema, "from", version(before), "to", version(after))
 	}
 	return nil
+}
+
+// stepLogger routes golang-migrate's per-migration output into slog, so each
+// version that runs is named rather than the whole batch reporting once.
+type stepLogger struct{}
+
+func (stepLogger) Printf(format string, arguments ...any) {
+	slog.Info("migration " + strings.TrimSpace(fmt.Sprintf(format, arguments...)))
+}
+
+func (stepLogger) Verbose() bool { return true }
+
+func version(value uint) string {
+	if value == 0 {
+		return "none"
+	}
+	return strconv.FormatUint(uint64(value), 10)
 }
 
 func ensureSchema(databaseURL, schema string) error {

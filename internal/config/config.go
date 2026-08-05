@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"net/url"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"time"
 )
+
+const defaultEnvFile = ".env"
 
 const (
 	defaultHTTPAddr                 = ":1267"
@@ -42,7 +45,6 @@ type Config struct {
 	DefaultProjectID            string
 	DataDirectory               string
 	PythonExecutable            string
-	TrustedCodeExecution        bool
 	ShutdownTimeout             time.Duration
 	MaxRequestBodyBytes         int64
 	MaxDeploymentSourceBytes    int64
@@ -65,6 +67,10 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	if err := loadEnvFile(defaultEnvFile); err != nil {
+		return Config{}, err
+	}
+
 	cfg := Config{
 		HTTPAddr:                    value("NEURUN_HTTP_ADDR", defaultHTTPAddr),
 		PublicURL:                   value("NEURUN_PUBLIC_URL", defaultPublicURL),
@@ -72,7 +78,6 @@ func Load() (Config, error) {
 		DefaultProjectID:            value("NEURUN_DEFAULT_PROJECT_ID", defaultProjectID),
 		DataDirectory:               value("NEURUN_DATA_DIRECTORY", defaultDataDirectory),
 		PythonExecutable:            strings.TrimSpace(os.Getenv("NEURUN_PYTHON_EXECUTABLE")),
-		TrustedCodeExecution:        false,
 		ShutdownTimeout:             defaultShutdownTimeout,
 		MaxRequestBodyBytes:         defaultRequestBodyBytes,
 		MaxDeploymentSourceBytes:    defaultDeploymentSourceBytes,
@@ -94,11 +99,6 @@ func Load() (Config, error) {
 		OperatorCookieSecure:        false,
 	}
 	var err error
-	if cfg.TrustedCodeExecution, err = boolValue(
-		"NEURUN_TRUSTED_CODE_EXECUTION", cfg.TrustedCodeExecution,
-	); err != nil {
-		return Config{}, err
-	}
 	if cfg.OperatorCookieSecure, err = boolValue(
 		"NEURUN_OPERATOR_COOKIE_SECURE", cfg.OperatorCookieSecure,
 	); err != nil {
@@ -145,6 +145,82 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// loadEnvFile loads development defaults without replacing values explicitly
+// supplied by the process environment.
+func loadEnvFile(path string) error {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("open environment file %q: %w", path, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024), 1<<20)
+	for lineNumber := 1; scanner.Scan(); lineNumber++ {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		key, rawValue, found := strings.Cut(line, "=")
+		if !found {
+			return fmt.Errorf("parse environment file %q line %d: expected KEY=VALUE", path, lineNumber)
+		}
+		key = strings.TrimSpace(strings.TrimPrefix(key, "export "))
+		if !validEnvKey(key) {
+			return fmt.Errorf("parse environment file %q line %d: invalid key %q", path, lineNumber, key)
+		}
+		value, err := parseEnvValue(strings.TrimSpace(rawValue))
+		if err != nil {
+			return fmt.Errorf("parse environment file %q line %d: %w", path, lineNumber, err)
+		}
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("set environment variable %q: %w", key, err)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read environment file %q: %w", path, err)
+	}
+	return nil
+}
+
+func validEnvKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	for index, char := range key {
+		if char == '_' || char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' ||
+			index > 0 && char >= '0' && char <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func parseEnvValue(value string) (string, error) {
+	if value == "" || value[0] != '"' && value[0] != '\'' {
+		return strings.TrimSpace(strings.SplitN(value, " #", 2)[0]), nil
+	}
+	if len(value) < 2 || value[len(value)-1] != value[0] {
+		return "", errors.New("unterminated quoted value")
+	}
+	if value[0] == '\'' {
+		return value[1 : len(value)-1], nil
+	}
+	parsed, err := strconv.Unquote(value)
+	if err != nil {
+		return "", fmt.Errorf("unquote value: %w", err)
+	}
+	return parsed, nil
 }
 
 // DatabaseDSN is DatabaseURL pinned to the configured schema, so unqualified

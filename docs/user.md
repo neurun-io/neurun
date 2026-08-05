@@ -9,19 +9,31 @@ to a project.
 - `operator` — read, plus deploy and execute.
 - `viewer` — read only.
 
-## The first account
+## How an account comes into being
 
-The server creates nothing on boot. A fresh install has no way in until you
-run:
+Registration, and nothing else. The server creates nothing on boot and there is
+no CLI to run on the host:
 
 ```sh
-neurun user create admin
+curl -sS -X POST $NEURUN_URL/v1/auth/register \
+  -d '{"username":"ada","password":"a-long-password"}'
 ```
 
-The password is read from stdin (minimum 12 characters) so it never lands in a
-process listing or shell history, and it is stored as a bcrypt hash. There are
-no credentials in configuration — nothing in `.env` creates or restores an
+`POST /v1/auth/register` is public and unauthenticated — it is how a caller
+obtains the credential everything under `/v1` requires. It creates the account
+as an `admin` and signs the account in by setting the same session cookie sign-in
+issues.
+
+Sign-up is open, so **per-IP limiting belongs at the edge**, alongside the
+throttle that used to sit in front of sign-in. The server deliberately holds no
+rate limiter of its own.
+
+The password is a minimum of 12 characters and is stored as a bcrypt hash. There
+are no credentials in configuration — nothing in `.env` creates or restores an
 account, so a password changed later is never silently reverted by a restart.
+
+Later accounts are invited rather than registered: `POST /v1/users` takes a role
+and needs `users:write`.
 
 ## Sessions
 

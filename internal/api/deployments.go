@@ -69,13 +69,14 @@ func (server *Server) createDeployment(ctx *gin.Context) {
 
 	// app_id alone decides the project. An app that was not created first is
 	// refused, so an SDK cannot bring one into being by deploying to it.
-	created, err := server.deployments.Create(ctx.Request.Context(), dto.CreateDeploymentRequest{
-		AppID:      strings.TrimSpace(ctx.Request.MultipartForm.Value["app_id"][0]),
-		Runtime:    runtime,
-		EntryPoint: entrypoint,
-		SourceName: header.Filename,
-		Source:     source,
-	})
+	created, err := server.deployments.Create(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, dto.CreateDeploymentRequest{
+			AppID:      strings.TrimSpace(ctx.Request.MultipartForm.Value["app_id"][0]),
+			Runtime:    runtime,
+			EntryPoint: entrypoint,
+			SourceName: header.Filename,
+			Source:     source,
+		})
 	if err != nil {
 		writeError(ctx, err)
 		return
@@ -90,7 +91,7 @@ func (server *Server) listDeployments(ctx *gin.Context) {
 		return
 	}
 	records, err := server.deployments.List(
-		ctx.Request.Context(),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID,
 		strings.TrimSpace(ctx.Query("project_id")),
 		strings.TrimSpace(ctx.Query("app_id")),
 		limit,
@@ -104,7 +105,7 @@ func (server *Server) listDeployments(ctx *gin.Context) {
 
 func (server *Server) getDeployment(ctx *gin.Context) {
 	record, err := server.deployments.Get(
-		ctx.Request.Context(), ctx.Param("deployment_id"),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("deployment_id"),
 	)
 	if err != nil {
 		writeError(ctx, err)

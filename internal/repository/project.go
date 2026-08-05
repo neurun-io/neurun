@@ -11,7 +11,7 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
-const projectColumns = `id, name, created_at, updated_at`
+const projectColumns = `id, organization_id, name, created_at, updated_at`
 
 type ProjectRepository struct {
 	pool *pgxpool.Pool
@@ -33,21 +33,23 @@ func (repository *ProjectRepository) Ensure(
 	}
 	_, err := repository.pool.Exec(
 		ctx,
-		`INSERT INTO projects (id, name, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4)
+		`INSERT INTO projects (id, organization_id, name, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5)
 		 ON CONFLICT (id) DO NOTHING`,
-		record.ID, record.Name, record.CreatedAt, record.UpdatedAt,
+		record.ID, record.OrganizationID, record.Name,
+		record.CreatedAt, record.UpdatedAt,
 	)
 	if err != nil {
 		return deployment.Project{}, fmt.Errorf(
 			"%w: ensure project: %v", deployment.ErrProjectConflict, err,
 		)
 	}
-	return repository.GetByID(ctx, record.ID)
+	return repository.GetByID(ctx, record.OrganizationID, record.ID)
 }
 
 func (repository *ProjectRepository) GetByID(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 ) (deployment.Project, error) {
 	if err := deployment.ValidateIdentifier("project_id", projectID); err != nil {
@@ -56,9 +58,13 @@ func (repository *ProjectRepository) GetByID(
 	var record deployment.Project
 	err := repository.pool.QueryRow(
 		ctx,
-		`SELECT `+projectColumns+` FROM projects WHERE id = $1`,
-		projectID,
-	).Scan(&record.ID, &record.Name, &record.CreatedAt, &record.UpdatedAt)
+		`SELECT `+projectColumns+` FROM projects
+		 WHERE id = $1 AND organization_id = $2`,
+		projectID, organizationID,
+	).Scan(
+		&record.ID, &record.OrganizationID, &record.Name,
+		&record.CreatedAt, &record.UpdatedAt,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return deployment.Project{}, fmt.Errorf(
 			"%w: %s", deployment.ErrProjectNotFound, projectID,
@@ -84,9 +90,10 @@ func (repository *ProjectRepository) Create(
 	}
 	_, err := repository.pool.Exec(
 		ctx,
-		`INSERT INTO projects (id, name, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4)`,
-		record.ID, record.Name, record.CreatedAt, record.UpdatedAt,
+		`INSERT INTO projects (id, organization_id, name, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		record.ID, record.OrganizationID, record.Name,
+		record.CreatedAt, record.UpdatedAt,
 	)
 	if err != nil {
 		return deployment.Project{}, fmt.Errorf(
@@ -101,13 +108,16 @@ func (repository *ProjectRepository) Create(
 // recovering the rows afterwards.
 func (repository *ProjectRepository) Delete(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 ) error {
 	if err := deployment.ValidateIdentifier("project_id", projectID); err != nil {
 		return err
 	}
 	tag, err := repository.pool.Exec(
-		ctx, `DELETE FROM projects WHERE id = $1`, projectID,
+		ctx,
+		`DELETE FROM projects WHERE id = $1 AND organization_id = $2`,
+		projectID, organizationID,
 	)
 	if err != nil {
 		return fmt.Errorf("delete project: %w", err)
@@ -120,13 +130,15 @@ func (repository *ProjectRepository) Delete(
 
 func (repository *ProjectRepository) List(
 	ctx context.Context,
+	organizationID string,
 	limit int,
 ) ([]deployment.Project, error) {
 	rows, err := repository.pool.Query(
 		ctx,
 		`SELECT `+projectColumns+` FROM projects
-		 ORDER BY created_at DESC, id DESC LIMIT $1`,
-		postgresLimit(limit),
+		 WHERE organization_id = $1
+		 ORDER BY created_at DESC, id DESC LIMIT $2`,
+		organizationID, postgresLimit(limit),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
@@ -140,7 +152,10 @@ func (repository *ProjectRepository) List(
 
 func scanProject(row pgx.CollectableRow) (deployment.Project, error) {
 	var record deployment.Project
-	err := row.Scan(&record.ID, &record.Name, &record.CreatedAt, &record.UpdatedAt)
+	err := row.Scan(
+		&record.ID, &record.OrganizationID, &record.Name,
+		&record.CreatedAt, &record.UpdatedAt,
+	)
 	return record, err
 }
 
@@ -157,10 +172,14 @@ func (repository *ProjectRepository) Update(
 	err := repository.pool.QueryRow(
 		ctx,
 		`UPDATE projects SET name = $2, updated_at = $3
-		 WHERE id = $1 AND created_at = $4
+		 WHERE id = $1 AND created_at = $4 AND organization_id = $5
 		 RETURNING `+projectColumns,
 		record.ID, record.Name, record.UpdatedAt, record.CreatedAt,
-	).Scan(&updated.ID, &updated.Name, &updated.CreatedAt, &updated.UpdatedAt)
+		record.OrganizationID,
+	).Scan(
+		&updated.ID, &updated.OrganizationID, &updated.Name,
+		&updated.CreatedAt, &updated.UpdatedAt,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return deployment.Project{}, fmt.Errorf(
 			"%w: %s", deployment.ErrProjectNotFound, record.ID,

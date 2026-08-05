@@ -100,10 +100,13 @@ func (repository *ExecutionRepository) Create(
 
 func (repository *ExecutionRepository) GetByID(
 	ctx context.Context,
+	organizationID string,
 	executionID string,
 ) (execution.Execution, error) {
 	rows, err := repository.pool.Query(
-		ctx, executionSelect+` WHERE id = $1`, executionID,
+		ctx,
+		executionSelect+` WHERE id = $1 AND`+fmt.Sprintf(inOrganization, "$2"),
+		executionID, organizationID,
 	)
 	if err != nil {
 		return execution.Execution{}, fmt.Errorf("read execution: %w", err)
@@ -122,6 +125,7 @@ func (repository *ExecutionRepository) GetByID(
 
 func (repository *ExecutionRepository) List(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 	deploymentID string,
 	limit int,
@@ -129,9 +133,10 @@ func (repository *ExecutionRepository) List(
 	rows, err := repository.pool.Query(
 		ctx,
 		executionSelect+` WHERE ($1 = '' OR project_id = $1)
-		 AND ($2 = '' OR deployment_id = $2)
-		 ORDER BY created_at DESC, id DESC LIMIT $3`,
-		projectID, deploymentID, postgresLimit(limit),
+		 AND ($2 = '' OR deployment_id = $2) AND`+
+			fmt.Sprintf(inOrganization, "$4")+
+			` ORDER BY created_at DESC, id DESC LIMIT $3`,
+		projectID, deploymentID, postgresLimit(limit), organizationID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list executions: %w", err)

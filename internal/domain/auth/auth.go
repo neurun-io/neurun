@@ -26,19 +26,21 @@ const (
 // ScopeAll grants every scope, including ones added later.
 const ScopeAll = "*"
 
-// Principal is what a request may do, and nothing about where.
+// Principal is what a request may do, and which organization it may do it in.
 //
-// Scopes are the whole authorization model. A caller is not bound to a project:
-// projects scope *resources*, not callers, so a key reaches as far as its
-// scopes allow and a signed-in user is unrestricted.
+// Scopes say what; OrganizationID says where. A caller is still not bound to a
+// project — projects scope resources within an organization — but every caller
+// belongs to exactly one organization for the life of a request, and a request
+// can never reach across that line.
 type Principal struct {
 	Kind Kind `json:"kind,omitempty"`
 	// KeyID is set for KindAPIKey.
 	KeyID string `json:"key_id,omitempty"`
-	// OperatorID and Username are set for KindOperator.
-	OperatorID string   `json:"operator_id,omitempty"`
-	Username   string   `json:"username,omitempty"`
-	Scopes     []string `json:"scopes"`
+	// OperatorID and Email are set for KindOperator.
+	OperatorID     string   `json:"operator_id,omitempty"`
+	Email          string   `json:"email,omitempty"`
+	OrganizationID string   `json:"organization_id,omitempty"`
+	Scopes         []string `json:"scopes"`
 }
 
 func (principal Principal) HasScope(required string) bool {

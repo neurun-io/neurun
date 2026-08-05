@@ -11,8 +11,6 @@ import {
 } from "@/lib/view/units";
 import { formatAbsolute, formatRelative, parseInstant } from "@/lib/view/time";
 import { isSecretKey, redactSecrets, redactString, toRedactedJson } from "@/lib/view/redaction";
-import { coerceValues, deriveFields } from "@/lib/view/schema-form";
-import { echoManifest } from "./msw/fixtures";
 
 describe("status legend", () => {
   it("classifies known states without relying on colour", () => {
@@ -147,52 +145,5 @@ describe("secret redaction", () => {
     const copied = toRedactedJson({ input: { message: "hi" }, api_key: "neu_a_b.c" });
     expect(copied).toContain('"message": "hi"');
     expect(copied).not.toContain("neu_a_b.c");
-  });
-});
-
-describe("schema-generated forms", () => {
-  const fields = deriveFields(echoManifest.input_schema)!;
-
-  it("derives typed fields from the published input schema", () => {
-    expect(fields.map((field) => field.name)).toEqual(["message", "repeat", "loud", "api_key"]);
-
-    expect(fields[0]).toMatchObject({ kind: "string", required: true, maxLength: 256 });
-    expect(fields[1]).toMatchObject({ kind: "integer", required: false, minimum: 1, maximum: 10 });
-    expect(fields[2]).toMatchObject({ kind: "boolean" });
-  });
-
-  it("marks secret-looking fields so the control can mask them", () => {
-    expect(fields.find((field) => field.name === "api_key")?.secret).toBe(true);
-    expect(fields.find((field) => field.name === "message")?.secret).toBe(false);
-  });
-
-  it("falls back to the raw editor when the schema is not a plain object", () => {
-    expect(deriveFields({ type: "string" })).toBeNull();
-    expect(deriveFields(undefined)).toBeNull();
-  });
-
-  it("coerces string form state into a typed payload", () => {
-    const { input, errors } = coerceValues(fields, {
-      message: "hello",
-      repeat: "3",
-      loud: "true",
-      api_key: "",
-    });
-
-    expect(errors).toEqual({});
-    // The empty optional field is omitted, not sent as "".
-    expect(input).toEqual({ message: "hello", repeat: 3, loud: true });
-  });
-
-  it("reports constraint violations per field", () => {
-    const { errors } = coerceValues(fields, {
-      message: "",
-      repeat: "99",
-      loud: "false",
-      api_key: "",
-    });
-
-    expect(errors.message).toBe("Required.");
-    expect(errors.repeat).toBe("Must be at most 10.");
   });
 });

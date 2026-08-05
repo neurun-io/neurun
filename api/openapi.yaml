@@ -42,6 +42,76 @@ paths:
                   built_at: {type: string}
                   api_version: {type: string}
                   schema_version: {type: string}
+  /v1/auth/register:
+    post:
+      security: []
+      operationId: register
+      description: >-
+        Create an account and sign it in. The organization is optional: supply
+        organization_name to start one you own, or invite_token to join one you
+        were invited to, or neither and create or join later. An account may own
+        one organization and join any number. Per-IP limiting belongs at the
+        edge, not in the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: {type: string, format: email}
+                password: {type: string, format: password}
+                organization_name: {type: string}
+                invite_token: {type: string}
+      responses:
+        "201":
+          description: >-
+            Account created. The session cookie is set unless sign-in failed, in
+            which case operator is absent and the caller signs in normally.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, member]
+                properties:
+                  user: {$ref: "#/components/schemas/User"}
+                  organization: {$ref: "#/components/schemas/Organization"}
+                  member: {$ref: "#/components/schemas/Member"}
+                  operator: {$ref: "#/components/schemas/Operator"}
+                  request_id: {type: string}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "410": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /v1/invites/lookup:
+    get:
+      security: []
+      operationId: lookupInvite
+      description: >-
+        Name the organization a token would join, without spending it, so a
+        sign-up page can show it before the account exists.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: The invitation is live.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization, email, role]
+                properties:
+                  organization: {$ref: "#/components/schemas/Organization"}
+                  email: {type: string, format: email}
+                  role: {$ref: "#/components/schemas/Role"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "410": {$ref: "#/components/responses/Problem"}
   /v1/auth/login:
     post:
       security: []
@@ -53,9 +123,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [username, password]
+              required: [email, password]
               properties:
-                username: {type: string}
+                email: {type: string, format: email}
                 password: {type: string}
       responses:
         "200":
@@ -81,6 +151,205 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/OperatorEnvelope"}
         "401": {$ref: "#/components/responses/Problem"}
+  /v1/organizations:
+    post:
+      operationId: createOrganization
+      description: >-
+        Start an organization. Refused with 409 if the account already owns one.
+        The session cookie is re-issued so the new membership is live at once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: {type: string}
+      responses:
+        "201":
+          description: Organization created and the session moved into it.
+          headers:
+            Location: {$ref: "#/components/headers/Location"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Organization"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+    get:
+      operationId: listOrganizations
+      description: Every organization the signed-in account belongs to.
+      responses:
+        "200":
+          description: Organizations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organizations]
+                properties:
+                  organizations:
+                    type: array
+                    items: {$ref: "#/components/schemas/Organization"}
+  /v1/organization:
+    get:
+      operationId: getOrganization
+      description: The organization this credential acts in.
+      responses:
+        "200":
+          description: Organization.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Organization"}
+    patch:
+      operationId: updateOrganization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: {type: string}
+      responses:
+        "200":
+          description: Organization renamed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Organization"}
+        "409": {$ref: "#/components/responses/Problem"}
+  /v1/members:
+    get:
+      operationId: listMembers
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Members of this organization.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [members]
+                properties:
+                  members:
+                    type: array
+                    items: {$ref: "#/components/schemas/Member"}
+  /v1/members/{user_id}:
+    parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema: {type: string}
+    patch:
+      operationId: updateMember
+      description: >-
+        Change a member role. The owner cannot be demoted, so an organization
+        always has somebody who can administer it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role]
+              properties:
+                role: {$ref: "#/components/schemas/Role"}
+      responses:
+        "200":
+          description: Member updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Member"}
+        "409": {$ref: "#/components/responses/Problem"}
+    delete:
+      operationId: removeMember
+      description: Remove a member. The owner cannot be removed.
+      responses:
+        "204": {description: Member removed.}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+  /v1/invites:
+    get:
+      operationId: listInvites
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Invitations issued by this organization.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invites]
+                properties:
+                  invites:
+                    type: array
+                    items: {$ref: "#/components/schemas/Invite"}
+    post:
+      operationId: createInvite
+      description: >-
+        Offer membership to an address. The token is returned exactly once;
+        only its digest is stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, role]
+              properties:
+                email: {type: string, format: email}
+                role: {$ref: "#/components/schemas/Role"}
+      responses:
+        "201":
+          description: Invitation created.
+          headers:
+            Location: {$ref: "#/components/headers/Location"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CreatedInvite"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /v1/invites/accept:
+    post:
+      operationId: acceptInvite
+      description: Join an organization with an invitation, as an existing account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: {type: string}
+      responses:
+        "200":
+          description: Membership granted.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Member"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "410": {$ref: "#/components/responses/Problem"}
+  /v1/invites/{invite_id}:
+    parameters:
+      - name: invite_id
+        in: path
+        required: true
+        schema: {type: string}
+    delete:
+      operationId: revokeInvite
+      responses:
+        "204": {description: Invitation revoked.}
+        "404": {$ref: "#/components/responses/Problem"}
   /v1/projects:
     get:
       operationId: listProjects
@@ -226,29 +495,6 @@ paths:
                   users:
                     type: array
                     items: {$ref: "#/components/schemas/User"}
-    post:
-      operationId: createUser
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [username, display_name, role, password]
-              properties:
-                username: {type: string}
-                display_name: {type: string}
-                role: {type: string, enum: [admin, operator, viewer]}
-                password: {type: string, format: password}
-      responses:
-        "201":
-          description: User created.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/User"}
   /v1/users/{user_id}:
     parameters:
       - name: user_id
@@ -572,12 +818,12 @@ components:
   schemas:
     Operator:
       type: object
-      required: [operator_id, username, role, project_id, scopes, session_id, expires_at]
+      required: [operator_id, email, organization_id, role, scopes, session_id, expires_at]
       properties:
         operator_id: {type: string}
-        username: {type: string}
-        role: {type: string}
-        project_id: {type: string}
+        email: {type: string, format: email}
+        organization_id: {type: string}
+        role: {$ref: "#/components/schemas/Role"}
         scopes:
           type: array
           items: {type: string}
@@ -591,9 +837,10 @@ components:
         request_id: {type: string}
     Project:
       type: object
-      required: [id, name, created_at, updated_at]
+      required: [id, organization_id, name, created_at, updated_at]
       properties:
         id: {type: string}
+        organization_id: {type: string}
         name: {type: string}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
@@ -606,24 +853,66 @@ components:
         name: {type: string}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    Role:
+      type: string
+      enum: [admin, operator, viewer]
     User:
       type: object
-      required: [id, project_id, username, display_name, role, disabled, created_at, updated_at]
+      required: [id, email, disabled, created_at, updated_at]
       properties:
         id: {type: string}
-        project_id: {type: string}
-        username: {type: string}
-        display_name: {type: string}
-        role: {type: string, enum: [admin, operator, viewer]}
+        email: {type: string, format: email}
         disabled: {type: boolean}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
-    APIKey:
+    Organization:
       type: object
-      required: [id, project_id, name, prefix, scopes, created_at]
+      required: [id, name, owner_user_id, created_at, updated_at]
       properties:
         id: {type: string}
-        project_id: {type: string}
+        name: {type: string}
+        owner_user_id: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    Member:
+      type: object
+      required: [user_id, email, role, owner, created_at, updated_at]
+      properties:
+        user_id: {type: string}
+        email: {type: string, format: email}
+        role: {$ref: "#/components/schemas/Role"}
+        owner: {type: boolean}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    Invite:
+      type: object
+      required: [id, email, role, status, created_at, expires_at]
+      properties:
+        id: {type: string}
+        email: {type: string, format: email}
+        role: {$ref: "#/components/schemas/Role"}
+        invited_by: {type: string}
+        status: {type: string, enum: [pending, accepted, revoked, expired]}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        accepted_at:
+          type: [string, "null"]
+          format: date-time
+    CreatedInvite:
+      allOf:
+        - $ref: "#/components/schemas/Invite"
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: Returned exactly once. Only a digest is stored.
+    APIKey:
+      type: object
+      required: [id, organization_id, name, prefix, scopes, created_at]
+      properties:
+        id: {type: string}
+        organization_id: {type: string}
         user_id: {type: string}
         name: {type: string}
         prefix: {type: string}

@@ -100,6 +100,7 @@ func NewDeploymentService(
 
 func (service *DeploymentService) Create(
 	ctx context.Context,
+	organizationID string,
 	request dto.CreateDeploymentRequest,
 ) (deployment.Deployment, error) {
 	ctx = orBackground(ctx)
@@ -108,7 +109,7 @@ func (service *DeploymentService) Create(
 	}
 	// The app decides the project. An SDK cannot conjure one by naming it, and an
 	// app that does not already exist is refused rather than created.
-	app, err := service.apps.GetByID(ctx, request.AppID)
+	app, err := service.apps.GetByID(ctx, organizationID, request.AppID)
 	if err != nil {
 		return deployment.Deployment{}, err
 	}
@@ -178,13 +179,15 @@ func (service *DeploymentService) Create(
 
 func (service *DeploymentService) Get(
 	ctx context.Context,
+	organizationID string,
 	deploymentID string,
 ) (deployment.Deployment, error) {
-	return service.deployments.GetByID(ctx, deploymentID)
+	return service.deployments.GetByID(ctx, organizationID, deploymentID)
 }
 
 func (service *DeploymentService) List(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 	appID string,
 	limit int,
@@ -193,22 +196,24 @@ func (service *DeploymentService) List(
 		return nil, err
 	}
 	if appID != "" {
-		if _, err := service.apps.GetByID(ctx, appID); err != nil {
+		if _, err := service.apps.GetByID(ctx, organizationID, appID); err != nil {
 			return nil, err
 		}
 	}
-	return service.deployments.List(ctx, projectID, appID, limit)
+	return service.deployments.List(ctx, organizationID, projectID, appID, limit)
 }
 
 func (service *DeploymentService) GetBuild(
 	ctx context.Context,
+	organizationID string,
 	buildID string,
 ) (deployment.Build, error) {
-	return service.deployments.GetBuild(ctx, buildID)
+	return service.deployments.GetBuild(ctx, organizationID, buildID)
 }
 
 func (service *DeploymentService) ListBuilds(
 	ctx context.Context,
+	organizationID string,
 	deploymentID string,
 	limit int,
 ) ([]deployment.Build, error) {
@@ -216,11 +221,13 @@ func (service *DeploymentService) ListBuilds(
 		return nil, err
 	}
 	if deploymentID != "" {
-		if _, err := service.deployments.GetByID(ctx, deploymentID); err != nil {
+		if _, err := service.deployments.GetByID(
+			ctx, organizationID, deploymentID,
+		); err != nil {
 			return nil, err
 		}
 	}
-	return service.deployments.ListBuilds(ctx, deploymentID, limit)
+	return service.deployments.ListBuilds(ctx, organizationID, deploymentID, limit)
 }
 
 // RecoverInterruptedBuilds marks builds a prior process crash left building as
@@ -241,13 +248,14 @@ func (service *DeploymentService) RecoverInterruptedBuilds(
 func (service *DeploymentService) EnsureProject(
 	ctx context.Context,
 	projectID string,
+	organizationID string,
 	name string,
 ) (deployment.Project, error) {
 	if err := deployment.ValidateIdentifier("project_id", projectID); err != nil {
 		return deployment.Project{}, err
 	}
 	now := service.now().UTC().Round(0)
-	record, err := deployment.NewProject(projectID, name, now)
+	record, err := deployment.NewProject(projectID, organizationID, name, now)
 	if err != nil {
 		return deployment.Project{}, err
 	}
@@ -258,13 +266,16 @@ func (service *DeploymentService) EnsureProject(
 // only ever brought into being by an explicit call.
 func (service *DeploymentService) CreateProject(
 	ctx context.Context,
+	organizationID string,
 	name string,
 ) (deployment.Project, error) {
 	id, err := service.allocateID("prj")
 	if err != nil {
 		return deployment.Project{}, err
 	}
-	record, err := deployment.NewProject(id, name, service.now().UTC().Round(0))
+	record, err := deployment.NewProject(
+		id, organizationID, name, service.now().UTC().Round(0),
+	)
 	if err != nil {
 		return deployment.Project{}, err
 	}
@@ -277,35 +288,43 @@ func (service *DeploymentService) CreateProject(
 // shared, so removing them belongs to a separate sweep.
 func (service *DeploymentService) DeleteProject(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 ) error {
-	return service.projects.Delete(ctx, projectID)
+	return service.projects.Delete(ctx, organizationID, projectID)
 }
 
 // DeleteApp destroys an app and the deployments, builds and executions under it.
-func (service *DeploymentService) DeleteApp(ctx context.Context, appID string) error {
-	return service.apps.Delete(ctx, appID)
+func (service *DeploymentService) DeleteApp(
+	ctx context.Context,
+	organizationID string,
+	appID string,
+) error {
+	return service.apps.Delete(ctx, organizationID, appID)
 }
 
 func (service *DeploymentService) GetProject(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 ) (deployment.Project, error) {
-	return service.projects.GetByID(ctx, projectID)
+	return service.projects.GetByID(ctx, organizationID, projectID)
 }
 
 func (service *DeploymentService) ListProjects(
 	ctx context.Context,
+	organizationID string,
 	limit int,
 ) ([]deployment.Project, error) {
 	if err := validateLimit(limit); err != nil {
 		return nil, err
 	}
-	return service.projects.List(ctx, limit)
+	return service.projects.List(ctx, organizationID, limit)
 }
 
 func (service *DeploymentService) UpdateProject(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 	request dto.UpdateProjectRequest,
 ) (deployment.Project, error) {
@@ -314,7 +333,7 @@ func (service *DeploymentService) UpdateProject(
 			"%w: project update is empty", deployment.ErrInvalid,
 		)
 	}
-	record, err := service.projects.GetByID(ctx, projectID)
+	record, err := service.projects.GetByID(ctx, organizationID, projectID)
 	if err != nil {
 		return deployment.Project{}, err
 	}
@@ -326,12 +345,15 @@ func (service *DeploymentService) UpdateProject(
 
 func (service *DeploymentService) CreateApp(
 	ctx context.Context,
+	organizationID string,
 	request dto.CreateAppRequest,
 ) (deployment.App, error) {
 	if err := deployment.ValidateIdentifier("project_id", request.ProjectID); err != nil {
 		return deployment.App{}, err
 	}
-	if _, err := service.projects.GetByID(ctx, request.ProjectID); err != nil {
+	if _, err := service.projects.GetByID(
+		ctx, organizationID, request.ProjectID,
+	); err != nil {
 		return deployment.App{}, err
 	}
 	id, err := service.allocateID("app")
@@ -349,13 +371,15 @@ func (service *DeploymentService) CreateApp(
 
 func (service *DeploymentService) GetApp(
 	ctx context.Context,
+	organizationID string,
 	appID string,
 ) (deployment.App, error) {
-	return service.apps.GetByID(ctx, appID)
+	return service.apps.GetByID(ctx, organizationID, appID)
 }
 
 func (service *DeploymentService) ListApps(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 	name string,
 	limit int,
@@ -366,11 +390,12 @@ func (service *DeploymentService) ListApps(
 	if err := deployment.ValidateAppNameFilter(name); err != nil {
 		return nil, err
 	}
-	return service.apps.List(ctx, projectID, name, limit)
+	return service.apps.List(ctx, organizationID, projectID, name, limit)
 }
 
 func (service *DeploymentService) UpdateApp(
 	ctx context.Context,
+	organizationID string,
 	appID string,
 	request dto.UpdateAppRequest,
 ) (deployment.App, error) {
@@ -379,14 +404,14 @@ func (service *DeploymentService) UpdateApp(
 			"%w: app update is empty", deployment.ErrInvalid,
 		)
 	}
-	record, err := service.apps.GetByID(ctx, appID)
+	record, err := service.apps.GetByID(ctx, organizationID, appID)
 	if err != nil {
 		return deployment.App{}, err
 	}
 	if err := record.Rename(*request.Name, service.now().UTC().Round(0)); err != nil {
 		return deployment.App{}, err
 	}
-	return service.apps.Update(ctx, record)
+	return service.apps.Update(ctx, organizationID, record)
 }
 
 // runBuild is serialized process-wide: a build spends minutes in a toolchain,
@@ -398,7 +423,9 @@ func (service *DeploymentService) runBuild(
 	service.buildMu.Lock()
 	defer service.buildMu.Unlock()
 
-	current, err := service.deployments.GetByID(ctx, record.ID)
+	// Unscoped on purpose: this re-reads a row the caller already reached
+	// through an organization-scoped path, to pick up a concurrent write.
+	current, err := service.deployments.GetByIDUnscoped(ctx, record.ID)
 	if err == nil {
 		record = current
 	} else if !errors.Is(err, deployment.ErrNotFound) {

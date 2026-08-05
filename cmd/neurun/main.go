@@ -47,15 +47,10 @@ func run() error {
 			return doctor(cfg)
 		case "version":
 			return json.NewEncoder(os.Stdout).Encode(buildinfo.Current())
-		case "user":
-			if len(os.Args) < 3 || os.Args[2] != "create" {
-				return errors.New("usage: neurun user create <username> [role]")
-			}
-			return createUser(context.Background(), cfg, os.Args[3:])
 		case "serve":
 		default:
 			return fmt.Errorf(
-				"unknown command %q (expected serve, user, doctor, or version)",
+				"unknown command %q (expected serve, doctor, or version)",
 				os.Args[1],
 			)
 		}
@@ -77,9 +72,6 @@ func run() error {
 }
 
 func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
-	if !cfg.TrustedCodeExecution {
-		return errors.New("local Python execution is disabled; set NEURUN_TRUSTED_CODE_EXECUTION=true only when uploaded code is trusted")
-	}
 	if err := migrations.Apply(cfg.DatabaseURL, cfg.DatabaseSchema); err != nil {
 		return err
 	}
@@ -115,6 +107,10 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 	users, err := repository.NewUserRepository(pool)
+	if err != nil {
+		return err
+	}
+	organizations, err := repository.NewOrganizationRepository(pool)
 	if err != nil {
 		return err
 	}
@@ -165,10 +161,16 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("configure account service: %w", err)
 	}
 	operatorService, err := service.NewOperatorService(
-		users, sessions, cfg.OperatorSessionTTL, nil,
+		users, organizations, sessions, cfg.OperatorSessionTTL, nil,
 	)
 	if err != nil {
 		return fmt.Errorf("configure operator sign-in: %w", err)
+	}
+	organizationService, err := service.NewOrganizationService(
+		organizations, users, nil, nil,
+	)
+	if err != nil {
+		return fmt.Errorf("configure organizations: %w", err)
 	}
 
 	recoveredBuilds, err := deploymentService.RecoverInterruptedBuilds(ctx)
@@ -207,10 +209,11 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	controlAPI, err := api.NewServer(api.ServerOptions{
-		Deployments: deploymentService,
-		Executions:  executionService,
-		Accounts:    accountService,
-		Operators:   operatorService,
+		Deployments:   deploymentService,
+		Executions:    executionService,
+		Accounts:      accountService,
+		Operators:     operatorService,
+		Organizations: organizationService,
 		Ready: func(readyCtx context.Context) error {
 			return errors.Join(
 				pool.Ping(readyCtx), blobStore.Check(readyCtx),

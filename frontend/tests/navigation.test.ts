@@ -25,7 +25,8 @@ describe("focused navigation", () => {
         .filter((item) => item.availability === "future")
         .map((item) => item.href),
     ).toEqual([
-      "/",
+      "/overview",
+      "/runners",
       "/browsers",
       "/proxies",
       "/data-health",

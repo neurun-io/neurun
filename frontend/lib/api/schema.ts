@@ -11,8 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Process liveness */
-        get: operations["getHealth"];
+        get: operations["health"];
         put?: never;
         post?: never;
         delete?: never;
@@ -28,8 +27,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Dependency readiness */
-        get: operations["getReadiness"];
+        get: operations["readiness"];
         put?: never;
         post?: never;
         delete?: never;
@@ -45,8 +43,41 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Build and contract versions */
-        get: operations["getVersion"];
+        get: operations["version"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Create an account and sign it in. The organization is optional: supply organization_name to start one you own, or invite_token to join one you were invited to, or neither and create or join later. An account may own one organization and join any number. Per-IP limiting belongs at the edge, not in the server. */
+        post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Name the organization a token would join, without spending it, so a sign-up page can show it before the account exists. */
+        get: operations["lookupInvite"];
         put?: never;
         post?: never;
         delete?: never;
@@ -64,17 +95,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Exchange a username and password for an operator session
-         * @description Issues a session cookie for a configured operator account. The response
-         *     never contains the session token itself, and it never contains an API
-         *     key.
-         *
-         *     An unknown username, a wrong password, and a disabled account all return
-         *     the same `invalid_credentials` response, so the endpoint cannot be used
-         *     to enumerate accounts. Repeated failures for one username are throttled
-         *     with an increasing delay and answered with `429` plus `Retry-After`.
-         */
         post: operations["operatorLogin"];
         delete?: never;
         options?: never;
@@ -91,12 +111,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Revoke the current operator session
-         * @description Deletes the session server-side and clears the cookie. Intentionally
-         *     idempotent and always `204`: signing out must not reveal whether a
-         *     session existed.
-         */
         post: operations["operatorLogout"];
         delete?: never;
         options?: never;
@@ -111,11 +125,6 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Describe the signed-in operator
-         * @description Returns the current operator, their role and the scopes it grants. A
-         *     missing, expired or unknown session returns `401` and clears the cookie.
-         */
         get: operations["getOperatorSession"];
         put?: never;
         post?: never;
@@ -125,72 +134,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/functions": {
+    "/v1/organizations": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List installed immutable function versions */
-        get: operations["listFunctions"];
+        /** @description Every organization the signed-in account belongs to. */
+        get: operations["listOrganizations"];
         put?: never;
-        post?: never;
+        /** @description Start an organization. Refused with 409 if the account already owns one. The session cookie is re-issued so the new membership is live at once. */
+        post: operations["createOrganization"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/functions/{function_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                function_name: components["parameters"]["FunctionName"];
-            };
-            cookie?: never;
-        };
-        /** Get all installed versions of one function */
-        get: operations["getFunction"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/functions/{function_name}/versions/{version}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                function_name: components["parameters"]["FunctionName"];
-                /** @description Exact immutable version, `stable`, or `latest`. */
-                version: components["parameters"]["FunctionVersion"];
-            };
-            cookie?: never;
-        };
-        /** Resolve an exact version or release alias */
-        get: operations["getFunctionVersion"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/function-manifest-bundle": {
+    "/v1/organization": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get the digest-addressed installed manifest bundle */
-        get: operations["getFunctionManifestBundle"];
+        /** @description The organization this credential acts in. */
+        get: operations["getOrganization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateOrganization"];
+        trace?: never;
+    };
+    "/v1/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listMembers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -199,191 +185,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/functions/{function_name}/invoke": {
+    "/v1/members/{user_id}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                function_name: components["parameters"]["FunctionName"];
+                user_id: string;
             };
             cookie?: never;
         };
         get?: never;
         put?: never;
-        /**
-         * Invoke an installed immutable function
-         * @description `execution=sync` returns the completed invocation. `execution=async`
-         *     accepts an asynchronous job and requires both `functions:invoke` and
-         *     `jobs:write` scopes plus a non-empty `Idempotency-Key` header.
-         *     Asynchronous requests must omit `context` and `timeout_ms` in the
-         *     current release.
-         */
-        post: operations["invokeFunction"];
-        delete?: never;
+        post?: never;
+        /** @description Remove a member. The owner cannot be removed. */
+        delete: operations["removeMember"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** @description Change a member role. The owner cannot be demoted, so an organization always has somebody who can administer it. */
+        patch: operations["updateMember"];
         trace?: never;
     };
-    "/v1/function-invocations": {
+    "/v1/invites": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List invocations visible to the authenticated project */
-        get: operations["listFunctionInvocations"];
+        get: operations["listInvites"];
         put?: never;
-        post?: never;
+        /** @description Offer membership to an address. The token is returned exactly once; only its digest is stored. */
+        post: operations["createInvite"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/function-invocations/{invocation_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                invocation_id: components["parameters"]["InvocationID"];
-            };
-            cookie?: never;
-        };
-        /** Get one project-scoped invocation */
-        get: operations["getFunctionInvocation"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/function-invocations/{invocation_id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                invocation_id: components["parameters"]["InvocationID"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Signal cancellation to a running direct invocation */
-        post: operations["cancelFunctionInvocation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/jobs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List asynchronous jobs for the authenticated project */
-        get: operations["listJobs"];
-        put?: never;
-        /**
-         * Accept a digest-pinned asynchronous function job
-         * @description The supplied exact version or alias is resolved and pinned before
-         *     acceptance. Input is validated against that manifest. The job request
-         *     supports execution contexts `none` and `http_attempt`. The response
-         *     identifies whether the configured backend is durable or process-local.
-         */
-        post: operations["createJob"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/jobs/{job_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: components["parameters"]["JobID"];
-            };
-            cookie?: never;
-        };
-        /** Get one project-scoped asynchronous job */
-        get: operations["getJob"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/jobs/{job_id}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: components["parameters"]["JobID"];
-            };
-            cookie?: never;
-        };
-        /** List the append-only job event stream */
-        get: operations["listJobEvents"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/jobs/{job_id}/attempts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: components["parameters"]["JobID"];
-            };
-            cookie?: never;
-        };
-        /** List immutable execution attempts */
-        get: operations["listJobAttempts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/jobs/{job_id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: components["parameters"]["JobID"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel an asynchronous job
-         * @description Cancellation is intrinsically idempotent for terminal jobs.
-         */
-        post: operations["cancelJob"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/fetch": {
+    "/v1/invites/accept": {
         parameters: {
             query?: never;
             header?: never;
@@ -392,16 +231,300 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Execute the release-owned http.fetch function
-         * @description Maps `request` to the immutable `http.fetch` function and supplies a
-         *     server-owned ephemeral HTTP context with the authenticated project and
-         *     `http` capability. The current function accepts GET and HEAD requests.
-         *     `mode=auto` currently resolves to HTTP; browser mode is not available.
-         *     Async execution additionally requires `jobs:write` and a non-empty
-         *     `Idempotency-Key`.
-         */
-        post: operations["fetch"];
+        /** @description Join an organization with an invitation, as an existing account. */
+        post: operations["acceptInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/{invite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revokeInvite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listProjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateProject"];
+        trace?: never;
+    };
+    "/v1/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listApps"];
+        put?: never;
+        post: operations["createApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{app_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getApp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateApp"];
+        trace?: never;
+    };
+    "/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getUser"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateUser"];
+        trace?: never;
+    };
+    "/v1/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAPIKeys"];
+        put?: never;
+        post: operations["createAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-keys/{api_key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                api_key_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revokeAPIKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBuilds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builds/{build_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                build_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getBuild"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listDeployments"];
+        put?: never;
+        post: operations["createDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{deployment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deployment_id: components["parameters"]["DeploymentID"];
+            };
+            cookie?: never;
+        };
+        get: operations["getDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{deployment_id}/executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deployment_id: components["parameters"]["DeploymentID"];
+            };
+            cookie?: never;
+        };
+        get: operations["listDeploymentExecutions"];
+        put?: never;
+        post: operations["createDeploymentExecution"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listExecutions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/executions/{execution_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: components["parameters"]["ExecutionID"];
+            };
+            cookie?: never;
+        };
+        get: operations["getExecution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/executions/{execution_id}/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: components["parameters"]["ExecutionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rerunExecution"];
         delete?: never;
         options?: never;
         head?: never;
@@ -412,21 +535,172 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        Health: {
-            /** @constant */
-            status: "ok";
+        Operator: {
+            operator_id: string;
+            /** Format: email */
+            email: string;
+            organization_id: string;
+            role: components["schemas"]["Role"];
+            scopes: string[];
+            session_id: string;
+            /** Format: date-time */
+            expires_at: string;
         };
-        Ready: {
-            /** @constant */
-            status: "ready";
+        OperatorEnvelope: {
+            operator: components["schemas"]["Operator"];
+            request_id?: string;
         };
-        Version: {
-            version: string;
-            commit: string;
-            built_at: string;
-            api_version: string;
-            schema_version: string;
-            function_bundle: string;
+        Project: {
+            id: string;
+            organization_id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        App: {
+            id: string;
+            project_id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @enum {string} */
+        Role: "admin" | "operator" | "viewer";
+        User: {
+            id: string;
+            /** Format: email */
+            email: string;
+            disabled: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        Organization: {
+            id: string;
+            name: string;
+            owner_user_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        Member: {
+            user_id: string;
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["Role"];
+            owner: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        Invite: {
+            id: string;
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["Role"];
+            invited_by?: string;
+            /** @enum {string} */
+            status: "pending" | "accepted" | "revoked" | "expired";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            accepted_at?: string | null;
+        };
+        CreatedInvite: components["schemas"]["Invite"] & {
+            /** @description Returned exactly once. Only a digest is stored. */
+            token: string;
+        };
+        APIKey: {
+            id: string;
+            organization_id: string;
+            user_id?: string;
+            name: string;
+            prefix: string;
+            scopes: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            revoked_at?: string;
+        };
+        CreatedAPIKey: components["schemas"]["APIKey"] & {
+            secret: string;
+        };
+        Artifact: {
+            id: string;
+            kind: string;
+            name: string;
+            media_type: string;
+            /** Format: int64 */
+            size_bytes: number;
+            sha256: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        Failure: {
+            code: string;
+            message: string;
+        };
+        Build: {
+            id: string;
+            project_id: string;
+            deployment_id: string;
+            number: number;
+            /** @enum {string} */
+            status: "building" | "ready" | "failed";
+            /** @constant */
+            runtime: "python";
+            entrypoint: string;
+            source_sha256: string;
+            artifacts: components["schemas"]["Artifact"][];
+            failure?: components["schemas"]["Failure"] | null;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at?: string | null;
+        };
+        Deployment: {
+            id: string;
+            project_id: string;
+            app_id: string;
+            /** @constant */
+            runtime: "python";
+            entrypoint: string;
+            /** @enum {string} */
+            status: "uploaded" | "building" | "ready" | "failed";
+            source: components["schemas"]["Artifact"];
+            builds: components["schemas"]["Build"][];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        Execution: {
+            id: string;
+            project_id: string;
+            deployment_id: string;
+            build_id: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "succeeded" | "failed";
+            input: unknown;
+            output?: unknown;
+            failure?: components["schemas"]["Failure"] | null;
+            logs: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            started_at?: string | null;
+            /** Format: date-time */
+            finished_at?: string | null;
+            rerun_of_execution_id?: string;
         };
         Problem: {
             code: string;
@@ -439,504 +713,10 @@ export interface components {
             error: components["schemas"]["Problem"];
             request_id?: string;
         };
-        /**
-         * @description `admin` carries every scope. `operator` can read evidence and submit or
-         *     cancel work. `viewer` can read only — it omits `functions:invoke` and
-         *     `jobs:write`, so a read-only operator cannot start or stop execution.
-         * @enum {string}
-         */
-        OperatorRole: "admin" | "operator" | "viewer";
-        OperatorLoginRequest: {
-            /** @description Compared case-insensitively. */
-            username: string;
-            /** Format: password */
-            password: string;
-        };
-        /**
-         * @description The safe projection of a signed-in operator. Carries no session token and
-         *     no password material.
-         */
-        Operator: {
-            operator_id: string;
-            username: string;
-            role: components["schemas"]["OperatorRole"];
-            /**
-             * @description The project this session acts within. The current foundation is
-             *     single-project; per-operator project scoping arrives with the
-             *     project API.
-             */
-            project_id: string;
-            /** @description Scopes granted by the role. */
-            scopes: string[];
-            session_id: string;
-            /**
-             * Format: date-time
-             * @description Absolute expiry. Sessions are not extended by activity.
-             */
-            expires_at: string;
-        };
-        OperatorLoginResponse: {
-            operator: components["schemas"]["Operator"];
-            request_id?: string;
-        };
-        OperatorSessionResponse: {
-            operator: components["schemas"]["Operator"];
-        };
-        FunctionRef: {
-            name: string;
-            version: string;
-            digest: string;
-        };
-        RequestedFunctionRef: {
-            name: string;
-            /** @default stable */
-            version: string;
-            digest?: string;
-        };
-        JSONSchema: {
-            /** @enum {string} */
-            type?: "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
-            required?: string[];
-            properties?: {
-                [key: string]: components["schemas"]["JSONSchema"];
-            };
-            additionalProperties?: boolean;
-            items?: components["schemas"]["JSONSchema"];
-            enum?: unknown[];
-            minimum?: number;
-            maximum?: number;
-            minLength?: number;
-            maxLength?: number;
-        };
-        FunctionManifest: {
-            name: string;
-            version: string;
-            digest: string;
-            category: string;
-            description?: string;
-            /** @enum {string} */
-            execution_context: "none" | "http_attempt" | "browser_attempt" | "existing_session" | "browser_or_session";
-            /** @enum {string} */
-            side_effects: "pure" | "idempotent" | "non_idempotent";
-            timeout: {
-                /** Format: int64 */
-                default_ms: number;
-                /** Format: int64 */
-                maximum_ms: number;
-            };
-            capabilities?: string[];
-            permissions?: string[];
-            input_schema: components["schemas"]["JSONSchema"];
-            output_schema: components["schemas"]["JSONSchema"];
-            resource_policy?: {
-                [key: string]: unknown;
-            };
-            artifacts?: {
-                [key: string]: unknown;
-            };
-            redaction?: {
-                [key: string]: unknown;
-            };
-            retry?: {
-                [key: string]: unknown;
-            };
-            telemetry?: {
-                [key: string]: unknown;
-            };
-        };
-        FunctionList: {
-            functions: components["schemas"]["FunctionManifest"][];
-        };
-        FunctionDefinition: {
-            name: string;
-            versions: components["schemas"]["FunctionManifest"][];
-        };
-        ManifestBundle: {
-            schema_version: string;
-            bundle_version: string;
-            digest: string;
-            signature?: string;
-            manifests: components["schemas"]["FunctionManifest"][];
-        };
-        /**
-         * @description Public correlation context accepted on a direct invocation. Job,
-         *     attempt, session, ephemeral runtime, and capability authority are
-         *     assigned exclusively by Neurun.
-         */
-        InvocationContextInput: {
-            /** @description Must be omitted or match the authenticated project. */
-            project_id?: string;
-            workflow_step_id?: string;
-        };
-        /**
-         * @description Server-assigned execution context returned with an invocation snapshot.
-         *     Authority-bearing fields are observable here but cannot be supplied
-         *     through InvocationContextInput.
-         */
-        ExecutionContext: {
-            project_id?: string;
-            job_id?: string;
-            attempt_id?: string;
-            session_id?: string;
-            workflow_step_id?: string;
-            ephemeral_http?: boolean;
-            ephemeral_browser?: boolean;
-            capabilities?: string[];
-        };
-        InvokeFunctionRequest: {
-            /** @description Must be omitted or match the authenticated project. */
-            project_id?: string;
-            /** @default stable */
-            version: string;
-            digest?: string;
-            /**
-             * @default sync
-             * @enum {string}
-             */
-            execution: "sync" | "async";
-            context?: components["schemas"]["InvocationContextInput"];
-            input: unknown;
-            /** Format: int64 */
-            timeout_ms?: number;
-            max_attempts?: number;
-        };
-        /** @enum {string} */
-        InvocationStatus: "accepted" | "running" | "succeeded" | "rejected" | "failed" | "timed_out" | "canceled";
-        Failure: {
-            category: string;
-            code?: string;
-            message: string;
-            retryable: boolean;
-            details?: {
-                [key: string]: string;
-            };
-        };
-        Usage: {
-            /** Format: int64 */
-            duration_ms: number;
-            cpu_seconds?: number;
-            /** Format: int64 */
-            peak_rss_bytes?: number;
-            /** Format: int64 */
-            network_bytes?: number;
-            /** Format: int64 */
-            artifact_bytes?: number;
-        };
-        Invocation: {
-            invocation_id: string;
-            /** @description Present on the direct mutation response. */
-            request_id?: string;
-            project_id: string;
-            function: components["schemas"]["FunctionRef"];
-            status: components["schemas"]["InvocationStatus"];
-            side_effect_class?: string;
-            input_hash?: string;
-            redacted_input?: unknown;
-            output?: unknown;
-            output_schema_valid: boolean;
-            failure?: components["schemas"]["Failure"];
-            usage: components["schemas"]["Usage"];
-            artifacts?: {
-                [key: string]: unknown;
-            }[];
-            trace_id: string;
-            span_id: string;
-            context?: components["schemas"]["ExecutionContext"];
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            started_at?: string;
-            /** Format: date-time */
-            finished_at?: string;
-        };
-        InvocationList: {
-            invocations: components["schemas"]["Invocation"][];
-            next_cursor: string;
-        };
-        CreateJobRequest: {
-            /** @description Must be omitted or match the authenticated project. */
-            project_id?: string;
-            function: components["schemas"]["RequestedFunctionRef"];
-            input: unknown;
-            max_attempts?: number;
-        };
-        DurableRequest: {
-            project_id: string;
-            function: components["schemas"]["FunctionRef"];
-            input: unknown;
-            max_attempts: number;
-            retry_policy: {
-                /**
-                 * Format: int64
-                 * @description Go duration encoded as nanoseconds.
-                 */
-                initial_backoff: number;
-                /**
-                 * Format: int64
-                 * @description Go duration encoded as nanoseconds.
-                 */
-                max_backoff: number;
-            };
-            digest: string;
-        };
-        /** @enum {string} */
-        JobState: "accepted" | "queued" | "leased" | "running" | "retry_wait" | "succeeded" | "rejected" | "failed" | "canceled" | "dead_lettered";
-        Job: {
-            id: string;
-            project_id: string;
-            request: components["schemas"]["DurableRequest"];
-            state: components["schemas"]["JobState"];
-            attempt_count: number;
-            max_attempts: number;
-            current_attempt_id?: string;
-            terminal_attempt_id?: string;
-            /** Format: date-time */
-            next_attempt_at?: string;
-            last_failure?: {
-                [key: string]: unknown;
-            };
-            last_retry?: {
-                [key: string]: unknown;
-            };
-            result?: unknown;
-            /** Format: int64 */
-            version: number;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-            /** Format: date-time */
-            completed_at?: string;
-            /** Format: date-time */
-            canceled_at?: string;
-        };
-        AcceptedJob: {
-            job: components["schemas"]["Job"];
-            job_id: string;
-            duplicate: boolean;
-            durability: components["schemas"]["JobDurability"];
-            request_id: string;
-        };
-        /**
-         * @description `durable` survives process restarts through persistent adapters.
-         *     `process_local` is an explicitly enabled development mode and does not.
-         * @enum {string}
-         */
-        JobDurability: "durable" | "process_local";
-        JobList: {
-            jobs: components["schemas"]["Job"][];
-            next_cursor: string;
-        };
-        JobEvent: {
-            id: string;
-            job_id: string;
-            attempt_id?: string;
-            /** Format: int64 */
-            sequence: number;
-            type: string;
-            state: components["schemas"]["JobState"];
-            payload?: unknown;
-            /** Format: date-time */
-            created_at: string;
-        };
-        JobAttempt: {
-            id: string;
-            job_id: string;
-            number: number;
-            agent_id: string;
-            /** @enum {string} */
-            state: "leased" | "running" | "succeeded" | "rejected" | "failed" | "canceled" | "lease_expired";
-            /** Format: int64 */
-            fence: number;
-            /** Format: date-time */
-            lease_expires_at: string;
-            trace_id?: string;
-            failure?: {
-                [key: string]: unknown;
-            };
-            retry?: {
-                [key: string]: unknown;
-            };
-            result?: unknown;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            started_at?: string;
-            /** Format: date-time */
-            finished_at?: string;
-        };
-        CancelJobRequest: {
-            reason?: string;
-        };
-        HTTPFetchInput: {
-            /** Format: uri */
-            url: string;
-            /**
-             * @default GET
-             * @enum {string}
-             */
-            method: "GET" | "HEAD";
-            headers?: {
-                [key: string]: string;
-            };
-        };
-        FetchRequest: {
-            /** @description Must be omitted or match the authenticated project. */
-            project_id?: string;
-            /**
-             * @default auto
-             * @enum {string}
-             */
-            mode: "auto" | "http";
-            /** @default stable */
-            version: string;
-            /**
-             * @default sync
-             * @enum {string}
-             */
-            execution: "sync" | "async";
-            request: components["schemas"]["HTTPFetchInput"];
-            /** Format: int64 */
-            timeout_ms?: number;
-            max_attempts?: number;
-        };
     };
     responses: {
-        /** @description Missing or invalid bearer API key. */
-        Unauthorized: {
-            headers: {
-                "Request-ID": components["headers"]["RequestID"];
-                "WWW-Authenticate"?: string;
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /**
-         * @description The username and password did not match. Returned identically for an
-         *     unknown username, a wrong password, and a disabled account.
-         */
-        InvalidCredentials: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /** @description Too many failed sign-in attempts for this username. */
-        TooManyAttempts: {
-            headers: {
-                /** @description Seconds to wait before attempting again. */
-                "Retry-After"?: number;
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /**
-         * @description No operator accounts are configured, so username and password sign-in is
-         *     unavailable. API-key access is unaffected.
-         */
-        OperatorSignInUnavailable: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /** @description The credential lacks the required scope or project access. */
-        Forbidden: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /** @description Resource does not exist or belongs to another project. */
-        NotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /** @description A required dependency is not ready. */
-        NotReady: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /** @description Request syntax, query, immutable contract, or schema is invalid. */
-        InvalidRequest: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /** @description Mutation body exceeds the configured byte limit. */
-        RequestTooLarge: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /**
-         * @description Asynchronous jobs are disabled because no durable backend is configured
-         *     and volatile development jobs were not explicitly enabled.
-         */
-        AsyncUnavailable: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /** @description Mutation body is not application/json. */
-        UnsupportedMediaType: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /** @description Idempotency, digest pin, or resource state conflict. */
-        Conflict: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /**
-         * @description The function reached a terminal failure. `error.details.invocation`
-         *     contains the persisted invocation snapshot.
-         */
-        InvocationFailure: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorEnvelope"];
-            };
-        };
-        /** @description Unexpected server failure. */
-        InternalError: {
+        /** @description Request could not be completed. */
+        Problem: {
             headers: {
                 [name: string]: unknown;
             };
@@ -946,31 +726,19 @@ export interface components {
         };
     };
     parameters: {
-        FunctionName: string;
-        /** @description Exact immutable version, `stable`, or `latest`. */
-        FunctionVersion: string;
-        InvocationID: string;
-        JobID: string;
         Limit: number;
-        /** @description Opaque cursor returned by the preceding page. */
-        Cursor: string;
-        /** @description Project-scoped client-generated mutation key. */
-        IdempotencyKey: string;
-        /** @description Required when `execution=async`; ignored for synchronous execution. */
-        ConditionalIdempotencyKey: string;
+        DeploymentID: string;
+        ExecutionID: string;
     };
     requestBodies: never;
     headers: {
-        /** @description Per-request transport correlation ID. */
-        RequestID: string;
-        /** @description Persistence guarantee of the configured job backend. */
-        JobDurability: components["schemas"]["JobDurability"];
+        Location: string;
     };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    getHealth: {
+    health: {
         parameters: {
             query?: never;
             header?: never;
@@ -979,59 +747,129 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Process is alive. */
+            /** @description Process is healthy. */
             200: {
                 headers: {
-                    "Request-ID": components["headers"]["RequestID"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Storage is ready. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["Problem"];
+        };
+    };
+    version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build metadata. */
+            200: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Health"];
+                    "application/json": {
+                        version: string;
+                        commit: string;
+                        built_at: string;
+                        api_version: string;
+                        schema_version: string;
+                    };
                 };
             };
         };
     };
-    getReadiness: {
+    register: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    /** Format: password */
+                    password: string;
+                    organization_name?: string;
+                    invite_token?: string;
+                };
+            };
+        };
         responses: {
-            /** @description Server is ready to accept work. */
-            200: {
+            /** @description Account created. The session cookie is set unless sign-in failed, in which case operator is absent and the caller signs in normally. */
+            201: {
                 headers: {
-                    "Request-ID": components["headers"]["RequestID"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Ready"];
+                    "application/json": {
+                        user: components["schemas"]["User"];
+                        organization?: components["schemas"]["Organization"];
+                        member: components["schemas"]["Member"];
+                        operator?: components["schemas"]["Operator"];
+                        request_id?: string;
+                    };
                 };
             };
-            503: components["responses"]["NotReady"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            410: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
-    getVersion: {
+    lookupInvite: {
         parameters: {
-            query?: never;
+            query: {
+                token: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Build information. */
+            /** @description The invitation is live. */
             200: {
                 headers: {
-                    "Request-ID": components["headers"]["RequestID"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Version"];
+                    "application/json": {
+                        organization: components["schemas"]["Organization"];
+                        /** Format: email */
+                        email: string;
+                        role: components["schemas"]["Role"];
+                    };
                 };
             };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            410: components["responses"]["Problem"];
         };
     };
     operatorLogin: {
@@ -1043,31 +881,24 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OperatorLoginRequest"];
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    password: string;
+                };
             };
         };
         responses: {
-            /** @description Sign-in succeeded and a session cookie was set. */
+            /** @description Operator session created. */
             200: {
                 headers: {
-                    /**
-                     * @description `neurun_operator_session=<token>; Path=/; HttpOnly; Secure;
-                     *     SameSite=Strict`.
-                     */
-                    "Set-Cookie"?: string;
-                    "Request-ID": components["headers"]["RequestID"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperatorLoginResponse"];
+                    "application/json": components["schemas"]["OperatorEnvelope"];
                 };
             };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["InvalidCredentials"];
-            413: components["responses"]["RequestTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            429: components["responses"]["TooManyAttempts"];
-            503: components["responses"]["OperatorSignInUnavailable"];
+            401: components["responses"]["Problem"];
         };
     };
     operatorLogout: {
@@ -1079,11 +910,9 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The session is revoked and the cookie cleared. */
+            /** @description Session cleared. */
             204: {
                 headers: {
-                    /** @description An expired `neurun_operator_session` cookie. */
-                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -1099,100 +928,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The session is live. */
+            /** @description Current operator. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperatorSessionResponse"];
+                    "application/json": components["schemas"]["OperatorEnvelope"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            503: components["responses"]["OperatorSignInUnavailable"];
+            401: components["responses"]["Problem"];
         };
     };
-    listFunctions: {
-        parameters: {
-            query?: {
-                category?: string;
-                capability?: string;
-                /** @description The current release supports only `available`. */
-                status?: "available";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Exact installed function versions in deterministic order. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FunctionList"];
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-        };
-    };
-    getFunction: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                function_name: components["parameters"]["FunctionName"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Function definition and exact versions. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FunctionDefinition"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getFunctionVersion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                function_name: components["parameters"]["FunctionName"];
-                /** @description Exact immutable version, `stable`, or `latest`. */
-                version: components["parameters"]["FunctionVersion"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Resolved immutable manifest. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FunctionManifest"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getFunctionManifestBundle: {
+    listOrganizations: {
         parameters: {
             query?: never;
             header?: never;
@@ -1201,81 +949,99 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Normalized manifest bundle. */
+            /** @description Organizations. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ManifestBundle"];
+                    "application/json": {
+                        organizations: components["schemas"]["Organization"][];
+                    };
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
         };
     };
-    invokeFunction: {
+    createOrganization: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description Required when `execution=async`; ignored for synchronous execution. */
-                "Idempotency-Key"?: components["parameters"]["ConditionalIdempotencyKey"];
-            };
-            path: {
-                function_name: components["parameters"]["FunctionName"];
-            };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["InvokeFunctionRequest"];
+                "application/json": {
+                    name: string;
+                };
             };
         };
         responses: {
-            /** @description Synchronous invocation completed successfully. */
+            /** @description Organization created and the session moved into it. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Invocation"];
+                    "application/json": components["schemas"]["Organization"];
                 };
             };
-            /** @description Asynchronous job accepted or idempotently replayed. */
-            202: {
+        };
+    };
+    updateOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Organization renamed. */
+            200: {
                 headers: {
-                    Location?: string;
-                    "Idempotent-Replayed"?: "true";
-                    "Neurun-Job-Durability": components["headers"]["JobDurability"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AcceptedJob"];
+                    "application/json": components["schemas"]["Organization"];
                 };
             };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            413: components["responses"]["RequestTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["InvalidRequest"];
-            500: components["responses"]["InternalError"];
-            502: components["responses"]["InvocationFailure"];
-            503: components["responses"]["AsyncUnavailable"];
-            504: components["responses"]["InvocationFailure"];
+            409: components["responses"]["Problem"];
         };
     };
-    listFunctionInvocations: {
+    listMembers: {
         parameters: {
             query?: {
-                function?: string;
-                version?: string;
-                status?: components["schemas"]["InvocationStatus"];
                 limit?: components["parameters"]["Limit"];
-                /** @description Opaque cursor returned by the preceding page. */
-                cursor?: components["parameters"]["Cursor"];
             };
             header?: never;
             path?: never;
@@ -1283,85 +1049,74 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Project-scoped invocation page. */
+            /** @description Members of this organization. */
             200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InvocationList"];
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-        };
-    };
-    getFunctionInvocation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                invocation_id: components["parameters"]["InvocationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Invocation snapshot. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Invocation"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    cancelFunctionInvocation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                invocation_id: components["parameters"]["InvocationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cancellation signal was delivered. */
-            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        invocation_id: string;
-                        request_id: string;
-                        /** @constant */
-                        status: "cancel_requested";
+                        members: components["schemas"]["Member"][];
                     };
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
         };
     };
-    listJobs: {
+    removeMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    updateMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    role: components["schemas"]["Role"];
+                };
+            };
+        };
+        responses: {
+            /** @description Member updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    listInvites: {
         parameters: {
             query?: {
-                /** @description Repeat or provide a comma-separated set. */
-                status?: components["schemas"]["JobState"][];
-                created_after?: string;
                 limit?: components["parameters"]["Limit"];
-                /** @description Opaque cursor returned by the preceding page. */
-                cursor?: components["parameters"]["Cursor"];
             };
             header?: never;
             path?: never;
@@ -1369,225 +1124,700 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Project-scoped job page. */
+            /** @description Invitations issued by this organization. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JobList"];
+                    "application/json": {
+                        invites: components["schemas"]["Invite"][];
+                    };
                 };
             };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
         };
     };
-    createJob: {
+    createInvite: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Project-scoped client-generated mutation key. */
-                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateJobRequest"];
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    role: components["schemas"]["Role"];
+                };
             };
         };
         responses: {
-            /** @description Job accepted or idempotently replayed. */
-            202: {
+            /** @description Invitation created. */
+            201: {
                 headers: {
-                    Location?: string;
-                    "Idempotent-Replayed"?: "true";
-                    "Neurun-Job-Durability": components["headers"]["JobDurability"];
+                    Location: components["headers"]["Location"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AcceptedJob"];
+                    "application/json": components["schemas"]["CreatedInvite"];
                 };
             };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            413: components["responses"]["RequestTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["InvalidRequest"];
-            503: components["responses"]["AsyncUnavailable"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
-    getJob: {
+    acceptInvite: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                job_id: components["parameters"]["JobID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Job snapshot. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Job"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listJobEvents: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: components["parameters"]["JobID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Events in ascending job-local sequence order. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        events: components["schemas"]["JobEvent"][];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listJobAttempts: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: components["parameters"]["JobID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Attempts in creation order. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        attempts: components["schemas"]["JobAttempt"][];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    cancelJob: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: components["parameters"]["JobID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["CancelJobRequest"];
-            };
-        };
-        responses: {
-            /** @description Current canceled or already-terminal job snapshot. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        job: components["schemas"]["Job"];
-                        duplicate: boolean;
-                        request_id: string;
-                    };
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            413: components["responses"]["RequestTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["InvalidRequest"];
-        };
-    };
-    fetch: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Required when `execution=async`; ignored for synchronous execution. */
-                "Idempotency-Key"?: components["parameters"]["ConditionalIdempotencyKey"];
-            };
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["FetchRequest"];
+                "application/json": {
+                    token: string;
+                };
             };
         };
         responses: {
-            /** @description Synchronous HTTP function invocation. */
+            /** @description Membership granted. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Invocation"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
-            /** @description Asynchronous HTTP job accepted. */
-            202: {
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            410: components["responses"]["Problem"];
+        };
+    };
+    revokeInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation revoked. */
+            204: {
                 headers: {
-                    Location?: string;
-                    "Idempotent-Replayed"?: "true";
-                    "Neurun-Job-Durability": components["headers"]["JobDurability"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    listProjects: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Projects visible to the principal. */
+            200: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AcceptedJob"];
+                    "application/json": {
+                        projects: components["schemas"]["Project"][];
+                    };
                 };
             };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            413: components["responses"]["RequestTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["InvalidRequest"];
-            500: components["responses"]["InternalError"];
-            502: components["responses"]["InvocationFailure"];
-            503: components["responses"]["AsyncUnavailable"];
-            504: components["responses"]["InvocationFailure"];
+        };
+    };
+    getProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated project. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+        };
+    };
+    listApps: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+                /** @description Return the app with this exact project-scoped name. */
+                name?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Apps in the authenticated project. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        apps: components["schemas"]["App"][];
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    createApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description App created. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    getApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description App updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project users. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        users: components["schemas"]["User"][];
+                    };
+                };
+            };
+        };
+    };
+    getUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    display_name?: string;
+                    /** @enum {string} */
+                    role?: "admin" | "operator" | "viewer";
+                    disabled?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description User updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+        };
+    };
+    listAPIKeys: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project API keys. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        api_keys: components["schemas"]["APIKey"][];
+                    };
+                };
+            };
+        };
+    };
+    createAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    user_id?: string;
+                    scopes: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Key created; secret is returned only here. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedAPIKey"];
+                };
+            };
+        };
+    };
+    revokeAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                api_key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Key revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIKey"];
+                };
+            };
+        };
+    };
+    listBuilds: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+                deployment_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project builds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        builds: components["schemas"]["Build"][];
+                    };
+                };
+            };
+        };
+    };
+    getBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                build_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Build"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    listDeployments: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+                /** @description Return only deployments owned by this project-scoped App. */
+                app_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project deployments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deployments: components["schemas"]["Deployment"][];
+                    };
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    createDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    app_id: string;
+                    /** @constant */
+                    runtime: "python";
+                    /** @default main.py:handler */
+                    entrypoint?: string;
+                    /** Format: binary */
+                    source: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Deployment built successfully. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deployment"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            413: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deployment_id: components["parameters"]["DeploymentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deployment"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    listDeploymentExecutions: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                deployment_id: components["parameters"]["DeploymentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Executions for this deployment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        executions: components["schemas"]["Execution"][];
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    createDeploymentExecution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deployment_id: components["parameters"]["DeploymentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    input: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Execution durably queued and pinned to the latest ready build. */
+            202: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Execution"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listExecutions: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+                deployment_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project executions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        executions: components["schemas"]["Execution"][];
+                    };
+                };
+            };
+        };
+    };
+    getExecution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: components["parameters"]["ExecutionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Execution. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Execution"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    rerunExecution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: components["parameters"]["ExecutionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New execution queued with the exact original build and input. */
+            202: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Execution"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
 }

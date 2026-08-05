@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -12,14 +11,13 @@ import (
 
 	"github.com/neurun-io/neurun/internal/domain/account"
 	"github.com/neurun-io/neurun/internal/domain/operator"
+	"github.com/neurun-io/neurun/internal/domain/organization"
 )
 
-const userColumns = `id, username, display_name, role, disabled,
-	created_at, updated_at`
+const userColumns = `id, email, disabled, created_at, updated_at`
 
-// UserRepository stores global identities. A user is not scoped to a project;
-// what they may do comes from their role, and what they may reach comes from
-// the scopes their session or key carries.
+// UserRepository stores global identities. What a user may do comes from their
+// membership of an organization, not from anything held here.
 type UserRepository struct {
 	pool *pgxpool.Pool
 }
@@ -34,8 +32,8 @@ func NewUserRepository(pool *pgxpool.Pool) (*UserRepository, error) {
 func scanUser(row pgx.CollectableRow) (account.User, error) {
 	var record account.User
 	err := row.Scan(
-		&record.ID, &record.Username, &record.DisplayName, &record.Role,
-		&record.Disabled, &record.CreatedAt, &record.UpdatedAt,
+		&record.ID, &record.Email, &record.Disabled,
+		&record.CreatedAt, &record.UpdatedAt,
 	)
 	return record, err
 }
@@ -47,12 +45,9 @@ func (repository *UserRepository) Create(
 ) error {
 	_, err := repository.pool.Exec(
 		ctx,
-		`INSERT INTO users
-		 (id, username, display_name, role, password_hash,
-		  disabled, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, false, $6, $6)`,
-		record.ID, record.Username, record.DisplayName,
-		record.Role, passwordHash, record.CreatedAt,
+		`INSERT INTO users (id, email, password_hash, disabled, created_at, updated_at)
+		 VALUES ($1, $2, $3, false, $4, $4)`,
+		record.ID, record.Email, passwordHash, record.CreatedAt,
 	)
 	if err != nil {
 		return classifyWriteError("create user", err)
@@ -80,15 +75,41 @@ func (repository *UserRepository) GetByID(
 	return record, nil
 }
 
+func (repository *UserRepository) GetByEmail(
+	ctx context.Context,
+	email string,
+) (account.User, error) {
+	rows, err := repository.pool.Query(
+		ctx, `SELECT `+userColumns+` FROM users WHERE email = $1`,
+		account.NormalizeEmail(email),
+	)
+	if err != nil {
+		return account.User{}, fmt.Errorf("read user: %w", err)
+	}
+	record, err := pgx.CollectExactlyOneRow(rows, scanUser)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return account.User{}, account.ErrNotFound
+	}
+	if err != nil {
+		return account.User{}, fmt.Errorf("read user: %w", err)
+	}
+	return record, nil
+}
+
+// List returns the members of one organization, not every user on the install.
 func (repository *UserRepository) List(
 	ctx context.Context,
+	organizationID string,
 	limit int,
 ) ([]account.User, error) {
 	rows, err := repository.pool.Query(
 		ctx,
-		`SELECT `+userColumns+` FROM users
-		 ORDER BY created_at DESC, id DESC LIMIT $1`,
-		postgresLimit(limit),
+		`SELECT u.id, u.email, u.disabled, u.created_at, u.updated_at
+		 FROM users u
+		 JOIN organization_members m ON m.user_id = u.id
+		 WHERE m.organization_id = $1
+		 ORDER BY u.created_at DESC, u.id DESC LIMIT $2`,
+		organizationID, postgresLimit(limit),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
@@ -106,11 +127,8 @@ func (repository *UserRepository) Update(
 ) error {
 	tag, err := repository.pool.Exec(
 		ctx,
-		`UPDATE users SET display_name = $2, role = $3, disabled = $4,
-		     updated_at = $5
-		 WHERE id = $1`,
-		record.ID, record.DisplayName, record.Role,
-		record.Disabled, record.UpdatedAt,
+		`UPDATE users SET email = $2, disabled = $3, updated_at = $4 WHERE id = $1`,
+		record.ID, record.Email, record.Disabled, record.UpdatedAt,
 	)
 	if err != nil {
 		return classifyWriteError("update user", err)
@@ -121,13 +139,12 @@ func (repository *UserRepository) Update(
 	return nil
 }
 
-// Delete removes a person. Nothing they own goes with them: keys they minted
-// survive with their attribution cleared, and every project resource is
-// untouched.
+// Delete removes a person. Keys they minted survive with their attribution
+// cleared; an organization they own refuses the delete.
 func (repository *UserRepository) Delete(ctx context.Context, userID string) error {
 	tag, err := repository.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
 	if err != nil {
-		return fmt.Errorf("delete user: %w", err)
+		return classifyWriteError("delete user", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return account.ErrNotFound
@@ -153,20 +170,19 @@ func (repository *UserRepository) Exists(
 	return exists, nil
 }
 
-// CredentialByUsername returns the sign-in projection, password hash included.
-func (repository *UserRepository) CredentialByUsername(
+// CredentialByEmail returns the sign-in projection, password hash included.
+func (repository *UserRepository) CredentialByEmail(
 	ctx context.Context,
-	username string,
+	email string,
 ) (operator.Account, error) {
 	var record operator.Account
-	var role string
 	err := repository.pool.QueryRow(
 		ctx,
-		`SELECT id, username, role, password_hash, disabled, created_at
-		 FROM users WHERE username = $1`,
-		strings.ToLower(strings.TrimSpace(username)),
+		`SELECT id, email, password_hash, disabled, created_at
+		 FROM users WHERE email = $1`,
+		account.NormalizeEmail(email),
 	).Scan(
-		&record.ID, &record.Username, &role,
+		&record.ID, &record.Email,
 		&record.PasswordHash, &record.Disabled, &record.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -175,31 +191,62 @@ func (repository *UserRepository) CredentialByUsername(
 	if err != nil {
 		return operator.Account{}, fmt.Errorf("read operator account: %w", err)
 	}
-	record.Role = operator.Role(role)
 	return record, nil
 }
 
-// LiveRole returns the current role of an enabled user, so a session issued
-// before a demotion or a disable stops carrying the old scopes.
+// CredentialByID is the same projection as CredentialByEmail, for the paths
+// that have already established who the caller is.
+func (repository *UserRepository) CredentialByID(
+	ctx context.Context,
+	userID string,
+) (operator.Account, error) {
+	var record operator.Account
+	err := repository.pool.QueryRow(
+		ctx,
+		`SELECT id, email, password_hash, disabled, created_at
+		 FROM users WHERE id = $1`,
+		userID,
+	).Scan(
+		&record.ID, &record.Email,
+		&record.PasswordHash, &record.Disabled, &record.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return operator.Account{}, operator.ErrAccountNotFound
+	}
+	if err != nil {
+		return operator.Account{}, fmt.Errorf("read operator account: %w", err)
+	}
+	return record, nil
+}
+
+// LiveRole returns the role an enabled user currently holds in one
+// organization, so a session issued before a demotion, a removal or a disable
+// stops carrying the old scopes on its next request.
 func (repository *UserRepository) LiveRole(
 	ctx context.Context,
 	userID string,
-) (operator.Role, error) {
+	organizationID string,
+) (organization.Role, error) {
 	var role string
 	var disabled bool
 	err := repository.pool.QueryRow(
-		ctx, `SELECT role, disabled FROM users WHERE id = $1`, userID,
+		ctx,
+		`SELECT m.role, u.disabled
+		 FROM users u
+		 JOIN organization_members m ON m.user_id = u.id
+		 WHERE u.id = $1 AND m.organization_id = $2`,
+		userID, organizationID,
 	).Scan(&role, &disabled)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", operator.ErrAccountNotFound
+		return "", organization.ErrNotMember
 	}
 	if err != nil {
-		return "", fmt.Errorf("read operator role: %w", err)
+		return "", fmt.Errorf("read member role: %w", err)
 	}
 	if disabled {
 		return "", operator.ErrAccountDisabled
 	}
-	return operator.Role(role), nil
+	return organization.Role(role), nil
 }
 
 func classifyWriteError(operation string, err error) error {
@@ -215,6 +262,13 @@ func classifyWriteError(operation string, err error) error {
 				"%w: %s violates a resource constraint", account.ErrInvalid, operation,
 			)
 		}
+		// Unmapped codes become a 500, so carry enough to diagnose one: 23502
+		// (not-null) and 42703 (undefined column) both mean the schema on disk
+		// is older than this binary.
+		return fmt.Errorf(
+			"%s: postgres %s on %s: %w",
+			operation, postgres.Code, postgres.TableName, err,
+		)
 	}
 	return fmt.Errorf("%s: %w", operation, err)
 }

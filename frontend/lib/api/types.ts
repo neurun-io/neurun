@@ -12,95 +12,46 @@ import type { components } from "./schema";
 
 type Schemas = components["schemas"];
 
-export type Health = Schemas["Health"];
-export type Ready = Schemas["Ready"];
-export type Version = Schemas["Version"];
-
 export type Problem = Schemas["Problem"];
-export type Operator = Schemas["Operator"];
-export type OperatorRole = Schemas["OperatorRole"];
-export type OperatorLoginRequest = Schemas["OperatorLoginRequest"];
 export type ErrorEnvelope = Schemas["ErrorEnvelope"];
+export type Operator = Schemas["Operator"];
+export type Role = Schemas["Role"];
 
-export type FunctionRef = Schemas["FunctionRef"];
-export type RequestedFunctionRef = Schemas["RequestedFunctionRef"];
-export type JSONSchema = Schemas["JSONSchema"];
-export type FunctionManifest = Schemas["FunctionManifest"];
-export type FunctionList = Schemas["FunctionList"];
-export type FunctionDefinition = Schemas["FunctionDefinition"];
-export type ManifestBundle = Schemas["ManifestBundle"];
+export type Organization = Schemas["Organization"];
+export type Member = Schemas["Member"];
+export type Invite = Schemas["Invite"];
+export type CreatedInvite = Schemas["CreatedInvite"];
 
-export type ExecutionContext = Schemas["ExecutionContext"];
-export type InvokeFunctionRequest = Schemas["InvokeFunctionRequest"];
-export type InvocationStatus = Schemas["InvocationStatus"];
-export type Invocation = Schemas["Invocation"];
-export type InvocationList = Schemas["InvocationList"];
-
+export type Project = Schemas["Project"];
+export type App = Schemas["App"];
+export type Deployment = Schemas["Deployment"];
+export type Build = Schemas["Build"];
+export type Execution = Schemas["Execution"];
+export type Artifact = Schemas["Artifact"];
 export type Failure = Schemas["Failure"];
-export type Usage = Schemas["Usage"];
+export type User = Schemas["User"];
+export type APIKey = Schemas["APIKey"];
+export type CreatedAPIKey = Schemas["CreatedAPIKey"];
 
-export type CreateJobRequest = Schemas["CreateJobRequest"];
-export type DurableRequest = Schemas["DurableRequest"];
-export type JobState = Schemas["JobState"];
-export type Job = Schemas["Job"];
-export type AcceptedJob = Schemas["AcceptedJob"];
-export type JobDurability = Schemas["JobDurability"];
-export type JobList = Schemas["JobList"];
-export type JobEvent = Schemas["JobEvent"];
-export type JobAttempt = Schemas["JobAttempt"];
-export type JobAttemptState = JobAttempt["state"];
-
-export type HTTPFetchInput = Schemas["HTTPFetchInput"];
-export type FetchRequest = Schemas["FetchRequest"];
-
-/**
- * The manifest's execution context. Only `none` and `http_attempt` accept
- * asynchronous execution in the current release.
- */
-export type FunctionExecutionContext = FunctionManifest["execution_context"];
-
-/** Execution contexts the current server will accept as an async job. */
-export const ASYNC_CAPABLE_EXECUTION_CONTEXTS = ["none", "http_attempt"] as const;
-
-export function acceptsAsyncExecution(manifest: Pick<FunctionManifest, "execution_context">) {
-  return (ASYNC_CAPABLE_EXECUTION_CONTEXTS as readonly string[]).includes(
-    manifest.execution_context,
-  );
+/** What the server reports about itself. Not a component schema. */
+export interface Version {
+  version: string;
+  commit: string;
+  built_at: string;
+  api_version: string;
+  schema_version: string;
 }
 
-/**
- * `http.fetch` is the current generic-invoke exception: a public client cannot
- * assign the trusted HTTP context a synchronous generic `/invoke` requires, so
- * synchronous HTTP work must go through `POST /v1/fetch`.
- */
-export const HTTP_FETCH_FUNCTION_NAME = "http.fetch";
+/** Execution states from which no further transition occurs. */
+export const TERMINAL_EXECUTION_STATUSES = ["succeeded", "failed"] as const;
 
-export function requiresFetchEndpointForSync(functionName: string) {
-  return functionName === HTTP_FETCH_FUNCTION_NAME;
+export function isTerminalExecutionStatus(status: string): boolean {
+  return (TERMINAL_EXECUTION_STATUSES as readonly string[]).includes(status);
 }
 
-/** Job states from which no further transition occurs. */
-export const TERMINAL_JOB_STATES = [
-  "succeeded",
-  "rejected",
-  "failed",
-  "canceled",
-  "dead_lettered",
-] as const satisfies readonly JobState[];
+/** Build and deployment states from which no further transition occurs. */
+export const TERMINAL_BUILD_STATUSES = ["ready", "failed"] as const;
 
-export function isTerminalJobState(state: string): boolean {
-  return (TERMINAL_JOB_STATES as readonly string[]).includes(state);
-}
-
-/** Invocation statuses from which no further transition occurs. */
-export const TERMINAL_INVOCATION_STATUSES = [
-  "succeeded",
-  "rejected",
-  "failed",
-  "timed_out",
-  "canceled",
-] as const satisfies readonly InvocationStatus[];
-
-export function isTerminalInvocationStatus(status: string): boolean {
-  return (TERMINAL_INVOCATION_STATUSES as readonly string[]).includes(status);
+export function isTerminalBuildStatus(status: string): boolean {
+  return (TERMINAL_BUILD_STATUSES as readonly string[]).includes(status);
 }

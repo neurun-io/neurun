@@ -80,9 +80,7 @@ const appSchema = z.looseObject({
 });
 const userSchema = z.looseObject({
   id: z.string(),
-  username: z.string(),
-  display_name: z.string(),
-  role: z.enum(["admin", "operator", "viewer"]),
+  email: z.string(),
   disabled: z.boolean(),
   created_at: timestampSchema,
   updated_at: timestampSchema,
@@ -254,18 +252,9 @@ export function listUsers(signal?: AbortSignal) {
   );
 }
 
-export function createUser(body: {
-  username: string;
-  display_name: string;
-  role: UserRole;
-  password: string;
-}) {
-  return request<User>({ method: "POST", path: "/v1/users", body }, userSchema as never);
-}
-
 export function updateUser(
   id: string,
-  body: { display_name?: string; role?: UserRole; disabled?: boolean },
+  body: { email?: string; disabled?: boolean },
 ) {
   return request<User>(
     { method: "PATCH", path: `/v1/users/${segment(id)}`, body },

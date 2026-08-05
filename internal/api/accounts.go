@@ -13,26 +13,14 @@ func (server *Server) listUsers(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	records, err := server.accounts.ListUsers(ctx.Request.Context(), limit)
+	records, err := server.accounts.ListUsers(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, limit,
+	)
 	if err != nil {
 		writeError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"users": dto.NewUserResponses(records)})
-}
-
-func (server *Server) createUser(ctx *gin.Context) {
-	var body dto.CreateUserRequest
-	if !server.bindJSON(ctx, &body) {
-		return
-	}
-	record, err := server.accounts.CreateUser(ctx.Request.Context(), body)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	ctx.Header("Location", "/v1/users/"+record.ID)
-	ctx.JSON(http.StatusCreated, dto.NewUserResponse(record))
 }
 
 func (server *Server) getUser(ctx *gin.Context) {
@@ -49,7 +37,7 @@ func (server *Server) updateUser(ctx *gin.Context) {
 	if !server.bindJSON(ctx, &body) {
 		return
 	}
-	if body.DisplayName == nil && body.Role == nil && body.Disabled == nil {
+	if body.Email == nil && body.Disabled == nil {
 		invalidRequest(ctx, "user update must include at least one field")
 		return
 	}
@@ -78,7 +66,9 @@ func (server *Server) listAPIKeys(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	records, err := server.accounts.ListKeys(ctx.Request.Context(), limit)
+	records, err := server.accounts.ListKeys(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, limit,
+	)
 	if err != nil {
 		writeError(ctx, err)
 		return
@@ -104,7 +94,9 @@ func (server *Server) createAPIKey(ctx *gin.Context) {
 			return
 		}
 	}
-	record, err := server.accounts.CreateKey(ctx.Request.Context(), body)
+	record, err := server.accounts.CreateKey(
+		ctx.Request.Context(), principal.OrganizationID, body,
+	)
 	if err != nil {
 		writeError(ctx, err)
 		return
@@ -115,7 +107,7 @@ func (server *Server) createAPIKey(ctx *gin.Context) {
 
 func (server *Server) revokeAPIKey(ctx *gin.Context) {
 	record, err := server.accounts.RevokeKey(
-		ctx.Request.Context(), ctx.Param("api_key_id"),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("api_key_id"),
 	)
 	if err != nil {
 		writeError(ctx, err)

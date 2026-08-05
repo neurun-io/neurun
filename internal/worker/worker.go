@@ -181,7 +181,7 @@ func (worker *Worker) execute(
 	ctx context.Context,
 	record execution.Execution,
 ) (json.RawMessage, string, *execution.Failure) {
-	found, err := worker.deployments.GetByID(ctx, record.DeploymentID)
+	found, err := worker.deployments.GetByIDUnscoped(ctx, record.DeploymentID)
 	if err != nil {
 		return nil, "", newFailure("deployment_unavailable", err)
 	}

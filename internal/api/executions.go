@@ -20,10 +20,11 @@ func (server *Server) createExecution(ctx *gin.Context) {
 		invalidRequest(ctx, `request must contain exactly the "input" field`)
 		return
 	}
-	record, err := server.executions.Create(ctx.Request.Context(), dto.CreateExecutionRequest{
-		DeploymentID: ctx.Param("deployment_id"),
-		Input:        input,
-	})
+	record, err := server.executions.Create(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, dto.CreateExecutionRequest{
+			DeploymentID: ctx.Param("deployment_id"),
+			Input:        input,
+		})
 	if err != nil {
 		writeError(ctx, err)
 		return
@@ -38,7 +39,7 @@ func (server *Server) listDeploymentExecutions(ctx *gin.Context) {
 		return
 	}
 	records, err := server.executions.ListForDeployment(
-		ctx.Request.Context(), ctx.Param("deployment_id"), limit,
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("deployment_id"), limit,
 	)
 	if err != nil {
 		writeError(ctx, err)
@@ -53,7 +54,7 @@ func (server *Server) listExecutions(ctx *gin.Context) {
 		return
 	}
 	records, err := server.executions.List(
-		ctx.Request.Context(),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID,
 		strings.TrimSpace(ctx.Query("project_id")),
 		strings.TrimSpace(ctx.Query("deployment_id")),
 		limit,
@@ -67,7 +68,7 @@ func (server *Server) listExecutions(ctx *gin.Context) {
 
 func (server *Server) getExecution(ctx *gin.Context) {
 	record, err := server.executions.Get(
-		ctx.Request.Context(), ctx.Param("execution_id"),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("execution_id"),
 	)
 	if err != nil {
 		writeError(ctx, err)
@@ -81,7 +82,7 @@ func (server *Server) rerunExecution(ctx *gin.Context) {
 		return
 	}
 	record, err := server.executions.Rerun(
-		ctx.Request.Context(), ctx.Param("execution_id"),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("execution_id"),
 	)
 	if err != nil {
 		writeError(ctx, err)

@@ -3,350 +3,201 @@ import { http, HttpResponse } from "msw";
 
 import { request } from "@/lib/api/client";
 import * as api from "@/lib/api/endpoints";
+import * as resources from "@/lib/api/resources";
 import { NeurunApiError, NeurunContractError } from "@/lib/api/errors";
 import { shouldRetry } from "@/lib/api/query-client";
 import { idempotencyKeys, stableStringify } from "@/lib/api/idempotency";
-import { jobListSchema, jobSchema, validateResponse } from "@/lib/api/runtime";
+import { operatorEnvelopeSchema, validateResponse } from "@/lib/api/runtime";
 import { OPERATOR, OPERATOR_PASSWORD, proxy, server } from "./msw/server";
 import * as fixtures from "./msw/fixtures";
 
 beforeEach(() => idempotencyKeys.clear());
 
 describe("authentication", () => {
-  it("signs in with a username and password", async () => {
-    const operator = await api.operatorLogin(OPERATOR.username, OPERATOR_PASSWORD);
-    expect(operator.username).toBe("alice");
+  it("signs in with an email and password", async () => {
+    const operator = await api.operatorLogin(OPERATOR.email, OPERATOR_PASSWORD);
+    expect(operator.email).toBe("alice@example.com");
     expect(operator.role).toBe("admin");
     expect(operator.scopes).toContain("*");
   });
 
-  it("reports bad credentials without distinguishing which part was wrong", async () => {
-    const error = await api
-      .operatorLogin("alice", "not the password")
-      .catch((cause) => cause);
-
-    expect(error).toBeInstanceOf(NeurunApiError);
-    expect(error.status).toBe(401);
-    expect(error.code).toBe("invalid_credentials");
-    expect(error.requestId).toBe("req_01HXQ8F2BADLOGIN");
+  it("carries the organization the session acts in", async () => {
+    const operator = await api.getOperatorSession();
+    expect(operator.organization_id).toBe("org_01HXQ8F2ACME");
   });
 
-  it("reports when the server has no operator accounts configured", async () => {
+  it("reports bad credentials without distinguishing which part was wrong", async () => {
+    const error = await api
+      .operatorLogin("alice@example.com", "not the password")
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(NeurunApiError);
+    expect((error as NeurunApiError).status).toBe(401);
+    expect((error as NeurunApiError).code).toBe("invalid_credentials");
+  });
+
+  it("reports when sign-in is unavailable on this control plane", async () => {
     server.use(
       http.post(proxy("/v1/auth/login"), () =>
         HttpResponse.json(fixtures.signInUnavailable, { status: 503 }),
       ),
     );
 
-    const error = await api.operatorLogin("alice", OPERATOR_PASSWORD).catch((cause) => cause);
-    expect(error.status).toBe(503);
-    expect(error.code).toBe("operator_signin_unavailable");
-  });
+    const error = await api
+      .operatorLogin("alice@example.com", OPERATOR_PASSWORD)
+      .catch((cause: unknown) => cause);
 
-  it("authenticates with the session cookie and assembles no credential itself", async () => {
-    let authorization: string | null = "unset";
-    let cookie: string | null = "unset";
-    let credentials: RequestCredentials | undefined;
-
-    server.use(
-      http.get(proxy("/v1/functions"), ({ request: intercepted }) => {
-        authorization = intercepted.headers.get("authorization");
-        cookie = intercepted.headers.get("cookie");
-        credentials = intercepted.credentials;
-        return HttpResponse.json({ functions: [] });
-      }),
-    );
-
-    // Sign in here rather than relying on a previous test, so the round-trip
-    // being asserted is this test's own.
-    await api.operatorLogin(OPERATOR.username, OPERATOR_PASSWORD);
-    await api.listFunctions();
-
-    // No bearer token is assembled anywhere in the client — there is no API key
-    // in any client module to assemble one from.
-    expect(authorization).toBeNull();
-    // The request opts into cookie credentials rather than carrying a header.
-    expect(credentials).toBe("same-origin");
-    // And the session issued by login is what actually authenticates the call.
-    expect(cookie).toContain("neurun_operator_session=");
-  });
-
-  it("never puts a secret in the request URL", async () => {
-    let seenUrl = "";
-    server.use(
-      http.get(proxy("/v1/functions"), ({ request: intercepted }) => {
-        seenUrl = intercepted.url;
-        return HttpResponse.json({ functions: [] });
-      }),
-    );
-
-    await api.listFunctions();
-    expect(seenUrl).not.toContain("password");
-    expect(seenUrl).not.toContain("neu_");
-    expect(seenUrl).not.toContain("token");
-  });
-
-  it("resolves the signed-in operator", async () => {
-    const operator = await api.getOperatorSession();
-    expect(operator.operator_id).toBe(OPERATOR.operator_id);
-    expect(operator.project_id).toBe("prj_local");
-  });
-
-  it("surfaces an expired session as a 401", async () => {
-    server.use(
-      http.get(proxy("/v1/auth/session"), () =>
-        HttpResponse.json(fixtures.unauthorized, { status: 401 }),
-      ),
-    );
-
-    const error = await api.getOperatorSession().catch((cause) => cause);
     expect(error).toBeInstanceOf(NeurunApiError);
-    expect(error.isUnauthenticated).toBe(true);
-  });
-
-  it("signs out without needing the session to be live", async () => {
-    await expect(api.operatorLogout()).resolves.toBeUndefined();
-  });
-
-  it("stops retrying after a 401 — an expired session will not revive", () => {
-    const unauthorized = new NeurunApiError({ status: 401, code: "unauthorized", message: "no" });
-    const serverError = new NeurunApiError({ status: 500, code: "internal", message: "boom" });
-
-    expect(shouldRetry(0, unauthorized)).toBe(false);
-    expect(shouldRetry(0, new NeurunApiError({ status: 403, code: "f", message: "f" }))).toBe(false);
-    expect(shouldRetry(0, new NeurunContractError("/v1/jobs", []))).toBe(false);
-    expect(shouldRetry(0, serverError)).toBe(true);
+    expect((error as NeurunApiError).status).toBe(503);
   });
 });
 
-describe("error envelope", () => {
-  it("parses code, message and request ID from the standard envelope", async () => {
+describe("registration", () => {
+  it("starts an organization and lands signed in", async () => {
     server.use(
-      http.post(proxy("/v1/functions/:name/invoke"), () =>
-        HttpResponse.json(fixtures.invalidRequest, { status: 400 }),
+      http.post(proxy("/v1/auth/register"), () =>
+        HttpResponse.json(
+          {
+            user: { id: "usr_01HXQ8F2NEW", email: "ada@example.com" },
+            organization: { id: "org_01HXQ8F2ACME", name: "Acme Data" },
+            member: { role: "admin" },
+            operator: OPERATOR,
+          },
+          { status: 201 },
+        ),
+      ),
+    );
+
+    const operator = await api.register({
+      email: "ada@example.com",
+      password: "a-long-enough-password",
+      organization_name: "Acme Data",
+    });
+    expect(operator?.organization_id).toBe("org_01HXQ8F2ACME");
+  });
+
+  it("returns null when the account was made but sign-in did not follow", async () => {
+    server.use(
+      http.post(proxy("/v1/auth/register"), () =>
+        HttpResponse.json(
+          {
+            user: { id: "usr_01HXQ8F2NEW", email: "ada@example.com" },
+            organization: { id: "org_01HXQ8F2NEW", name: "Acme Data" },
+            member: { role: "admin" },
+          },
+          { status: 201 },
+        ),
+      ),
+    );
+
+    await expect(
+      api.register({
+        email: "ada@example.com",
+        password: "a-long-enough-password",
+        organization_name: "Acme Data",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("refuses an invitation issued to another address", async () => {
+    server.use(
+      http.post(proxy("/v1/auth/register"), () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "invite_address_mismatch",
+              message: "this invitation was issued to a different address",
+            },
+            request_id: "req_01HXQ8F2INVITE",
+          },
+          { status: 403 },
+        ),
       ),
     );
 
     const error = await api
-      .invokeFunction("system.echo", { version: "1", execution: "sync", input: {} })
-      .catch((cause) => cause);
+      .register({
+        email: "wrong@example.com",
+        password: "a-long-enough-password",
+        invite_token: "a-token",
+      })
+      .catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(NeurunApiError);
-    expect(error.code).toBe("invalid_request");
-    // Human-readable `$.path` messages are preserved verbatim, not parsed.
-    expect(error.message).toBe("$.input.message: must be a string");
-    expect(error.requestId).toBe("req_01HXQ8F2INVALID");
+    expect((error as NeurunApiError).code).toBe("invite_address_mismatch");
   });
 
-  it("recognises durable_backend_unavailable without conflating it with other 503s", async () => {
+  it("names the organization an invitation would join, without spending it", async () => {
     server.use(
-      http.post(proxy("/v1/jobs"), () =>
-        HttpResponse.json(fixtures.durableBackendUnavailable, { status: 503 }),
-      ),
-    );
-
-    const error = await api
-      .createJob({ function: { name: "system.echo", version: "1" }, input: {} })
-      .catch((cause) => cause);
-
-    expect(error.isDurableBackendUnavailable).toBe(true);
-    expect(error.status).toBe(503);
-  });
-});
-
-describe("accepted asynchronous work", () => {
-  it("reads durability from both the body and the header", async () => {
-    const { data, meta } = await api.createJob({
-      function: { name: "system.echo", version: "1" },
-      input: { message: "hello" },
-    });
-
-    expect(meta.status).toBe(202);
-    expect(data.durability).toBe("process_local");
-    expect(meta.durability).toBe("process_local");
-    // A 202 alone never implies durable persistence.
-    expect(data.durability).not.toBe("durable");
-  });
-
-  it("returns a queued snapshot whose events still record the accepted step", async () => {
-    const { data } = await api.createJob({
-      function: { name: "system.echo", version: "1" },
-      input: { message: "hello" },
-    });
-    const { data: events } = await api.listJobEvents(data.job_id);
-
-    expect(data.job.state).toBe("queued");
-    expect(events.map((event) => event.type)).toEqual([
-      "job.accepted",
-      "job.queued",
-      "attempt.leased",
-    ]);
-    expect(events.map((event) => event.sequence)).toEqual([1, 2, 3]);
-  });
-});
-
-describe("idempotency keys", () => {
-  it("sends a key on async mutations and omits it on cancellation", async () => {
-    const seen: (string | null)[] = [];
-    server.use(
-      http.post(proxy("/v1/jobs"), ({ request: intercepted }) => {
-        seen.push(intercepted.headers.get("idempotency-key"));
-        return HttpResponse.json(fixtures.acceptedJob, { status: 202 });
-      }),
-      http.post(proxy("/v1/jobs/:jobId/cancel"), ({ request: intercepted }) => {
-        seen.push(intercepted.headers.get("idempotency-key"));
+      http.get(proxy("/v1/invites/lookup"), ({ request: incoming }) => {
+        expect(new URL(incoming.url).searchParams.get("token")).toBe("a-token");
         return HttpResponse.json({
-          job: fixtures.queuedJob,
-          duplicate: false,
-          request_id: "req_x",
+          organization: { id: "org_01HXQ8F2ACME", name: "Acme Data" },
+          email: "ada@example.com",
+          role: "operator",
         });
       }),
     );
 
-    await api.createJob({ function: { name: "system.echo", version: "1" }, input: {} });
-    await api.cancelJob(fixtures.JOB_ID);
-
-    expect(seen[0]).toBeTruthy();
-    expect(seen[1]).toBeNull();
-  });
-
-  it("reuses the key when the same logical request is retried after a network failure", async () => {
-    const keys: (string | null)[] = [];
-    let attempt = 0;
-
-    server.use(
-      http.post(proxy("/v1/jobs"), ({ request: intercepted }) => {
-        keys.push(intercepted.headers.get("idempotency-key"));
-        attempt += 1;
-        if (attempt === 1) return HttpResponse.error();
-        return HttpResponse.json(fixtures.acceptedJob, { status: 202 });
-      }),
-    );
-
-    const body = {
-      function: { name: "system.echo", version: "1" },
-      input: { message: "hello" },
-    };
-
-    await api.createJob(body).catch(() => undefined);
-    await api.createJob(body);
-
-    expect(keys).toHaveLength(2);
-    // The whole point: the server may already hold the first request.
-    expect(keys[0]).toBe(keys[1]);
-  });
-
-  it("mints a fresh key once a request reached a decisive outcome", async () => {
-    const keys: (string | null)[] = [];
-    server.use(
-      http.post(proxy("/v1/jobs"), ({ request: intercepted }) => {
-        keys.push(intercepted.headers.get("idempotency-key"));
-        return HttpResponse.json(fixtures.acceptedJob, { status: 202 });
-      }),
-    );
-
-    const body = {
-      function: { name: "system.echo", version: "1" },
-      input: { message: "hello" },
-    };
-    await api.createJob(body);
-    await api.createJob(body);
-
-    expect(keys[0]).not.toBe(keys[1]);
-  });
-
-  it("fingerprints logically identical bodies the same regardless of key order", () => {
-    expect(stableStringify({ b: 1, a: { d: 2, c: 3 } })).toBe(
-      stableStringify({ a: { c: 3, d: 2 }, b: 1 }),
-    );
+    const preview = await api.lookupInvite("a-token");
+    expect(preview.organization.name).toBe("Acme Data");
+    expect(preview.role).toBe("operator");
   });
 });
 
-describe("cursor pagination", () => {
-  it("follows the server's opaque cursor and stops on the empty string", async () => {
-    const first = await api.listJobs({ limit: 50 });
-    expect(first.data.jobs).toHaveLength(2);
-    expect(first.data.next_cursor).toBe("cursor-page-2");
-
-    const second = await api.listJobs({ cursor: first.data.next_cursor });
-    expect(second.data.jobs).toHaveLength(1);
-    // Empty string means there is no next page.
-    expect(second.data.next_cursor).toBe("");
-  });
-
-  it("repeats the status filter rather than comma-joining it", async () => {
-    let seen = "";
+describe("error envelope", () => {
+  it("surfaces the code and status the server sent", async () => {
     server.use(
-      http.get(proxy("/v1/jobs"), ({ request: intercepted }) => {
-        seen = new URL(intercepted.url).search;
-        return HttpResponse.json({ jobs: [], next_cursor: "" });
-      }),
-    );
-
-    await api.listJobs({ status: ["queued", "running"] });
-    expect(seen).toContain("status=queued");
-    expect(seen).toContain("status=running");
-    expect(seen).not.toContain("queued%2Crunning");
-  });
-});
-
-describe("runtime boundary validation", () => {
-  it("accepts a state this build does not know", () => {
-    const parsed = validateResponse(jobSchema, "/v1/jobs", {
-      ...fixtures.queuedJob,
-      state: "quarantined",
-    });
-    expect(parsed.state).toBe("quarantined");
-  });
-
-  it("preserves unknown keys instead of dropping them", () => {
-    const parsed = validateResponse(jobSchema, "/v1/jobs", {
-      ...fixtures.queuedJob,
-      future_field: { nested: true },
-    }) as Record<string, unknown>;
-
-    expect(parsed.future_field).toEqual({ nested: true });
-  });
-
-  it("rejects a payload missing a field the UI reads", () => {
-    const withoutId: Record<string, unknown> = { ...fixtures.queuedJob };
-    delete withoutId.id;
-
-    expect(() => validateResponse(jobSchema, "/v1/jobs", withoutId)).toThrow(NeurunContractError);
-  });
-
-  it("names the offending path when the contract is violated", () => {
-    const error = (() => {
-      try {
-        validateResponse(jobListSchema, "/v1/jobs", { jobs: "not-an-array", next_cursor: "" });
-      } catch (cause) {
-        return cause as NeurunContractError;
-      }
-    })();
-
-    expect(error).toBeInstanceOf(NeurunContractError);
-    expect(error!.issues.join(" ")).toContain("jobs");
-  });
-
-  it("accepts an operator role this build does not know", async () => {
-    server.use(
-      http.get(proxy("/v1/auth/session"), () =>
-        HttpResponse.json({ operator: { ...OPERATOR, role: "auditor", scopes: ["jobs:read"] } }),
+      http.get(proxy("/v1/projects"), () =>
+        HttpResponse.json(fixtures.unauthorized, { status: 401 }),
       ),
     );
 
-    const operator = await api.getOperatorSession();
-    expect(operator.role).toBe("auditor");
+    const error = await resources.listProjects().catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(NeurunApiError);
+    expect((error as NeurunApiError).status).toBe(401);
+  });
+
+  it("rejects a response that does not match the contract", () => {
+    expect(() =>
+      validateResponse(operatorEnvelopeSchema as never, "/v1/auth/session", {
+        operator: { operator_id: 12 },
+      }),
+    ).toThrow(NeurunContractError);
   });
 });
 
-describe("transport", () => {
-  it("reports an unreachable control plane distinctly from an API error", async () => {
-    server.use(http.get(proxy("/version"), () => HttpResponse.error()));
+describe("retry policy", () => {
+  it("retries a transport failure but never a refusal", () => {
+    expect(shouldRetry(0, new Error("network down"))).toBe(true);
+    expect(shouldRetry(0, new NeurunApiError({ status: 422, code: "invalid_request", message: "refused" }))).toBe(false);
+    expect(shouldRetry(0, new NeurunApiError({ status: 401, code: "unauthorized", message: "expired" }))).toBe(false);
+  });
+});
 
-    const error = await request({ path: "/version" }).catch((cause) => cause);
+describe("idempotency keys", () => {
+  it("is stable across key order, so a replay is byte-equivalent", () => {
+    expect(stableStringify({ b: 1, a: 2 })).toBe(stableStringify({ a: 2, b: 1 }));
+  });
+});
 
-    expect(error).not.toBeInstanceOf(NeurunApiError);
-    expect(error.name).toBe("NeurunTransportError");
+describe("client", () => {
+  it("reaches the proxy rather than the control plane directly", async () => {
+    let sawPath: string | undefined;
+    server.use(
+      http.get(proxy("/version"), ({ request: incoming }) => {
+        sawPath = new URL(incoming.url).pathname;
+        return HttpResponse.json({
+          version: "0.1.0",
+          commit: "9f3a41c",
+          built_at: "2026-08-04T00:00:00Z",
+          api_version: "v1",
+          schema_version: "12",
+        });
+      }),
+    );
+
+    await request({ path: "/version" });
+    expect(sawPath).toContain("/version");
   });
 });

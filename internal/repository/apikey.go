@@ -12,11 +12,12 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/account"
 )
 
-const apiKeyColumns = `id, COALESCE(user_id, ''), name, key_prefix, scopes,
-	created_at, revoked_at`
+const apiKeyColumns = `id, organization_id, COALESCE(user_id, ''), name,
+	key_prefix, scopes, created_at, revoked_at`
 
-// APIKeyRepository stores issued keys. A key carries scopes and nothing else:
-// it is not bound to a project, because scopes already say what it may reach.
+// APIKeyRepository stores issued keys. A key belongs to one organization and
+// carries scopes; it is not bound to a project, because scopes already say what
+// it may reach inside that organization.
 type APIKeyRepository struct {
 	pool *pgxpool.Pool
 }
@@ -31,8 +32,8 @@ func NewAPIKeyRepository(pool *pgxpool.Pool) (*APIKeyRepository, error) {
 func scanKey(row pgx.CollectableRow) (account.Key, error) {
 	var record account.Key
 	err := row.Scan(
-		&record.ID, &record.UserID, &record.Name, &record.Prefix,
-		&record.Scopes, &record.CreatedAt, &record.RevokedAt,
+		&record.ID, &record.OrganizationID, &record.UserID, &record.Name,
+		&record.Prefix, &record.Scopes, &record.CreatedAt, &record.RevokedAt,
 	)
 	return record, err
 }
@@ -45,9 +46,9 @@ func (repository *APIKeyRepository) Create(
 	_, err := repository.pool.Exec(
 		ctx,
 		`INSERT INTO api_keys
-		 (id, user_id, name, key_prefix, key_hash, scopes, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		record.ID, nullableString(record.UserID), record.Name,
+		 (id, organization_id, user_id, name, key_prefix, key_hash, scopes, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		record.ID, record.OrganizationID, nullableString(record.UserID), record.Name,
 		record.Prefix, digest, record.Scopes, record.CreatedAt,
 	)
 	if err != nil {
@@ -58,13 +59,15 @@ func (repository *APIKeyRepository) Create(
 
 func (repository *APIKeyRepository) List(
 	ctx context.Context,
+	organizationID string,
 	limit int,
 ) ([]account.Key, error) {
 	rows, err := repository.pool.Query(
 		ctx,
 		`SELECT `+apiKeyColumns+` FROM api_keys
-		 ORDER BY created_at DESC, id DESC LIMIT $1`,
-		postgresLimit(limit),
+		 WHERE organization_id = $1
+		 ORDER BY created_at DESC, id DESC LIMIT $2`,
+		organizationID, postgresLimit(limit),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list keys: %w", err)
@@ -80,15 +83,16 @@ func (repository *APIKeyRepository) List(
 // revocation time rather than moving it.
 func (repository *APIKeyRepository) Revoke(
 	ctx context.Context,
+	organizationID string,
 	keyID string,
 	now time.Time,
 ) (account.Key, error) {
 	rows, err := repository.pool.Query(
 		ctx,
-		`UPDATE api_keys SET revoked_at = COALESCE(revoked_at, $2)
-		 WHERE id = $1
+		`UPDATE api_keys SET revoked_at = COALESCE(revoked_at, $3)
+		 WHERE id = $1 AND organization_id = $2
 		 RETURNING `+apiKeyColumns,
-		keyID, now,
+		keyID, organizationID, now,
 	)
 	if err != nil {
 		return account.Key{}, fmt.Errorf("revoke key: %w", err)
@@ -113,10 +117,13 @@ func (repository *APIKeyRepository) CredentialByPrefix(
 	var credential account.KeyCredential
 	err := repository.pool.QueryRow(
 		ctx,
-		`SELECT id, scopes, key_hash FROM api_keys
+		`SELECT id, organization_id, scopes, key_hash FROM api_keys
 		 WHERE key_prefix = $1 AND revoked_at IS NULL`,
 		prefix,
-	).Scan(&credential.ID, &credential.Scopes, &credential.Digest)
+	).Scan(
+		&credential.ID, &credential.OrganizationID,
+		&credential.Scopes, &credential.Digest,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return account.KeyCredential{}, account.ErrNotFound
 	}

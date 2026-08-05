@@ -12,9 +12,10 @@ import (
 // KeyCredential is the stored half of an API key: enough to verify a presented
 // secret and build a principal from it, and nothing that could reconstruct one.
 type KeyCredential struct {
-	ID     string
-	Scopes []string
-	Digest []byte
+	ID             string
+	OrganizationID string
+	Scopes         []string
+	Digest         []byte
 }
 
 // SecretPrefix splits the public lookup prefix off a presented key. The form is

@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,6 +47,7 @@ type ServerOptions struct {
 	Executions             *service.ExecutionService
 	Accounts               *service.AccountService
 	Operators              *service.OperatorService
+	Organizations          *service.OrganizationService
 	Ready                  ReadyCheck
 	MaximumBodyBytes       int64
 	MaximumDeploymentBytes int64
@@ -57,6 +59,7 @@ type Server struct {
 	executions             *service.ExecutionService
 	accounts               *service.AccountService
 	operators              *service.OperatorService
+	organizations          *service.OrganizationService
 	ready                  ReadyCheck
 	maximumBodyBytes       int64
 	maximumDeploymentBytes int64
@@ -72,6 +75,8 @@ func NewServer(options ServerOptions) (*Server, error) {
 		return nil, errors.New("execution service is required")
 	case options.Accounts == nil:
 		return nil, errors.New("account service is required")
+	case options.Organizations == nil:
+		return nil, errors.New("organization service is required")
 	case options.MaximumBodyBytes < 0:
 		return nil, errors.New("maximum request body bytes cannot be negative")
 	case options.MaximumDeploymentBytes < 0:
@@ -88,6 +93,7 @@ func NewServer(options ServerOptions) (*Server, error) {
 		executions:             options.Executions,
 		accounts:               options.Accounts,
 		operators:              options.Operators,
+		organizations:          options.Organizations,
 		ready:                  options.Ready,
 		maximumBodyBytes:       options.MaximumBodyBytes,
 		maximumDeploymentBytes: options.MaximumDeploymentBytes,
@@ -104,7 +110,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 func (server *Server) routes() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
-	engine.Use(requestID(), securityHeaders(), recovery())
+	engine.Use(requestID(), securityHeaders(), gin.Logger(), recovery())
 	engine.NoRoute(func(ctx *gin.Context) {
 		notFound(ctx, "resource")
 	})
@@ -119,11 +125,15 @@ func (server *Server) routes() *gin.Engine {
 	engine.GET("/readyz", server.readiness)
 	engine.GET("/version", server.version)
 
-	// Sign-in is deliberately outside the authenticated group: it is how a
-	// caller obtains the credential the group requires.
+	// Registration and sign-in are deliberately outside the authenticated
+	// group: they are how a caller obtains the credential the group requires.
+	// The invite lookup joins them, so a sign-up page can name the organization
+	// it is about to add somebody to.
+	engine.POST("/v1/auth/register", server.register)
 	engine.POST("/v1/auth/login", server.operatorLogin)
 	engine.POST("/v1/auth/logout", server.operatorLogout)
 	engine.GET("/v1/auth/session", server.operatorSession)
+	engine.GET("/v1/invites/lookup", server.lookupInvite)
 
 	v1 := engine.Group("/v1", server.authenticate())
 
@@ -152,8 +162,23 @@ func (server *Server) routes() *gin.Engine {
 	v1.GET("/builds", server.scoped(ScopeBuildsRead), server.listBuilds)
 	v1.GET("/builds/:build_id", server.scoped(ScopeBuildsRead), server.getBuild)
 
+	v1.GET("/organizations", server.listOrganizations)
+	// Deliberately unscoped: an account with no organization holds no scopes,
+	// and creating one is the only thing it may do.
+	v1.POST("/organizations", server.createOrganization)
+	v1.GET("/organization", server.scoped(ScopeProjectsRead), server.getOrganization)
+	v1.PATCH("/organization", server.scoped(ScopeUsersWrite), server.updateOrganization)
+
+	v1.GET("/members", server.scoped(ScopeUsersRead), server.listMembers)
+	v1.PATCH("/members/:user_id", server.scoped(ScopeUsersWrite), server.updateMember)
+	v1.DELETE("/members/:user_id", server.scoped(ScopeUsersWrite), server.removeMember)
+
+	v1.GET("/invites", server.scoped(ScopeUsersRead), server.listInvites)
+	v1.POST("/invites", server.scoped(ScopeUsersWrite), server.createInvite)
+	v1.DELETE("/invites/:invite_id", server.scoped(ScopeUsersWrite), server.revokeInvite)
+	v1.POST("/invites/accept", server.acceptInvite)
+
 	v1.GET("/users", server.scoped(ScopeUsersRead), server.listUsers)
-	v1.POST("/users", server.scoped(ScopeUsersWrite), server.createUser)
 	v1.GET("/users/:user_id", server.scoped(ScopeUsersRead), server.getUser)
 	v1.PATCH("/users/:user_id", server.scoped(ScopeUsersWrite), server.updateUser)
 	v1.DELETE("/users/:user_id", server.scoped(ScopeUsersWrite), server.deleteUser)
@@ -232,6 +257,9 @@ func notFound(ctx *gin.Context, kind string) {
 // writeError maps a domain error onto its HTTP shape. Anything unrecognised is
 // a 500 with no detail, so an internal message cannot leak through.
 func writeError(ctx *gin.Context, err error) {
+	if writeOrganizationError(ctx, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, deployment.ErrNotFound),
 		errors.Is(err, deployment.ErrProjectNotFound),
@@ -278,6 +306,15 @@ func writeError(ctx *gin.Context, err error) {
 			Code: "request_timeout", Message: "the request exceeded its deadline",
 		})
 	default:
+		// Nothing recognised it, so the response cannot say what went wrong
+		// without leaking internals. Log it instead — an unmapped 500 with no
+		// trace is the one failure nobody can diagnose.
+		slog.Error("unhandled error",
+			"request_id", requestIDOf(ctx),
+			"method", ctx.Request.Method,
+			"path", ctx.FullPath(),
+			"error", err,
+		)
 		writeProblem(ctx, http.StatusInternalServerError, dto.Problem{
 			Code: "internal_error", Message: "the server could not complete the request",
 		})

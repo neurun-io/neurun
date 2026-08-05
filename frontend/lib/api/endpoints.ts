@@ -1,64 +1,78 @@
 /**
- * Typed wrappers over the published `/v1` operations.
+ * Typed wrappers over the published /v1 operations.
  *
- * One function per contract operation, named for its `operationId`. Nothing
- * here infers internal server state, and nothing here reaches an endpoint the
- * current OpenAPI does not publish.
+ * One function per contract operation, named for its operationId. Nothing here
+ * infers internal server state, and nothing here reaches an endpoint the
+ * current OpenAPI does not publish. Resource operations live in ./resources.
  */
-import { type ApiResult, request } from "./client";
+import { request } from "./client";
 import {
-  acceptedJobSchema,
-  cancelInvocationResponseSchema,
-  cancelJobResponseSchema,
-  functionDefinitionSchema,
-  functionListSchema,
-  functionManifestSchema,
-  invocationListSchema,
-  invocationSchema,
-  jobAttemptListSchema,
-  jobEventListSchema,
-  jobListSchema,
-  jobSchema,
-  manifestBundleSchema,
+  invitePreviewSchema,
+  memberSchema,
   operatorEnvelopeSchema,
+  organizationSchema,
+  registrationSchema,
   versionSchema,
 } from "./runtime";
-import type {
-  AcceptedJob,
-  CreateJobRequest,
-  FetchRequest,
-  FunctionDefinition,
-  FunctionList,
-  FunctionManifest,
-  Invocation,
-  InvocationList,
-  InvokeFunctionRequest,
-  Job,
-  JobAttempt,
-  JobEvent,
-  JobList,
-  JobState,
-  ManifestBundle,
-  Operator,
-  Version,
-} from "./types";
+import type { Operator, Version } from "./types";
+
+export interface InvitePreview {
+  organization: { id: string; name: string };
+  email: string;
+  role: string;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Auth                                                                        */
 /* -------------------------------------------------------------------------- */
 
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  /** Start an organization you own. Mutually exclusive with invite_token. */
+  organization_name?: string;
+  /** Join one you were invited to. Mutually exclusive with organization_name. */
+  invite_token?: string;
+}
+
 /**
- * Exchange a username and password for a session.
+ * Create an account and a session for it.
+ *
+ * Sign-up is the only way an account comes into being — there is no CLI
+ * bootstrap. The session arrives as the same `HttpOnly` cookie sign-in issues,
+ * so a successful registration lands already authenticated. `operator` is
+ * absent only when the account was created but signing it in failed, in which
+ * case the caller signs in normally rather than being told nothing happened.
+ */
+export async function register(body: RegisterRequest) {
+  const { data } = await request<{ operator?: Operator }>(
+    { method: "POST", path: "/v1/auth/register", body },
+    registrationSchema as never,
+  );
+  return data.operator ?? null;
+}
+
+/**
+ * Exchange an email and password for a session.
  *
  * The token is never visible here: the server returns it as an `HttpOnly`
  * cookie, and this response carries only the operator projection.
  */
-export async function operatorLogin(username: string, password: string) {
+export async function operatorLogin(email: string, password: string) {
   const { data } = await request<{ operator: Operator }>(
-    { method: "POST", path: "/v1/auth/login", body: { username, password } },
+    { method: "POST", path: "/v1/auth/login", body: { email, password } },
     operatorEnvelopeSchema as never,
   );
   return data.operator;
+}
+
+/** Name the organization an invitation would join, without spending it. */
+export async function lookupInvite(token: string, signal?: AbortSignal) {
+  const { data } = await request<InvitePreview>(
+    { path: "/v1/invites/lookup", query: { token }, signal },
+    invitePreviewSchema as never,
+  );
+  return data;
 }
 
 /** Revoke the current session. Idempotent, and always succeeds. */
@@ -93,214 +107,26 @@ export async function getReadiness(signal?: AbortSignal): Promise<boolean> {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Functions                                                                   */
-/* -------------------------------------------------------------------------- */
-
-export interface ListFunctionsParams {
-  category?: string;
-  capability?: string;
-  /** The current release supports only `available`. */
-  status?: "available";
-}
-
-export function listFunctions(
-  params: ListFunctionsParams = {},
-  signal?: AbortSignal,
-) {
-  return request<FunctionList>({ path: "/v1/functions", query: { ...params }, signal },
-    functionListSchema as never,
-  );
-}
-
-export function getFunction(functionName: string, signal?: AbortSignal) {
-  return request<FunctionDefinition>({ path: `/v1/functions/${functionName}`, signal },
-    functionDefinitionSchema as never,
-  );
-}
-
-export function getFunctionVersion(
-  functionName: string,
-  version: string,
-  signal?: AbortSignal,
-) {
-  return request<FunctionManifest>({ path: `/v1/functions/${functionName}/versions/${version}`, signal },
-    functionManifestSchema as never,
-  );
-}
-
-export function getFunctionManifestBundle(signal?: AbortSignal) {
-  return request<ManifestBundle>({ path: "/v1/function-manifest-bundle", signal },
-    manifestBundleSchema as never,
-  );
-}
-
-/**
- * A synchronous invocation resolves to a completed `Invocation`; an accepted
- * asynchronous one resolves to an `AcceptedJob`. The caller must branch on
- * `kind` rather than assume — a 202 does not carry an invocation.
- */
-export type InvokeOutcome =
-  | { kind: "invocation"; result: ApiResult<Invocation> }
-  | { kind: "accepted"; result: ApiResult<AcceptedJob> };
-
-export async function invokeFunction(
-  functionName: string,
-  body: InvokeFunctionRequest,
-): Promise<InvokeOutcome> {
-  const isAsync = body.execution === "async";
-  const result = await request<unknown>({
-    method: "POST",
-    path: `/v1/functions/${functionName}/invoke`,
-    body,
-    // Required when `execution=async`; ignored for synchronous execution.
-    idempotent: isAsync,
-  });
-
-  if (result.meta.status === 202) {
-    return {
-      kind: "accepted",
-      result: result as ApiResult<AcceptedJob>,
-    };
-  }
-  return { kind: "invocation", result: result as ApiResult<Invocation> };
-}
-
-/* -------------------------------------------------------------------------- */
-/* Invocations                                                                 */
-/* -------------------------------------------------------------------------- */
-
-export interface ListInvocationsParams {
-  function?: string;
-  version?: string;
-  status?: string;
-  limit?: number;
-  cursor?: string;
-}
-
-export function listFunctionInvocations(
-  params: ListInvocationsParams = {},
-  signal?: AbortSignal,
-) {
-  return request<InvocationList>({ path: "/v1/function-invocations", query: { ...params }, signal },
-    invocationListSchema as never,
-  );
-}
-
-export function getFunctionInvocation(
-  invocationId: string,
-  signal?: AbortSignal,
-) {
-  return request<Invocation>({ path: `/v1/function-invocations/${invocationId}`, signal },
-    invocationSchema as never,
-  );
-}
-
-/**
- * Signals cancellation to a running *direct* invocation. Job-owned execution is
- * canceled through its job endpoint instead.
- */
-export function cancelFunctionInvocation(invocationId: string) {
-  return request(
-    { method: "POST", path: `/v1/function-invocations/${invocationId}/cancel` },
-    cancelInvocationResponseSchema as never,
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Jobs                                                                        */
-/* -------------------------------------------------------------------------- */
-
-export interface ListJobsParams {
-  /** Repeats as `?status=a&status=b`. */
-  status?: JobState[];
-  created_after?: string;
-  limit?: number;
-  cursor?: string;
-}
-
-/**
- * Server-side job filters are limited to status, created-after, cursor and
- * limit. Do not send `tag`, mode, failure, function, agent or created-before —
- * the current server rejects `tag` rather than ignoring it.
- */
-export function listJobs(params: ListJobsParams = {}, signal?: AbortSignal) {
-  return request<JobList>({
-      path: "/v1/jobs",
-      query: {
-        status: params.status,
-        created_after: params.created_after,
-        limit: params.limit,
-        cursor: params.cursor,
-      },
-      signal,
-    },
-    jobListSchema as never,
-  );
-}
-
-export function createJob(body: CreateJobRequest) {
-  return request<AcceptedJob>({ method: "POST", path: "/v1/jobs", body, idempotent: true },
-    acceptedJobSchema as never,
-  );
-}
-
-export function getJob(jobId: string, signal?: AbortSignal) {
-  return request<Job>({ path: `/v1/jobs/${jobId}`, signal }, jobSchema as never);
-}
-
-export async function listJobEvents(
-  jobId: string,
-  signal?: AbortSignal,
-): Promise<ApiResult<JobEvent[]>> {
-  const { data, meta } = await request<{ events: JobEvent[] }>({ path: `/v1/jobs/${jobId}/events`, signal },
-    jobEventListSchema as never,
-  );
-  return { data: data.events, meta };
-}
-
-export async function listJobAttempts(
-  jobId: string,
-  signal?: AbortSignal,
-): Promise<ApiResult<JobAttempt[]>> {
-  const { data, meta } = await request<{ attempts: JobAttempt[] }>({ path: `/v1/jobs/${jobId}/attempts`, signal },
-    jobAttemptListSchema as never,
-  );
-  return { data: data.attempts, meta };
-}
-
-/** Cancellation is intrinsically idempotent, so it takes no Idempotency-Key. */
-export function cancelJob(jobId: string, reason?: string) {
-  return request<{ job: Job; duplicate: boolean; request_id: string }>({
-      method: "POST",
-      path: `/v1/jobs/${jobId}/cancel`,
-      body: reason ? { reason } : undefined,
-    },
-    cancelJobResponseSchema as never,
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Fetch                                                                       */
+/* Organization                                                                */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The release-owned `http.fetch` instrument. Synchronous HTTP work must come
- * through here rather than the generic `/invoke`, because a public client
- * cannot assign the trusted HTTP execution context that generic route requires.
+ * Start an organization from an account that has none. The server re-issues the
+ * session cookie, so the new membership is live without signing in again.
  */
-export async function fetchUrl(
-  body: FetchRequest,
-): Promise<InvokeOutcome> {
-  const isAsync = body.execution === "async";
-  const result = await request<unknown>({
-    method: "POST",
-    path: "/v1/fetch",
-    body,
-    idempotent: isAsync,
-  });
+export async function createOrganization(name: string) {
+  const { data } = await request<{ id: string; name: string }>(
+    { method: "POST", path: "/v1/organizations", body: { name } },
+    organizationSchema as never,
+  );
+  return data;
+}
 
-  if (result.meta.status === 202) {
-    return { kind: "accepted", result: result as ApiResult<AcceptedJob> };
-  }
-  return { kind: "invocation", result: result as ApiResult<Invocation> };
+/** Accept an invitation as a signed-in account. */
+export async function acceptInvite(token: string) {
+  const { data } = await request<{ role: string }>(
+    { method: "POST", path: "/v1/invites/accept", body: { token } },
+    memberSchema as never,
+  );
+  return data;
 }

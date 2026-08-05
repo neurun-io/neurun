@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/neurun-io/neurun/internal/domain/operator"
+	"github.com/neurun-io/neurun/internal/domain/organization"
 	"github.com/neurun-io/neurun/internal/ids"
 )
 
@@ -48,6 +49,7 @@ func sessionKey(token string) string {
 func (repository *SessionRepository) Create(
 	ctx context.Context,
 	account operator.Account,
+	membership organization.Member,
 	token string,
 	expiresAt time.Time,
 ) (operator.Session, error) {
@@ -59,12 +61,13 @@ func (repository *SessionRepository) Create(
 		return operator.Session{}, fmt.Errorf("allocate operator session ID: %w", err)
 	}
 	session := operator.Session{
-		ID:        sessionID,
-		AccountID: account.ID,
-		Username:  account.Username,
-		Role:      account.Role,
-		CreatedAt: time.Now().UTC(),
-		ExpiresAt: expiresAt.UTC(),
+		ID:             sessionID,
+		AccountID:      account.ID,
+		Email:          account.Email,
+		OrganizationID: membership.OrganizationID,
+		Role:           membership.Role,
+		CreatedAt:      time.Now().UTC(),
+		ExpiresAt:      expiresAt.UTC(),
 	}
 	encoded, err := json.Marshal(session)
 	if err != nil {
@@ -104,10 +107,18 @@ func (repository *SessionRepository) ByToken(
 		_ = repository.cache.Delete(ctx, key)
 		return operator.Session{}, operator.ErrSessionExpired
 	}
-	role, err := repository.users.LiveRole(ctx, session.AccountID)
+	if session.OrganizationID == "" {
+		// No membership to re-read; the account itself is still the gate.
+		if live, err := repository.users.Exists(ctx, session.AccountID); err != nil || !live {
+			_ = repository.cache.Delete(ctx, key)
+			return operator.Session{}, operator.ErrSessionNotFound
+		}
+		return session, nil
+	}
+	role, err := repository.users.LiveRole(ctx, session.AccountID, session.OrganizationID)
 	if err != nil {
-		// A deleted or disabled account invalidates the session outright; the
-		// caller must not be told which of the two it was.
+		// A deleted or disabled account, or one removed from the organization,
+		// invalidates the session outright; the caller must not be told which.
 		_ = repository.cache.Delete(ctx, key)
 		return operator.Session{}, operator.ErrSessionNotFound
 	}

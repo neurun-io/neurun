@@ -14,7 +14,9 @@ func (server *Server) listProjects(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	records, err := server.deployments.ListProjects(ctx.Request.Context(), limit)
+	records, err := server.deployments.ListProjects(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, limit,
+	)
 	if err != nil {
 		writeError(ctx, err)
 		return
@@ -27,7 +29,9 @@ func (server *Server) createProject(ctx *gin.Context) {
 	if !server.bindJSON(ctx, &body) {
 		return
 	}
-	record, err := server.deployments.CreateProject(ctx.Request.Context(), body.Name)
+	record, err := server.deployments.CreateProject(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, body.Name,
+	)
 	if err != nil {
 		writeError(ctx, err)
 		return
@@ -38,7 +42,7 @@ func (server *Server) createProject(ctx *gin.Context) {
 
 func (server *Server) getProject(ctx *gin.Context) {
 	record, err := server.deployments.GetProject(
-		ctx.Request.Context(), ctx.Param("project_id"),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("project_id"),
 	)
 	if err != nil {
 		writeError(ctx, err)
@@ -53,7 +57,7 @@ func (server *Server) updateProject(ctx *gin.Context) {
 		return
 	}
 	record, err := server.deployments.UpdateProject(
-		ctx.Request.Context(), ctx.Param("project_id"), body,
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("project_id"), body,
 	)
 	if err != nil {
 		writeError(ctx, err)
@@ -67,7 +71,7 @@ func (server *Server) updateProject(ctx *gin.Context) {
 // install, not to a project.
 func (server *Server) deleteProject(ctx *gin.Context) {
 	projectID := ctx.Param("project_id")
-	if err := server.deployments.DeleteProject(ctx.Request.Context(), projectID); err != nil {
+	if err := server.deployments.DeleteProject(ctx.Request.Context(), principalOf(ctx).OrganizationID, projectID); err != nil {
 		writeError(ctx, err)
 		return
 	}
@@ -80,7 +84,7 @@ func (server *Server) listApps(ctx *gin.Context) {
 		return
 	}
 	records, err := server.deployments.ListApps(
-		ctx.Request.Context(),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID,
 		strings.TrimSpace(ctx.Query("project_id")),
 		ctx.Query("name"), limit,
 	)
@@ -96,7 +100,7 @@ func (server *Server) createApp(ctx *gin.Context) {
 	if !server.bindJSON(ctx, &body) {
 		return
 	}
-	record, err := server.deployments.CreateApp(ctx.Request.Context(), body)
+	record, err := server.deployments.CreateApp(ctx.Request.Context(), principalOf(ctx).OrganizationID, body)
 	if err != nil {
 		writeError(ctx, err)
 		return
@@ -106,7 +110,9 @@ func (server *Server) createApp(ctx *gin.Context) {
 }
 
 func (server *Server) getApp(ctx *gin.Context) {
-	record, err := server.deployments.GetApp(ctx.Request.Context(), ctx.Param("app_id"))
+	record, err := server.deployments.GetApp(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("app_id"),
+	)
 	if err != nil {
 		writeError(ctx, err)
 		return
@@ -124,7 +130,7 @@ func (server *Server) updateApp(ctx *gin.Context) {
 		return
 	}
 	record, err := server.deployments.UpdateApp(
-		ctx.Request.Context(), ctx.Param("app_id"), body,
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("app_id"), body,
 	)
 	if err != nil {
 		writeError(ctx, err)
@@ -136,7 +142,7 @@ func (server *Server) updateApp(ctx *gin.Context) {
 // deleteApp destroys an app and the deployments, builds and executions under it.
 func (server *Server) deleteApp(ctx *gin.Context) {
 	appID := ctx.Param("app_id")
-	if err := server.deployments.DeleteApp(ctx.Request.Context(), appID); err != nil {
+	if err := server.deployments.DeleteApp(ctx.Request.Context(), principalOf(ctx).OrganizationID, appID); err != nil {
 		writeError(ctx, err)
 		return
 	}
@@ -149,7 +155,7 @@ func (server *Server) listBuilds(ctx *gin.Context) {
 		return
 	}
 	records, err := server.deployments.ListBuilds(
-		ctx.Request.Context(),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID,
 		strings.TrimSpace(ctx.Query("deployment_id")), limit,
 	)
 	if err != nil {
@@ -161,7 +167,7 @@ func (server *Server) listBuilds(ctx *gin.Context) {
 
 func (server *Server) getBuild(ctx *gin.Context) {
 	record, err := server.deployments.GetBuild(
-		ctx.Request.Context(), ctx.Param("build_id"),
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("build_id"),
 	)
 	if err != nil {
 		writeError(ctx, err)

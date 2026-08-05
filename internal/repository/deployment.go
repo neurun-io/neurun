@@ -174,13 +174,32 @@ func saveBuild(ctx context.Context, tx pgx.Tx, build deployment.Build) error {
 	return requireOneRow(tag, "build changed concurrently")
 }
 
-func (repository *DeploymentRepository) GetByID(
+// GetByIDUnscoped crosses organizations and exists for the worker, which acts
+// on an execution it has already claimed and holds no principal to scope to.
+func (repository *DeploymentRepository) GetByIDUnscoped(
 	ctx context.Context,
 	deploymentID string,
 ) (deployment.Deployment, error) {
 	var record deployment.Deployment
 	err := transaction(ctx, repository.pool, func(tx pgx.Tx) error {
-		loaded, err := getDeployment(ctx, tx, deploymentID)
+		loaded, err := getDeploymentUnscoped(ctx, tx, deploymentID)
+		record = loaded
+		return err
+	})
+	if err != nil {
+		return deployment.Deployment{}, err
+	}
+	return record, nil
+}
+
+func (repository *DeploymentRepository) GetByID(
+	ctx context.Context,
+	organizationID string,
+	deploymentID string,
+) (deployment.Deployment, error) {
+	var record deployment.Deployment
+	err := transaction(ctx, repository.pool, func(tx pgx.Tx) error {
+		loaded, err := getDeployment(ctx, tx, organizationID, deploymentID)
 		record = loaded
 		return err
 	})
@@ -192,9 +211,33 @@ func (repository *DeploymentRepository) GetByID(
 
 // getDeployment reads a deployment and its builds. Both queries run on the same
 // transaction so the two cannot disagree about the build list.
+// getDeploymentUnscoped crosses every organization and exists for exactly one
+// caller: the boot-time recovery sweep, which has no principal to scope to.
+// Nothing reachable from a request may call it.
+func getDeploymentUnscoped(
+	ctx context.Context,
+	tx pgx.Tx,
+	deploymentID string,
+) (deployment.Deployment, error) {
+	return loadDeployment(ctx, tx, "", deploymentID)
+}
+
 func getDeployment(
 	ctx context.Context,
 	tx pgx.Tx,
+	organizationID string,
+	deploymentID string,
+) (deployment.Deployment, error) {
+	if organizationID == "" {
+		return deployment.Deployment{}, errors.New("organization is required")
+	}
+	return loadDeployment(ctx, tx, organizationID, deploymentID)
+}
+
+func loadDeployment(
+	ctx context.Context,
+	tx pgx.Tx,
+	organizationID string,
 	deploymentID string,
 ) (deployment.Deployment, error) {
 	if err := deployment.ValidateIdentifier("deployment_id", deploymentID); err != nil {
@@ -205,8 +248,9 @@ func getDeployment(
 	err := tx.QueryRow(
 		ctx,
 		`SELECT `+deploymentColumns+`
-		 FROM deployments WHERE id = $1`,
-		deploymentID,
+		 FROM deployments
+		 WHERE id = $1 AND ($2 = '' OR`+fmt.Sprintf(inOrganization, "$2")+`)`,
+		deploymentID, organizationID,
 	).Scan(
 		&record.ID, &record.ProjectID, &record.AppID, &record.Runtime,
 		&record.EntryPoint, &record.Status, &sourceJSON,
@@ -243,6 +287,7 @@ func getDeployment(
 
 func (repository *DeploymentRepository) List(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 	appID string,
 	limit int,
@@ -262,9 +307,10 @@ func (repository *DeploymentRepository) List(
 		rows, err := tx.Query(
 			ctx,
 			`SELECT id FROM deployments
-			 WHERE ($1 = '' OR project_id = $1) AND ($2 = '' OR app_id = $2)
-			 ORDER BY created_at DESC, id DESC LIMIT $3`,
-			projectID, appID, postgresLimit(limit),
+			 WHERE ($1 = '' OR project_id = $1) AND ($2 = '' OR app_id = $2) AND`+
+				fmt.Sprintf(inOrganization, "$4")+
+				` ORDER BY created_at DESC, id DESC LIMIT $3`,
+			projectID, appID, postgresLimit(limit), organizationID,
 		)
 		if err != nil {
 			return fmt.Errorf("list deployments: %w", err)
@@ -274,7 +320,7 @@ func (repository *DeploymentRepository) List(
 			return fmt.Errorf("list deployments: %w", err)
 		}
 		for _, id := range identifiers {
-			record, err := getDeployment(ctx, tx, id)
+			record, err := getDeployment(ctx, tx, organizationID, id)
 			if err != nil {
 				return err
 			}
@@ -290,13 +336,16 @@ func (repository *DeploymentRepository) List(
 
 func (repository *DeploymentRepository) GetBuild(
 	ctx context.Context,
+	organizationID string,
 	buildID string,
 ) (deployment.Build, error) {
 	if err := deployment.ValidateIdentifier("build_id", buildID); err != nil {
 		return deployment.Build{}, err
 	}
 	rows, err := repository.pool.Query(
-		ctx, buildSelect+` WHERE b.id = $1`, buildID,
+		ctx,
+		buildSelect+` WHERE b.id = $1 AND`+fmt.Sprintf(buildsInOrganization, "$2"),
+		buildID, organizationID,
 	)
 	if err != nil {
 		return deployment.Build{}, fmt.Errorf("read build: %w", err)
@@ -315,6 +364,7 @@ func (repository *DeploymentRepository) GetBuild(
 
 func (repository *DeploymentRepository) ListBuilds(
 	ctx context.Context,
+	organizationID string,
 	deploymentID string,
 	limit int,
 ) ([]deployment.Build, error) {
@@ -325,9 +375,10 @@ func (repository *DeploymentRepository) ListBuilds(
 	}
 	rows, err := repository.pool.Query(
 		ctx,
-		buildSelect+` WHERE ($1 = '' OR b.deployment_id = $1)
-		 ORDER BY b.started_at DESC, b.id DESC LIMIT $2`,
-		deploymentID, postgresLimit(limit),
+		buildSelect+` WHERE ($1 = '' OR b.deployment_id = $1) AND`+
+			fmt.Sprintf(buildsInOrganization, "$3")+
+			` ORDER BY b.started_at DESC, b.id DESC LIMIT $2`,
+		deploymentID, postgresLimit(limit), organizationID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list builds: %w", err)
@@ -364,7 +415,7 @@ func (repository *DeploymentRepository) RecoverBuilding(
 			return err
 		}
 		for _, id := range identifiers {
-			record, err := getDeployment(ctx, tx, id)
+			record, err := getDeploymentUnscoped(ctx, tx, id)
 			if err != nil {
 				return err
 			}

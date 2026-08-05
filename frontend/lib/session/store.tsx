@@ -34,9 +34,12 @@ interface SessionContextValue {
   /** Set when the session probe itself failed for an unexpected reason. */
   error: unknown;
   login: (username: string, password: string) => Promise<Operator>;
+  register: (request: api.RegisterRequest) => Promise<Operator | null>;
   logout: () => Promise<void>;
   isLoggingIn: boolean;
   loginError: unknown;
+  isRegistering: boolean;
+  registerError: unknown;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -91,6 +94,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [loginMutation],
   );
 
+  const registerMutation = useMutation({
+    mutationFn: (request: api.RegisterRequest) => api.register(request),
+    onSuccess: (operator) => {
+      // The server signs a new account in as part of registering, so seed the
+      // probe rather than making the first paint wait on a round trip. When it
+      // could not, leave the cache alone and let the sign-in form take over.
+      if (operator) {
+        queryClient.setQueryData(SESSION_QUERY_KEY, { kind: "operator", operator } satisfies Probe);
+      }
+    },
+  });
+
+  const register = useCallback(
+    async (request: api.RegisterRequest) => registerMutation.mutateAsync(request),
+    [registerMutation],
+  );
+
   const logout = useCallback(async () => {
     try {
       await api.operatorLogout();
@@ -120,11 +140,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       status,
       error: probe.error,
       login,
+      register,
       logout,
       isLoggingIn: loginMutation.isPending,
       loginError: loginMutation.error,
+      isRegistering: registerMutation.isPending,
+      registerError: registerMutation.error,
     }),
-    [probe.data, probe.error, status, login, logout, loginMutation.isPending, loginMutation.error],
+    [
+      probe.data,
+      probe.error,
+      status,
+      login,
+      register,
+      logout,
+      loginMutation.isPending,
+      loginMutation.error,
+      registerMutation.isPending,
+      registerMutation.error,
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
@@ -157,7 +191,7 @@ export function useRequiredOperator(): Operator {
  */
 export function sessionScope(operator: Operator | null): string {
   if (!operator) return "anonymous";
-  return `${operator.project_id}#${operator.operator_id}`;
+  return `${operator.organization_id}#${operator.operator_id}`;
 }
 
 /** True when the operator's role grants the scope. */

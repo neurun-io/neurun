@@ -1,10 +1,9 @@
 // Package operator provides human identity for the control plane.
 //
-// The API key in internal/domain/auth authenticates a *program* against a
-// project. This package describes a *person*: an account whose username and
-// password are exchanged for an opaque session token delivered as an HttpOnly
-// cookie. Both paths converge on auth.Principal, so scope enforcement stays in
-// one place.
+// The API key in internal/domain/auth authenticates a *program*. This package
+// describes a *person*: an account whose email and password are exchanged for
+// an opaque session token delivered as an HttpOnly cookie. Both paths converge
+// on auth.Principal, so scope enforcement stays in one place.
 package operator
 
 import (
@@ -13,8 +12,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
+
+	"github.com/neurun-io/neurun/internal/domain/organization"
 )
 
 var (
@@ -22,65 +22,15 @@ var (
 	ErrAccountDisabled = errors.New("operator account is disabled")
 	ErrSessionNotFound = errors.New("operator session not found")
 	ErrSessionExpired  = errors.New("operator session has expired")
+	// ErrNoOrganization is a real account with nowhere to act: every
+	// membership it held was removed. It signs in and can do nothing.
+	ErrNoOrganization = errors.New("account belongs to no organization")
 )
-
-// Role determines which API scopes a session carries.
-type Role string
-
-const (
-	// RoleAdmin carries every scope, including future ones.
-	RoleAdmin Role = "admin"
-	// RoleOperator can read evidence and submit or cancel work.
-	RoleOperator Role = "operator"
-	// RoleViewer can read evidence and nothing else.
-	RoleViewer Role = "viewer"
-)
-
-// Scopes returns the API scopes granted by the role.
-func (role Role) Scopes() []string {
-	switch role {
-	case RoleAdmin:
-		return []string{"*"}
-	case RoleOperator:
-		return []string{
-			"projects:read", "apps:read", "apps:write",
-			"deployments:read", "deployments:write",
-			"builds:read", "executions:read", "executions:write",
-		}
-	case RoleViewer:
-		return []string{
-			"projects:read", "apps:read", "deployments:read", "builds:read",
-			"executions:read", "users:read", "api_keys:read",
-		}
-	default:
-		return nil
-	}
-}
-
-func (role Role) Valid() bool {
-	switch role {
-	case RoleAdmin, RoleOperator, RoleViewer:
-		return true
-	default:
-		return false
-	}
-}
-
-func ParseRole(raw string) (Role, error) {
-	role := Role(strings.ToLower(strings.TrimSpace(raw)))
-	if !role.Valid() {
-		return "", fmt.Errorf(
-			"unknown operator role %q (expected admin, operator, or viewer)", raw,
-		)
-	}
-	return role, nil
-}
 
 // Account is a human login. The plaintext password is never stored or held.
 type Account struct {
 	ID           string
-	Username     string
-	Role         Role
+	Email        string
 	PasswordHash string
 	Disabled     bool
 	CreatedAt    time.Time
@@ -100,13 +50,18 @@ func (account Account) Authenticate(password string) (bool, error) {
 
 // Session is an issued login. The token itself is not stored: only its SHA-256
 // hash, so a dump of the session store cannot be replayed as a live cookie.
+//
+// A session is scoped to one organization. Role is the member role held there,
+// re-read on every request, so removing somebody takes effect on their next
+// call rather than when their cookie happens to expire.
 type Session struct {
-	ID        string    `json:"id"`
-	AccountID string    `json:"account_id"`
-	Username  string    `json:"username"`
-	Role      Role      `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ID             string            `json:"id"`
+	AccountID      string            `json:"account_id"`
+	Email          string            `json:"email"`
+	OrganizationID string            `json:"organization_id"`
+	Role           organization.Role `json:"role"`
+	CreatedAt      time.Time         `json:"created_at"`
+	ExpiresAt      time.Time         `json:"expires_at"`
 }
 
 func (session Session) Expired(now time.Time) bool {

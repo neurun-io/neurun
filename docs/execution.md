@@ -30,6 +30,19 @@ have changed in between — a late write from a worker that lost its lease loses
 Executions a crashed worker left `running` are marked `failed` with
 `worker_restarted` on the next start. They are never re-run.
 
+## The billable unit
+
+An app is executed, not hosted, so the execution is what gets metered: memory
+reserved multiplied by wall time, from the moment a worker claims the row to the
+moment it goes terminal. Queued time is not billed — a queued execution holds no
+worker. Builds are not billed. A rerun costs whatever it consumes, like any
+other execution.
+
+Nothing in this repository charges anybody; the meter is the wall time between
+`started_at` and `finished_at`, which is why both are recorded to the row rather
+than derived from logs. [Runners](runner.md) would be metered by resident time
+instead, and are unbuilt.
+
 ## Fields
 
 `id`, `project_id`, `deployment_id`, `build_id`, `status`, `input`, `output`,

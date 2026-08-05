@@ -30,7 +30,7 @@ export function TopNav() {
 
   return (
     <header className="flex h-(--nr-nav-height) shrink-0 items-center gap-4 border-b border-line bg-surface-base px-4">
-      <Link href="/jobs" className="shrink-0 rounded-xs">
+      <Link href="/projects" className="shrink-0 rounded-xs">
         <Wordmark pulse={version.isSuccess} />
       </Link>
 
@@ -58,7 +58,6 @@ export function TopNav() {
                 <div>server {version.data.version}</div>
                 <div>api {version.data.api_version}</div>
                 <div>schema {version.data.schema_version}</div>
-                <div>bundle {version.data.function_bundle}</div>
                 <div className="text-fg-muted">{version.data.commit}</div>
               </dl>
             ) : (
@@ -86,13 +85,13 @@ export function TopNav() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-1.5 font-mono text-micro">
-              {operator?.username ?? "signed out"}
+              {operator?.email ?? "signed out"}
               <ChevronDown aria-hidden className="size-3" strokeWidth={1.5} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72">
             <DropdownMenuLabel className="font-normal">
-              <span className="block font-mono text-caption text-fg">{operator?.username}</span>
+              <span className="block font-mono text-caption text-fg">{operator?.email}</span>
               <span className="block font-mono text-micro text-fg-muted">
                 {operator?.role}
               </span>

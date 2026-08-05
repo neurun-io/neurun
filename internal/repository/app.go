@@ -67,18 +67,22 @@ func (repository *AppRepository) Create(
 	return created, nil
 }
 
-// GetByID addresses an app by identifier alone. Identifiers are unique across
-// the install, so the project is a property of what comes back rather than
-// something the caller has to already know.
+// GetByID addresses an app by identifier within one organization. An app that
+// belongs to another organization reads as absent, never as forbidden: the
+// caller must not learn that the identifier exists.
 func (repository *AppRepository) GetByID(
 	ctx context.Context,
+	organizationID string,
 	appID string,
 ) (deployment.App, error) {
 	if err := deployment.ValidateIdentifier("app_id", appID); err != nil {
 		return deployment.App{}, err
 	}
 	rows, err := repository.pool.Query(
-		ctx, `SELECT `+appColumns+` FROM apps WHERE id = $1`, appID,
+		ctx,
+		`SELECT `+appColumns+` FROM apps WHERE id = $1 AND`+
+			fmt.Sprintf(inOrganization, "$2"),
+		appID, organizationID,
 	)
 	if err != nil {
 		return deployment.App{}, fmt.Errorf("read app: %w", err)
@@ -96,6 +100,7 @@ func (repository *AppRepository) GetByID(
 // List returns apps newest first. Empty projectID or name drops that filter.
 func (repository *AppRepository) List(
 	ctx context.Context,
+	organizationID string,
 	projectID string,
 	name string,
 	limit int,
@@ -111,9 +116,10 @@ func (repository *AppRepository) List(
 	rows, err := repository.pool.Query(
 		ctx,
 		`SELECT `+appColumns+` FROM apps
-		 WHERE ($1 = '' OR project_id = $1) AND ($2 = '' OR name = $2)
-		 ORDER BY created_at DESC, id DESC LIMIT $3`,
-		projectID, name, postgresLimit(limit),
+		 WHERE ($1 = '' OR project_id = $1) AND ($2 = '' OR name = $2) AND`+
+			fmt.Sprintf(inOrganization, "$4")+
+			` ORDER BY created_at DESC, id DESC LIMIT $3`,
+		projectID, name, postgresLimit(limit), organizationID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list apps: %w", err)
@@ -127,6 +133,7 @@ func (repository *AppRepository) List(
 
 func (repository *AppRepository) Update(
 	ctx context.Context,
+	organizationID string,
 	record deployment.App,
 ) (deployment.App, error) {
 	if err := record.Validate(); err != nil {
@@ -135,9 +142,10 @@ func (repository *AppRepository) Update(
 	rows, err := repository.pool.Query(
 		ctx,
 		`UPDATE apps SET name = $2, updated_at = $3
-		 WHERE id = $1 AND created_at = $4
-		 RETURNING `+appColumns,
-		record.ID, record.Name, record.UpdatedAt, record.CreatedAt,
+		 WHERE id = $1 AND created_at = $4 AND`+
+			fmt.Sprintf(inOrganization, "$5")+
+			` RETURNING `+appColumns,
+		record.ID, record.Name, record.UpdatedAt, record.CreatedAt, organizationID,
 	)
 	if err != nil {
 		return deployment.App{}, fmt.Errorf(
@@ -158,11 +166,19 @@ func (repository *AppRepository) Update(
 
 // Delete removes an app and, by way of the schema's cascades, every deployment,
 // build and execution beneath it.
-func (repository *AppRepository) Delete(ctx context.Context, appID string) error {
+func (repository *AppRepository) Delete(
+	ctx context.Context,
+	organizationID string,
+	appID string,
+) error {
 	if err := deployment.ValidateIdentifier("app_id", appID); err != nil {
 		return err
 	}
-	tag, err := repository.pool.Exec(ctx, `DELETE FROM apps WHERE id = $1`, appID)
+	tag, err := repository.pool.Exec(
+		ctx,
+		`DELETE FROM apps WHERE id = $1 AND`+fmt.Sprintf(inOrganization, "$2"),
+		appID, organizationID,
+	)
 	if err != nil {
 		return fmt.Errorf("delete app: %w", err)
 	}

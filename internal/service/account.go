@@ -51,9 +51,7 @@ func (service *AccountService) CreateUser(
 	if err != nil {
 		return account.User{}, err
 	}
-	record, err := account.NewUser(
-		id, request.Username, request.DisplayName, request.Role, service.now(),
-	)
+	record, err := account.NewUser(id, request.Email, service.now())
 	if err != nil {
 		return account.User{}, err
 	}
@@ -72,9 +70,10 @@ func (service *AccountService) GetUser(
 
 func (service *AccountService) ListUsers(
 	ctx context.Context,
+	organizationID string,
 	limit int,
 ) ([]account.User, error) {
-	return service.users.List(ctx, limit)
+	return service.users.List(ctx, organizationID, limit)
 }
 
 func (service *AccountService) UpdateUser(
@@ -86,9 +85,7 @@ func (service *AccountService) UpdateUser(
 	if err != nil {
 		return account.User{}, err
 	}
-	if err := record.Apply(
-		request.DisplayName, request.Role, request.Disabled, service.now(),
-	); err != nil {
+	if err := record.Apply(request.Email, request.Disabled, service.now()); err != nil {
 		return account.User{}, err
 	}
 	if err := service.users.Update(ctx, record); err != nil {
@@ -106,6 +103,7 @@ func (service *AccountService) DeleteUser(ctx context.Context, userID string) er
 // reaches the database.
 func (service *AccountService) CreateKey(
 	ctx context.Context,
+	organizationID string,
 	request dto.CreateKeyRequest,
 ) (account.CreatedKey, error) {
 	id, err := service.newID("key")
@@ -113,7 +111,7 @@ func (service *AccountService) CreateKey(
 		return account.CreatedKey{}, err
 	}
 	record, err := account.NewKey(
-		id, request.UserID, request.Name, request.Scopes, service.now(),
+		id, organizationID, request.UserID, request.Name, request.Scopes, service.now(),
 	)
 	if err != nil {
 		return account.CreatedKey{}, err
@@ -142,16 +140,18 @@ func (service *AccountService) CreateKey(
 
 func (service *AccountService) ListKeys(
 	ctx context.Context,
+	organizationID string,
 	limit int,
 ) ([]account.Key, error) {
-	return service.keys.List(ctx, limit)
+	return service.keys.List(ctx, organizationID, limit)
 }
 
 func (service *AccountService) RevokeKey(
 	ctx context.Context,
+	organizationID string,
 	keyID string,
 ) (account.Key, error) {
-	return service.keys.Revoke(ctx, keyID, service.now())
+	return service.keys.Revoke(ctx, organizationID, keyID, service.now())
 }
 
 // AuthenticateContext resolves a presented API key to a principal. An unknown
@@ -169,32 +169,9 @@ func (service *AccountService) AuthenticateContext(
 		return auth.Principal{}, false
 	}
 	return auth.Principal{
-		Kind:   auth.KindAPIKey,
-		KeyID:  credential.ID,
-		Scopes: credential.Scopes,
+		Kind:           auth.KindAPIKey,
+		KeyID:          credential.ID,
+		OrganizationID: credential.OrganizationID,
+		Scopes:         credential.Scopes,
 	}, true
-}
-
-// CreateAdmin creates the first administrator and reports whether it made one.
-//
-// Boot calls this so an empty database has a way in. An existing username is
-// not an error, it just means the admin is already there — but the password is
-// never re-asserted, so one changed through the API is not silently reverted on
-// the next restart.
-func (service *AccountService) CreateAdmin(
-	ctx context.Context,
-	username string,
-	password string,
-) (bool, error) {
-	_, err := service.CreateUser(ctx, dto.CreateUserRequest{
-		Username: username, DisplayName: username,
-		Role: "admin", Password: password,
-	})
-	if errors.Is(err, account.ErrConflict) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return true, nil
 }

@@ -15,18 +15,25 @@ var (
 )
 
 type Project struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organization_id"`
+	Name           string    `json:"name"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-func NewProject(id, name string, now time.Time) (Project, error) {
+func NewProject(id, organizationID, name string, now time.Time) (Project, error) {
 	normalized, err := normalizeProjectName(name)
 	if err != nil {
 		return Project{}, err
 	}
-	record := Project{ID: id, Name: normalized, CreatedAt: now, UpdatedAt: now}
+	record := Project{
+		ID:             id,
+		OrganizationID: strings.TrimSpace(organizationID),
+		Name:           normalized,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
 	if err := record.Validate(); err != nil {
 		return Project{}, err
 	}
@@ -46,6 +53,9 @@ func (record *Project) Rename(name string, now time.Time) error {
 func (record Project) Validate() error {
 	if err := ValidateIdentifier("project_id", record.ID); err != nil {
 		return err
+	}
+	if record.OrganizationID == "" {
+		return fmt.Errorf("%w: project requires an organization", ErrInvalid)
 	}
 	name, err := normalizeProjectName(record.Name)
 	if err != nil || name != record.Name {

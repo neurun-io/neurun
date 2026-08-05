@@ -15,9 +15,10 @@ import (
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	server, err := NewServer(ServerOptions{
-		Deployments: &service.DeploymentService{},
-		Executions:  &service.ExecutionService{},
-		Accounts:    &service.AccountService{},
+		Deployments:   &service.DeploymentService{},
+		Executions:    &service.ExecutionService{},
+		Accounts:      &service.AccountService{},
+		Organizations: &service.OrganizationService{},
 	})
 	if err != nil {
 		t.Fatalf("construct server: %v", err)

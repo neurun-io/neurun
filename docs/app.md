@@ -2,6 +2,12 @@
 
 The unit you deploy to. An app belongs to one project and owns its deployments.
 
+An app is **executed, not hosted**. It has no resident process and no endpoint
+of its own: calls create [executions](execution.md), each pinned to a build, and
+the compute they consume is what gets billed. A resident app behind an endpoint
+is a [runner](runner.md), which is a different object on a different meter, and
+is not built.
+
 ## It must exist first
 
 This is the rule worth knowing: **an SDK cannot create an app by deploying to

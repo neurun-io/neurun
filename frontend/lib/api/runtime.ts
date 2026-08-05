@@ -26,9 +26,9 @@ const openRecord = z.looseObject({});
  */
 export const operatorSchema = z.looseObject({
   operator_id: z.string(),
-  username: z.string(),
+  email: z.string(),
+  organization_id: z.string(),
   role: z.string(),
-  project_id: z.string(),
   scopes: z.array(z.string()),
   session_id: z.string(),
   expires_at: timestamp,
@@ -37,6 +37,38 @@ export const operatorSchema = z.looseObject({
 export const operatorEnvelopeSchema = z.looseObject({
   operator: operatorSchema,
   request_id: z.string().optional(),
+});
+
+/**
+ * Registration answers with the account, and with the operator only when the
+ * server also managed to sign it in.
+ */
+export const registrationSchema = z.looseObject({
+  user: z.looseObject({ id: z.string(), email: z.string() }),
+  organization: z.looseObject({ id: z.string(), name: z.string() }).optional(),
+  member: z.looseObject({ role: z.string() }).optional(),
+  operator: operatorSchema.optional(),
+  request_id: z.string().optional(),
+});
+
+export const organizationSchema = z.looseObject({
+  id: z.string(),
+  name: z.string(),
+  owner_user_id: z.string().optional(),
+});
+
+export const memberSchema = z.looseObject({
+  user_id: z.string().optional(),
+  email: z.string().optional(),
+  role: z.string(),
+  owner: z.boolean().optional(),
+});
+
+/** What a sign-up page may show before the account exists. */
+export const invitePreviewSchema = z.looseObject({
+  organization: z.looseObject({ id: z.string(), name: z.string() }),
+  email: z.string(),
+  role: z.string(),
 });
 
 export const functionRefSchema = z.looseObject({

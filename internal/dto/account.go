@@ -7,16 +7,13 @@ import (
 )
 
 type CreateUserRequest struct {
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Role        string `json:"role"`
-	Password    string `json:"password"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type UpdateUserRequest struct {
-	DisplayName *string `json:"display_name"`
-	Role        *string `json:"role"`
-	Disabled    *bool   `json:"disabled"`
+	Email    *string `json:"email"`
+	Disabled *bool   `json:"disabled"`
 }
 
 type CreateKeyRequest struct {
@@ -26,23 +23,22 @@ type CreateKeyRequest struct {
 }
 
 type UserResponse struct {
-	ID          string    `json:"id"`
-	Username    string    `json:"username"`
-	DisplayName string    `json:"display_name"`
-	Role        string    `json:"role"`
-	Disabled    bool      `json:"disabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Disabled  bool      `json:"disabled"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type KeyResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"user_id,omitempty"`
-	Name      string     `json:"name"`
-	Prefix    string     `json:"prefix"`
-	Scopes    []string   `json:"scopes"`
-	CreatedAt time.Time  `json:"created_at"`
-	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+	ID             string     `json:"id"`
+	OrganizationID string     `json:"organization_id"`
+	UserID         string     `json:"user_id,omitempty"`
+	Name           string     `json:"name"`
+	Prefix         string     `json:"prefix"`
+	Scopes         []string   `json:"scopes"`
+	CreatedAt      time.Time  `json:"created_at"`
+	RevokedAt      *time.Time `json:"revoked_at,omitempty"`
 }
 
 // CreatedKeyResponse carries the one and only sight of a key's secret.
@@ -53,9 +49,7 @@ type CreatedKeyResponse struct {
 
 func NewUserResponse(record account.User) UserResponse {
 	return UserResponse{
-		ID: record.ID, Username: record.Username,
-		DisplayName: record.DisplayName, Role: record.Role,
-		Disabled:  record.Disabled,
+		ID: record.ID, Email: record.Email, Disabled: record.Disabled,
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }
@@ -70,7 +64,7 @@ func NewUserResponses(records []account.User) []UserResponse {
 
 func NewKeyResponse(record account.Key) KeyResponse {
 	return KeyResponse{
-		ID: record.ID, UserID: record.UserID,
+		ID: record.ID, OrganizationID: record.OrganizationID, UserID: record.UserID,
 		Name: record.Name, Prefix: record.Prefix, Scopes: record.Scopes,
 		CreatedAt: record.CreatedAt, RevokedAt: record.RevokedAt,
 	}

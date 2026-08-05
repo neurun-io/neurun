@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/neurun-io/neurun/internal/domain/operator"
+	"github.com/neurun-io/neurun/internal/domain/organization"
 	"github.com/neurun-io/neurun/internal/repository"
 )
 
@@ -39,19 +40,21 @@ var timingDecoyHash = sync.OnceValue(func() string {
 // OperatorService exchanges a username and password for a session, and resolves
 // session tokens back to the person holding them.
 type OperatorService struct {
-	users      *repository.UserRepository
-	sessions   *repository.SessionRepository
-	sessionTTL time.Duration
-	now        func() time.Time
+	users         *repository.UserRepository
+	organizations *repository.OrganizationRepository
+	sessions      *repository.SessionRepository
+	sessionTTL    time.Duration
+	now           func() time.Time
 }
 
 func NewOperatorService(
 	users *repository.UserRepository,
+	organizations *repository.OrganizationRepository,
 	sessions *repository.SessionRepository,
 	sessionTTL time.Duration,
 	now func() time.Time,
 ) (*OperatorService, error) {
-	if users == nil || sessions == nil {
+	if users == nil || organizations == nil || sessions == nil {
 		return nil, errors.New("operator service requires its repositories")
 	}
 	if sessionTTL <= 0 {
@@ -61,48 +64,87 @@ func NewOperatorService(
 		now = func() time.Time { return time.Now().UTC() }
 	}
 	return &OperatorService{
-		users: users, sessions: sessions, sessionTTL: sessionTTL, now: now,
+		users: users, organizations: organizations, sessions: sessions,
+		sessionTTL: sessionTTL, now: now,
 	}, nil
 }
 
-// Login verifies credentials and issues a session. The returned token is the
-// only time the caller sees it: storage keeps a hash.
+// Login verifies credentials and issues a session in one organization. The
+// returned token is the only time the caller sees it: storage keeps a hash.
 func (service *OperatorService) Login(
 	ctx context.Context,
-	username string,
+	email string,
 	password string,
 ) (operator.Session, string, error) {
-	now := service.now()
+	found, err := service.authenticate(ctx, email, password)
+	if err != nil {
+		return operator.Session{}, "", err
+	}
+	membership, err := service.organizations.FirstForUser(ctx, found.ID)
+	if err != nil && !errors.Is(err, organization.ErrNotMember) {
+		return operator.Session{}, "", err
+	}
+	// Belonging nowhere is a real state, not a failure: the account signs in and
+	// is asked to create an organization or accept an invitation.
+	return service.issue(ctx, found, membership)
+}
 
-	found, err := service.users.CredentialByUsername(ctx, username)
+// StartSession issues a session for an account whose membership the caller
+// already holds — the path registration and invitation acceptance take, where
+// the password has just been set rather than presented.
+func (service *OperatorService) StartSession(
+	ctx context.Context,
+	userID string,
+	membership organization.Member,
+) (operator.Session, string, error) {
+	found, err := service.users.CredentialByID(ctx, userID)
+	if err != nil {
+		return operator.Session{}, "", err
+	}
+	return service.issue(ctx, found, membership)
+}
+
+func (service *OperatorService) authenticate(
+	ctx context.Context,
+	email string,
+	password string,
+) (operator.Account, error) {
+	found, err := service.users.CredentialByEmail(ctx, email)
 	switch {
 	case errors.Is(err, operator.ErrAccountNotFound):
 		// Spend comparable time before failing, so timing does not reveal
-		// whether the username exists.
+		// whether the address exists.
 		_, _ = operator.VerifyPassword(timingDecoyHash(), password)
-		return operator.Session{}, "", ErrInvalidCredentials
+		return operator.Account{}, ErrInvalidCredentials
 	case err != nil:
-		return operator.Session{}, "", err
+		return operator.Account{}, err
 	}
 
 	matched, err := found.Authenticate(password)
 	if err != nil {
 		// A malformed stored hash is a configuration fault, not a bad password.
-		return operator.Session{}, "", fmt.Errorf("verify operator password: %w", err)
+		return operator.Account{}, fmt.Errorf("verify operator password: %w", err)
 	}
 	if !matched {
 		if found.Disabled {
 			_, _ = operator.VerifyPassword(timingDecoyHash(), password)
 		}
-		return operator.Session{}, "", ErrInvalidCredentials
+		return operator.Account{}, ErrInvalidCredentials
 	}
+	return found, nil
+}
 
+func (service *OperatorService) issue(
+	ctx context.Context,
+	found operator.Account,
+	membership organization.Member,
+) (operator.Session, string, error) {
 	token, err := operator.NewToken()
 	if err != nil {
 		return operator.Session{}, "", err
 	}
 	session, err := service.sessions.Create(
-		ctx, found, token, now.Add(service.sessionTTL),
+		ctx, found, membership, token, service.now().Add(service.sessionTTL),
 	)
 	if err != nil {
 		return operator.Session{}, "", err
