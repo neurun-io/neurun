@@ -1,7 +1,6 @@
 CREATE TABLE executions (
     id                     text PRIMARY KEY,
-    project_id             text NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    deployment_id          text NOT NULL,
+    deployment_id          text NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
     build_id               text NOT NULL,
     status                 text NOT NULL,
     input                  jsonb NOT NULL,
@@ -17,13 +16,11 @@ CREATE TABLE executions (
         status IN ('queued', 'running', 'succeeded', 'failed')
     ),
     CONSTRAINT executions_logs_bounded CHECK (octet_length(logs) <= 262144),
-    FOREIGN KEY (deployment_id, project_id)
-        REFERENCES deployments(id, project_id) ON DELETE CASCADE,
     FOREIGN KEY (build_id, deployment_id)
         REFERENCES builds(id, deployment_id)
 );
 
-CREATE INDEX executions_project_deployment_created
-    ON executions(project_id, deployment_id, created_at DESC, id DESC);
+CREATE INDEX executions_deployment_created
+    ON executions(deployment_id, created_at DESC, id DESC);
 CREATE INDEX executions_queue
     ON executions(status, created_at, id);

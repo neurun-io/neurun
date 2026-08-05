@@ -101,18 +101,26 @@ func contextOrBackground(ctx context.Context) context.Context {
 	return ctx
 }
 
-// inOrganization restricts a table carrying project_id to one organization. It
-// is the tenancy boundary: every read a caller can influence goes through it,
-// so a project_id from another organization matches nothing rather than
-// returning somebody else's rows.
 const inOrganization = ` project_id IN (
 	SELECT id FROM projects WHERE organization_id = %s
 )`
 
-// buildsInOrganization is the same boundary for builds, which carry a
-// deployment rather than a project.
+const appsInOrganization = ` app_id IN (
+	SELECT a.id FROM apps a
+	JOIN projects p ON p.id = a.project_id
+	WHERE p.organization_id = %s
+)`
+
+const deploymentsInOrganization = ` deployment_id IN (
+	SELECT d.id FROM deployments d
+	JOIN apps a ON a.id = d.app_id
+	JOIN projects p ON p.id = a.project_id
+	WHERE p.organization_id = %s
+)`
+
 const buildsInOrganization = ` b.deployment_id IN (
 	SELECT d.id FROM deployments d
-	JOIN projects p ON p.id = d.project_id
+	JOIN apps a ON a.id = d.app_id
+	JOIN projects p ON p.id = a.project_id
 	WHERE p.organization_id = %s
 )`

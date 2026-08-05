@@ -10,7 +10,6 @@ import type {
   NeurunApp,
   Project,
   User,
-  UserRole,
 } from "./resource-types";
 
 const timestampSchema = z.string();

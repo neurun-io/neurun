@@ -54,7 +54,15 @@ func (server *Server) updateUser(ctx *gin.Context) {
 // deleteUser removes a person and nothing else. Keys they minted keep working
 // with their attribution cleared, and every project resource stands.
 func (server *Server) deleteUser(ctx *gin.Context) {
-	if err := server.accounts.DeleteUser(ctx.Request.Context(), ctx.Param("user_id")); err != nil {
+	target := ctx.Param("user_id")
+	if target == principalOf(ctx).OperatorID {
+		writeProblem(ctx, http.StatusConflict, dto.Problem{
+			Code:    "cannot_delete_self",
+			Message: "you cannot delete your own account",
+		})
+		return
+	}
+	if err := server.accounts.DeleteUser(ctx.Request.Context(), target); err != nil {
 		writeError(ctx, err)
 		return
 	}

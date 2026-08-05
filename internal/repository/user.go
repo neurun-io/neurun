@@ -107,7 +107,8 @@ func (repository *UserRepository) List(
 		`SELECT u.id, u.email, u.disabled, u.created_at, u.updated_at
 		 FROM users u
 		 JOIN organization_members m ON m.user_id = u.id
-		 WHERE m.organization_id = $1
+		 JOIN organizations o ON o.id = m.organization_id
+		 WHERE m.organization_id = $1 AND u.id <> o.owner_user_id
 		 ORDER BY u.created_at DESC, u.id DESC LIMIT $2`,
 		organizationID, postgresLimit(limit),
 	)

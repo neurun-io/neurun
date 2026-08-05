@@ -13,10 +13,12 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/execution"
 )
 
-const executionSelect = `SELECT id, project_id, deployment_id, build_id,
-	status, input, output, failure, logs, created_at, started_at,
-	finished_at, rerun_of_execution_id, version
-FROM executions`
+const executionSelect = `SELECT e.id, a.project_id, e.deployment_id, e.build_id,
+	e.status, e.input, e.output, e.failure, e.logs, e.created_at, e.started_at,
+	e.finished_at, e.rerun_of_execution_id, e.version
+FROM executions e
+JOIN deployments d ON d.id = e.deployment_id
+JOIN apps a ON a.id = d.app_id`
 
 type ExecutionRepository struct {
 	pool *pgxpool.Pool
@@ -84,11 +86,11 @@ func (repository *ExecutionRepository) Create(
 	_, err := repository.pool.Exec(
 		ctx,
 		`INSERT INTO executions
-		 (id, project_id, deployment_id, build_id, status, input, output,
+		 (id, deployment_id, build_id, status, input, output,
 		  failure, logs, created_at, started_at, finished_at,
 		  rerun_of_execution_id, version)
-		 VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, '', $7, NULL, NULL, $8, 1)`,
-		record.ID, record.ProjectID, record.DeploymentID, record.BuildID,
+		 VALUES ($1, $2, $3, $4, $5, NULL, NULL, '', $6, NULL, NULL, $7, 1)`,
+		record.ID, record.DeploymentID, record.BuildID,
 		record.Status, []byte(record.Input), record.CreatedAt,
 		nullableString(record.RerunOfExecutionID),
 	)
@@ -105,7 +107,9 @@ func (repository *ExecutionRepository) GetByID(
 ) (execution.Execution, error) {
 	rows, err := repository.pool.Query(
 		ctx,
-		executionSelect+` WHERE id = $1 AND`+fmt.Sprintf(inOrganization, "$2"),
+		executionSelect+`
+		 JOIN projects p ON p.id = a.project_id
+		 WHERE e.id = $1 AND p.organization_id = $2`,
 		executionID, organizationID,
 	)
 	if err != nil {
@@ -132,10 +136,12 @@ func (repository *ExecutionRepository) List(
 ) ([]execution.Execution, error) {
 	rows, err := repository.pool.Query(
 		ctx,
-		executionSelect+` WHERE ($1 = '' OR project_id = $1)
-		 AND ($2 = '' OR deployment_id = $2) AND`+
-			fmt.Sprintf(inOrganization, "$4")+
-			` ORDER BY created_at DESC, id DESC LIMIT $3`,
+		executionSelect+`
+		 JOIN projects p ON p.id = a.project_id
+		 WHERE ($1 = '' OR a.project_id = $1)
+		 AND ($2 = '' OR e.deployment_id = $2)
+		 AND p.organization_id = $4
+		 ORDER BY e.created_at DESC, e.id DESC LIMIT $3`,
 		projectID, deploymentID, postgresLimit(limit), organizationID,
 	)
 	if err != nil {
@@ -191,9 +197,9 @@ func (repository *ExecutionRepository) ClaimQueued(
 	err := transaction(ctx, repository.pool, func(tx pgx.Tx) error {
 		rows, err := tx.Query(
 			ctx,
-			executionSelect+` WHERE status = 'queued'
-			 ORDER BY created_at ASC, id ASC
-			 FOR UPDATE SKIP LOCKED LIMIT 1`,
+			executionSelect+` WHERE e.status = 'queued'
+			 ORDER BY e.created_at ASC, e.id ASC
+			 FOR UPDATE OF e SKIP LOCKED LIMIT 1`,
 		)
 		if err != nil {
 			return fmt.Errorf("claim queued execution: %w", err)

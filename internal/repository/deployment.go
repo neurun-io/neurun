@@ -13,13 +13,16 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
-const deploymentColumns = `id, project_id, app_id, runtime, entrypoint, status,
-	source, created_at, updated_at`
+const deploymentSelect = `SELECT d.id, a.project_id, d.app_id, d.runtime,
+	d.entrypoint, d.status, d.source, d.created_at, d.updated_at
+FROM deployments d JOIN apps a ON a.id = d.app_id`
 
-const buildSelect = `SELECT b.id, d.project_id, b.deployment_id, b.number,
+const buildSelect = `SELECT b.id, a.project_id, b.deployment_id, b.number,
 	b.status, b.runtime, b.entrypoint, b.source_sha256, b.artifacts,
 	b.failure, b.started_at, b.finished_at
-FROM builds b JOIN deployments d ON d.id = b.deployment_id`
+FROM builds b
+JOIN deployments d ON d.id = b.deployment_id
+JOIN apps a ON a.id = d.app_id`
 
 // DeploymentRepository stores deployments and the builds under them. Blob bytes
 // stay in the artifact store; only the handles reach the source and artifacts
@@ -101,9 +104,9 @@ func saveDeployment(
 	tag, err := tx.Exec(
 		ctx,
 		`INSERT INTO deployments
-		 (id, project_id, app_id, runtime, entrypoint, status, source,
+		 (id, app_id, runtime, entrypoint, status, source,
 		  created_at, updated_at, version)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
 		 ON CONFLICT (id) DO UPDATE SET
 		     runtime = EXCLUDED.runtime,
 		     entrypoint = EXCLUDED.entrypoint,
@@ -112,11 +115,10 @@ func saveDeployment(
 		     created_at = EXCLUDED.created_at,
 		     updated_at = EXCLUDED.updated_at,
 		     version = deployments.version + 1
-		 WHERE deployments.project_id = EXCLUDED.project_id
-		   AND deployments.app_id = EXCLUDED.app_id
+		 WHERE deployments.app_id = EXCLUDED.app_id
 		   AND (deployments.status IN ('uploaded', 'building')
 		        OR deployments.status = EXCLUDED.status)`,
-		record.ID, record.ProjectID, record.AppID, record.Runtime,
+		record.ID, record.AppID, record.Runtime,
 		record.EntryPoint, record.Status, source,
 		record.CreatedAt, record.UpdatedAt,
 	)
@@ -247,9 +249,8 @@ func loadDeployment(
 	var sourceJSON []byte
 	err := tx.QueryRow(
 		ctx,
-		`SELECT `+deploymentColumns+`
-		 FROM deployments
-		 WHERE id = $1 AND ($2 = '' OR`+fmt.Sprintf(inOrganization, "$2")+`)`,
+		deploymentSelect+`
+		 WHERE d.id = $1 AND ($2 = '' OR`+fmt.Sprintf(appsInOrganization, "$2")+`)`,
 		deploymentID, organizationID,
 	).Scan(
 		&record.ID, &record.ProjectID, &record.AppID, &record.Runtime,
@@ -306,10 +307,11 @@ func (repository *DeploymentRepository) List(
 	err := transaction(ctx, repository.pool, func(tx pgx.Tx) error {
 		rows, err := tx.Query(
 			ctx,
-			`SELECT id FROM deployments
-			 WHERE ($1 = '' OR project_id = $1) AND ($2 = '' OR app_id = $2) AND`+
-				fmt.Sprintf(inOrganization, "$4")+
-				` ORDER BY created_at DESC, id DESC LIMIT $3`,
+			`SELECT d.id FROM deployments d JOIN apps a ON a.id = d.app_id
+			 JOIN projects p ON p.id = a.project_id
+			 WHERE ($1 = '' OR a.project_id = $1) AND ($2 = '' OR d.app_id = $2)
+			   AND p.organization_id = $4
+			 ORDER BY d.created_at DESC, d.id DESC LIMIT $3`,
 			projectID, appID, postgresLimit(limit), organizationID,
 		)
 		if err != nil {

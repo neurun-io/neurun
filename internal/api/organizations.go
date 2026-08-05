@@ -267,8 +267,17 @@ func (server *Server) updateMember(ctx *gin.Context) {
 }
 
 func (server *Server) removeMember(ctx *gin.Context) {
+	principal := principalOf(ctx)
+	target := ctx.Param("user_id")
+	if target == principal.OperatorID {
+		writeProblem(ctx, http.StatusConflict, dto.Problem{
+			Code:    "cannot_remove_self",
+			Message: "you cannot remove your own membership",
+		})
+		return
+	}
 	err := server.organizations.RemoveMember(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("user_id"),
+		ctx.Request.Context(), principal.OrganizationID, target,
 	)
 	if err != nil {
 		writeError(ctx, err)

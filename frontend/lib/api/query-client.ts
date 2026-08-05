@@ -1,5 +1,6 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { NeurunApiError, NeurunContractError } from "./errors";
+import { SESSION_QUERY_KEY } from "@/lib/session/store";
 
 /** Poll cadence for non-terminal jobs, their attempts and their event stream. */
 export const LIVE_POLL_INTERVAL_MS = 2_000;
@@ -19,8 +20,28 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
   return failureCount < 2;
 }
 
+/**
+ * A 401 anywhere means the session is gone — expired, revoked, or the account
+ * disabled. Drop the cache and mark the session anonymous so the shell shows
+ * sign-in immediately, rather than leaving a dead dashboard on screen.
+ *
+ * The session probe itself resolves on 401 rather than rejecting, so this never
+ * fires for a visitor who is simply not signed in.
+ */
+function signOutOnUnauthorized(client: QueryClient, error: unknown) {
+  if (!(error instanceof NeurunApiError) || error.status !== 401) return;
+  client.clear();
+  client.setQueryData(SESSION_QUERY_KEY, { kind: "anonymous" });
+}
+
 export function createQueryClient(): QueryClient {
-  return new QueryClient({
+  const client: QueryClient = new QueryClient({
+    queryCache: new QueryCache({
+      onError: (error) => signOutOnUnauthorized(client, error),
+    }),
+    mutationCache: new MutationCache({
+      onError: (error) => signOutOnUnauthorized(client, error),
+    }),
     defaultOptions: {
       queries: {
         retry: shouldRetry,
@@ -39,4 +60,5 @@ export function createQueryClient(): QueryClient {
       },
     },
   });
+  return client;
 }

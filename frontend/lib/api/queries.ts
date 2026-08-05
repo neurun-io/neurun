@@ -13,7 +13,6 @@ import * as api from "./endpoints";
 import * as resources from "./resources";
 import { LIVE_POLL_INTERVAL_MS } from "./query-client";
 import { isTerminalExecutionStatus } from "./resource-types";
-import type { UserRole } from "./resource-types";
 
 /* -------------------------------------------------------------------------- */
 /* Query keys                                                                  */
