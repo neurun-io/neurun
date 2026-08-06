@@ -171,6 +171,7 @@ func (service *DeploymentService) Create(
 	if err != nil {
 		return deployment.Deployment{}, err
 	}
+	record.FromGit(request.CommitSHA, request.GitRef)
 	if err := service.deployments.Save(ctx, record); err != nil {
 		return deployment.Deployment{}, fmt.Errorf("persist uploaded deployment: %w", err)
 	}
@@ -243,23 +244,6 @@ func (service *DeploymentService) RecoverInterruptedBuilds(
 			Message: "build was interrupted by a service restart",
 		},
 	)
-}
-
-func (service *DeploymentService) EnsureProject(
-	ctx context.Context,
-	projectID string,
-	organizationID string,
-	name string,
-) (deployment.Project, error) {
-	if err := deployment.ValidateIdentifier("project_id", projectID); err != nil {
-		return deployment.Project{}, err
-	}
-	now := service.now().UTC().Round(0)
-	record, err := deployment.NewProject(projectID, organizationID, name, now)
-	if err != nil {
-		return deployment.Project{}, err
-	}
-	return service.projects.Ensure(ctx, record)
 }
 
 // CreateProject mints a project. Nothing creates one implicitly: a project is

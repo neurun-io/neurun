@@ -2,7 +2,6 @@ package ids
 
 import (
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -44,35 +43,6 @@ func New(prefix string) (string, error) {
 	return prefix + "_" + string(encoded), nil
 }
 
-func Trace() (string, error) {
-	var raw [16]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return "", err
-	}
-	ensureNonZero(raw[:])
-	return hex.EncodeToString(raw[:]), nil
-}
-
-func Span() (string, error) {
-	var raw [8]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return "", err
-	}
-	ensureNonZero(raw[:])
-	return hex.EncodeToString(raw[:]), nil
-}
-
-func ensureNonZero(raw []byte) {
-	for _, value := range raw {
-		if value != 0 {
-			return
-		}
-	}
-	if len(raw) != 0 {
-		raw[len(raw)-1] = 1
-	}
-}
-
 func validatePrefix(prefix string) error {
 	if prefix == "" || len(prefix) > 8 {
 		return errors.New("ID prefix must contain 1 to 8 lowercase letters")
@@ -83,14 +53,6 @@ func validatePrefix(prefix string) error {
 		}
 	}
 	return nil
-}
-
-func Prefix(value string) string {
-	prefix, _, ok := strings.Cut(value, "_")
-	if !ok {
-		return ""
-	}
-	return prefix
 }
 
 // Validate reports whether value is usable as a record identifier.

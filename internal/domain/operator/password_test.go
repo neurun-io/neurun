@@ -122,9 +122,6 @@ func TestVerifyPasswordRejectsMalformedHash(t *testing.T) {
 		if matched {
 			t.Errorf("%s: malformed hash %q reported a match", name, hash)
 		}
-		if err := ValidateHash(hash); err == nil {
-			t.Errorf("%s: ValidateHash accepted %q", name, hash)
-		}
 	}
 }
 
@@ -144,18 +141,6 @@ func TestVerifyPasswordTreatsAnOverLongPasswordAsNoMatch(t *testing.T) {
 	}
 	if matched {
 		t.Fatal("over-long password reported a match")
-	}
-}
-
-func TestValidateHashAcceptsGeneratedHash(t *testing.T) {
-	t.Parallel()
-
-	hash, err := hashPasswordWithCost(testPassword, bcrypt.MinCost)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ValidateHash(hash); err != nil {
-		t.Fatalf("ValidateHash rejected a generated hash: %v", err)
 	}
 }
 

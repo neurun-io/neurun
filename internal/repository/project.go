@@ -24,29 +24,6 @@ func NewProjectRepository(pool *pgxpool.Pool) (*ProjectRepository, error) {
 	return &ProjectRepository{pool: pool}, nil
 }
 
-func (repository *ProjectRepository) Ensure(
-	ctx context.Context,
-	record deployment.Project,
-) (deployment.Project, error) {
-	if err := record.Validate(); err != nil {
-		return deployment.Project{}, err
-	}
-	_, err := repository.pool.Exec(
-		ctx,
-		`INSERT INTO projects (id, organization_id, name, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5)
-		 ON CONFLICT (id) DO NOTHING`,
-		record.ID, record.OrganizationID, record.Name,
-		record.CreatedAt, record.UpdatedAt,
-	)
-	if err != nil {
-		return deployment.Project{}, fmt.Errorf(
-			"%w: ensure project: %v", deployment.ErrProjectConflict, err,
-		)
-	}
-	return repository.GetByID(ctx, record.OrganizationID, record.ID)
-}
-
 func (repository *ProjectRepository) GetByID(
 	ctx context.Context,
 	organizationID string,
@@ -79,8 +56,7 @@ func (repository *ProjectRepository) GetByID(
 	return record, nil
 }
 
-// Create inserts a project and fails if the identifier or name is taken. Ensure
-// is the idempotent variant, used where a caller may legitimately run twice.
+// Create inserts a project and fails if the identifier or name is taken.
 func (repository *ProjectRepository) Create(
 	ctx context.Context,
 	record deployment.Project,

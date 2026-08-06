@@ -101,16 +101,27 @@ type Build struct {
 }
 
 type Deployment struct {
-	ID         string    `json:"id"`
-	ProjectID  string    `json:"project_id"`
-	AppID      string    `json:"app_id"`
-	Runtime    Runtime   `json:"runtime"`
-	EntryPoint string    `json:"entrypoint"`
-	Status     Status    `json:"status"`
-	Source     Artifact  `json:"source"`
-	Builds     []Build   `json:"builds"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID         string   `json:"id"`
+	ProjectID  string   `json:"project_id"`
+	AppID      string   `json:"app_id"`
+	Runtime    Runtime  `json:"runtime"`
+	EntryPoint string   `json:"entrypoint"`
+	Status     Status   `json:"status"`
+	Source     Artifact `json:"source"`
+	// CommitSHA and GitRef are set when the source came from GitHub. The SHA is
+	// what actually built; the ref is what the caller asked for.
+	CommitSHA string    `json:"commit_sha,omitempty"`
+	GitRef    string    `json:"git_ref,omitempty"`
+	Builds    []Build   `json:"builds"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// FromGit records where an uploaded archive came from, once it has been fetched
+// and stored like any other source.
+func (record *Deployment) FromGit(commitSHA, ref string) {
+	record.CommitSHA = strings.TrimSpace(commitSHA)
+	record.GitRef = strings.TrimSpace(ref)
 }
 
 // New assembles an uploaded deployment around its stored source artifact.

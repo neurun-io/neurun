@@ -2,6 +2,7 @@ package config
 
 import (
 	"bufio"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -64,6 +65,8 @@ type Config struct {
 	DatabaseConnMaxIdleTime     time.Duration
 	OperatorSessionTTL          time.Duration
 	OperatorCookieSecure        bool
+	GitHubAppID                 int64
+	GitHubPrivateKey            []byte
 }
 
 func Load() (Config, error) {
@@ -98,7 +101,19 @@ func Load() (Config, error) {
 		OperatorSessionTTL:          defaultOperatorSessionTTL,
 		OperatorCookieSecure:        false,
 	}
+
 	var err error
+	if cfg.GitHubAppID, err = int64Value("NEURUN_GITHUB_APP_ID", 0); err != nil {
+		return Config{}, err
+	}
+	if encoded := value("NEURUN_GITHUB_PRIVATE_KEY", ""); encoded != "" {
+		cfg.GitHubPrivateKey, err = base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return Config{}, fmt.Errorf(
+				"NEURUN_GITHUB_PRIVATE_KEY must be the base64 of the app's PEM: %w", err,
+			)
+		}
+	}
 	if cfg.OperatorCookieSecure, err = boolValue(
 		"NEURUN_OPERATOR_COOKIE_SECURE", cfg.OperatorCookieSecure,
 	); err != nil {

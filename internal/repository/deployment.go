@@ -14,7 +14,8 @@ import (
 )
 
 const deploymentSelect = `SELECT d.id, a.project_id, d.app_id, d.runtime,
-	d.entrypoint, d.status, d.source, d.created_at, d.updated_at
+	d.entrypoint, d.status, d.source, COALESCE(d.commit_sha, ''),
+	COALESCE(d.git_ref, ''), d.created_at, d.updated_at
 FROM deployments d JOIN apps a ON a.id = d.app_id`
 
 const buildSelect = `SELECT b.id, a.project_id, b.deployment_id, b.number,
@@ -105,13 +106,15 @@ func saveDeployment(
 		ctx,
 		`INSERT INTO deployments
 		 (id, app_id, runtime, entrypoint, status, source,
-		  created_at, updated_at, version)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
+		  commit_sha, git_ref, created_at, updated_at, version)
+		 VALUES ($1, $2, $3, $4, $5, $6, $9, $10, $7, $8, 1)
 		 ON CONFLICT (id) DO UPDATE SET
 		     runtime = EXCLUDED.runtime,
 		     entrypoint = EXCLUDED.entrypoint,
 		     status = EXCLUDED.status,
 		     source = EXCLUDED.source,
+		     commit_sha = EXCLUDED.commit_sha,
+		     git_ref = EXCLUDED.git_ref,
 		     created_at = EXCLUDED.created_at,
 		     updated_at = EXCLUDED.updated_at,
 		     version = deployments.version + 1
@@ -121,6 +124,7 @@ func saveDeployment(
 		record.ID, record.AppID, record.Runtime,
 		record.EntryPoint, record.Status, source,
 		record.CreatedAt, record.UpdatedAt,
+		nullableString(record.CommitSHA), nullableString(record.GitRef),
 	)
 	if err != nil {
 		return fmt.Errorf("save deployment: %w", err)
@@ -255,6 +259,7 @@ func loadDeployment(
 	).Scan(
 		&record.ID, &record.ProjectID, &record.AppID, &record.Runtime,
 		&record.EntryPoint, &record.Status, &sourceJSON,
+		&record.CommitSHA, &record.GitRef,
 		&record.CreatedAt, &record.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {

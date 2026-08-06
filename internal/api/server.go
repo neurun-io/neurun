@@ -48,6 +48,7 @@ type ServerOptions struct {
 	Accounts               *service.AccountService
 	Operators              *service.OperatorService
 	Organizations          *service.OrganizationService
+	GitHub                 *service.GitHubService
 	Ready                  ReadyCheck
 	MaximumBodyBytes       int64
 	MaximumDeploymentBytes int64
@@ -60,6 +61,7 @@ type Server struct {
 	accounts               *service.AccountService
 	operators              *service.OperatorService
 	organizations          *service.OrganizationService
+	gitHub                 *service.GitHubService
 	ready                  ReadyCheck
 	maximumBodyBytes       int64
 	maximumDeploymentBytes int64
@@ -94,6 +96,7 @@ func NewServer(options ServerOptions) (*Server, error) {
 		accounts:               options.Accounts,
 		operators:              options.Operators,
 		organizations:          options.Organizations,
+		gitHub:                 options.GitHub,
 		ready:                  options.Ready,
 		maximumBodyBytes:       options.MaximumBodyBytes,
 		maximumDeploymentBytes: options.MaximumDeploymentBytes,
@@ -158,6 +161,12 @@ func (server *Server) routes() *gin.Engine {
 	v1.GET("/apps/:app_id", server.scoped(ScopeAppsRead), server.getApp)
 	v1.PATCH("/apps/:app_id", server.scoped(ScopeAppsWrite), server.updateApp)
 	v1.DELETE("/apps/:app_id", server.scoped(ScopeAppsWrite), server.deleteApp)
+
+	v1.GET("/github/installation", server.scoped(ScopeAppsRead), server.getInstallation)
+	v1.POST("/github/installation", server.scoped(ScopeAppsWrite), server.recordInstallation)
+	v1.DELETE("/github/installation", server.scoped(ScopeAppsWrite), server.deleteInstallation)
+	v1.PUT("/apps/:app_id/repository", server.scoped(ScopeAppsWrite), server.connectRepository)
+	v1.POST("/github/deployments", server.scoped(ScopeDeploymentsWrite), server.deployRef)
 
 	v1.GET("/builds", server.scoped(ScopeBuildsRead), server.listBuilds)
 	v1.GET("/builds/:build_id", server.scoped(ScopeBuildsRead), server.getBuild)
@@ -258,6 +267,9 @@ func notFound(ctx *gin.Context, kind string) {
 // a 500 with no detail, so an internal message cannot leak through.
 func writeError(ctx *gin.Context, err error) {
 	if writeOrganizationError(ctx, err) {
+		return
+	}
+	if writeGitHubError(ctx, err) {
 		return
 	}
 	switch {

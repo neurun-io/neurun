@@ -63,15 +63,6 @@ func hashPasswordWithCost(password string, cost int) (string, error) {
 	return string(hash), nil
 }
 
-// ValidateHash reports whether encoded is a hash this build can verify. Used at
-// startup so a malformed operator account fails fast rather than at first login.
-func ValidateHash(encoded string) error {
-	if _, err := bcrypt.Cost([]byte(encoded)); err != nil {
-		return fmt.Errorf("%w: %v", ErrHashMalformed, err)
-	}
-	return nil
-}
-
 // VerifyPassword reports whether password matches the encoded hash.
 //
 // A malformed hash returns an error rather than false, so a bad configuration

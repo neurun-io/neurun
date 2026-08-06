@@ -38,12 +38,13 @@ func TestMigrationsCreateExactlyTheApplicationTables(t *testing.T) {
 	sql := combined.String()
 
 	matches := regexp.MustCompile(`(?m)^CREATE TABLE ([a-z_]+)`).FindAllStringSubmatch(sql, -1)
-	if len(matches) != 10 {
-		t.Fatalf("application table count = %d, want 10: %v", len(matches), matches)
+	if len(matches) != 11 {
+		t.Fatalf("application table count = %d, want 11: %v", len(matches), matches)
 	}
 	for _, table := range []string{
 		"users", "organizations", "organization_members", "organization_invites",
 		"projects", "apps", "api_keys", "deployments", "builds", "executions",
+		"github_installations",
 	} {
 		if !strings.Contains(sql, "CREATE TABLE "+table) {
 			t.Errorf("migrations missing table %q", table)

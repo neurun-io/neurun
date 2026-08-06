@@ -55,11 +55,12 @@ export default function Home() {
                 <br />
                 Skip the infra.
               </h1>
+              <p className="max-w-[600px] text-xl leading-[1.45]">
+                AI has evolved rapidly, but web automation infrastructure is stuck a decade
+                behind. We&rsquo;re bridging that gap.
+              </p>
               <p className="max-w-[560px] text-lg leading-[1.55] text-fg-secondary">
-                An execution plane for scrapers, crawlers and HTTP pipelines. Deploy source to an
-                app, and every run is pinned to the immutable build that answered it — with the
-                input, the output, the logs and the failure kept as fields you can query. When
-                something breaks, the breakage is an object, not a line in stdout.
+                An execution plane for scrapers, crawlers, browser automation and HTTP pipelines.
               </p>
 
               <div className="flex flex-wrap gap-3">
@@ -95,7 +96,7 @@ export default function Home() {
             </div>
 
             <div className="grid place-items-center max-lg:hidden">
-              <Logo pulse className="size-44 text-fg" />
+              <Logo className="size-90" />
             </div>
           </div>
         </div>

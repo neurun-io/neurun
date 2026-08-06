@@ -31,7 +31,7 @@ export function TopNav() {
   return (
     <header className="flex h-(--nr-nav-height) shrink-0 items-center gap-4 border-b border-line bg-surface-base px-4">
       <Link href="/projects" className="shrink-0 rounded-xs">
-        <Wordmark pulse={version.isSuccess} />
+        <Wordmark />
       </Link>
 
       <IdentifierSearch />

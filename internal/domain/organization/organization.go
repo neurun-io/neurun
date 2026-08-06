@@ -127,20 +127,6 @@ type Member struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-func NewMember(organizationID, userID string, role Role, now time.Time) (Member, error) {
-	record := Member{
-		OrganizationID: strings.TrimSpace(organizationID),
-		UserID:         strings.TrimSpace(userID),
-		Role:           role,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-	}
-	if err := record.Validate(); err != nil {
-		return Member{}, err
-	}
-	return record, nil
-}
-
 func (record Member) Validate() error {
 	if record.OrganizationID == "" || record.UserID == "" {
 		return fmt.Errorf("%w: membership requires an organization and a user", ErrInvalid)

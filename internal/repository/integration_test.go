@@ -138,12 +138,8 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if project, err = projects.Ensure(ctx, project); err != nil {
-		t.Fatalf("ensure project: %v", err)
-	}
-	// Ensure is idempotent: booting twice must not fail.
-	if _, err = projects.Ensure(ctx, project); err != nil {
-		t.Fatalf("second ensure: %v", err)
+	if project, err = projects.Create(ctx, project); err != nil {
+		t.Fatalf("create project: %v", err)
 	}
 
 	app, err := deployment.NewApp("app_it", project.ID, "Integration App", now)
@@ -278,7 +274,7 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if project, err = projects.Ensure(ctx, project); err != nil {
+	if project, err = projects.Create(ctx, project); err != nil {
 		t.Fatal(err)
 	}
 	app, err := deployment.NewApp("app_rec", project.ID, "Recovery App", now)

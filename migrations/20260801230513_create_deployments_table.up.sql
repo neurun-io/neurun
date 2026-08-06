@@ -5,12 +5,20 @@ CREATE TABLE deployments (
     entrypoint  text NOT NULL,
     status      text NOT NULL,
     source      jsonb NOT NULL,
+    commit_sha  text,
+    git_ref     text,
     created_at  timestamptz NOT NULL,
     updated_at  timestamptz NOT NULL,
     version     bigint NOT NULL DEFAULT 1 CHECK (version > 0),
     CONSTRAINT deployments_runtime_python CHECK (runtime = 'python'),
     CONSTRAINT deployments_status_known CHECK (
         status IN ('uploaded', 'building', 'ready', 'failed')
+    ),
+    CONSTRAINT deployments_commit_sha_length CHECK (
+        commit_sha IS NULL OR length(commit_sha) = 40
+    ),
+    CONSTRAINT deployments_git_ref_needs_commit CHECK (
+        git_ref IS NULL OR commit_sha IS NOT NULL
     )
 );
 

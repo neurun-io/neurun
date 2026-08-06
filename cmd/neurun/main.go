@@ -22,6 +22,7 @@ import (
 	"github.com/neurun-io/neurun/internal/builder"
 	"github.com/neurun-io/neurun/internal/buildinfo"
 	"github.com/neurun-io/neurun/internal/config"
+	"github.com/neurun-io/neurun/internal/github"
 	"github.com/neurun-io/neurun/internal/repository"
 	"github.com/neurun-io/neurun/internal/repository/storage"
 	"github.com/neurun-io/neurun/internal/service"
@@ -172,6 +173,35 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure organizations: %w", err)
 	}
+	installations, err := repository.NewGitHubInstallationRepository(pool)
+	if err != nil {
+		return err
+	}
+	// Absent credentials are not a failure: the GitHub routes refuse with a
+	// documented error and uploads keep working.
+	var gitHubClient *github.Client
+	if cfg.GitHubAppID != 0 && len(cfg.GitHubPrivateKey) > 0 {
+		gitHubClient, err = github.New(github.Options{
+			AppID:      cfg.GitHubAppID,
+			PrivateKey: cfg.GitHubPrivateKey,
+			Limits: github.Limits{
+				MaxArchiveBytes:   cfg.MaxDeploymentSourceBytes,
+				MaxArchiveEntries: cfg.MaxDeploymentArchiveEntries,
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("configure GitHub app: %w", err)
+		}
+		logger.Info("github app configured", "app_id", cfg.GitHubAppID)
+	} else {
+		logger.Warn("github app is not configured; repository deployments are unavailable")
+	}
+	gitHubService, err := service.NewGitHubService(
+		gitHubClient, installations, apps, deploymentService, nil, nil,
+	)
+	if err != nil {
+		return fmt.Errorf("configure GitHub deployments: %w", err)
+	}
 
 	recoveredBuilds, err := deploymentService.RecoverInterruptedBuilds(ctx)
 	if err != nil {
@@ -214,6 +244,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Accounts:      accountService,
 		Operators:     operatorService,
 		Organizations: organizationService,
+		GitHub:        gitHubService,
 		Ready: func(readyCtx context.Context) error {
 			return errors.Join(
 				pool.Ping(readyCtx), blobStore.Check(readyCtx),

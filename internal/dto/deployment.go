@@ -20,6 +20,19 @@ type CreateDeploymentRequest struct {
 	EntryPoint string
 	SourceName string
 	Source     io.Reader
+	// Set when the source was fetched from GitHub rather than uploaded.
+	CommitSHA string
+	GitRef    string
+}
+
+type ConnectRepositoryRequest struct {
+	Repository    string `json:"repository"`
+	ProductionRef string `json:"production_ref"`
+}
+
+type DeployRefRequest struct {
+	AppID string `json:"app_id"`
+	Ref   string `json:"ref"`
 }
 
 type CreateAppRequest struct {
@@ -72,6 +85,8 @@ type DeploymentResponse struct {
 	EntryPoint string             `json:"entrypoint"`
 	Status     deployment.Status  `json:"status"`
 	Source     ArtifactResponse   `json:"source"`
+	CommitSHA  string             `json:"commit_sha,omitempty"`
+	GitRef     string             `json:"git_ref,omitempty"`
 	Builds     []BuildResponse    `json:"builds"`
 	CreatedAt  time.Time          `json:"created_at"`
 	UpdatedAt  time.Time          `json:"updated_at"`
@@ -85,11 +100,13 @@ type ProjectResponse struct {
 }
 
 type AppResponse struct {
-	ID        string    `json:"id"`
-	ProjectID string    `json:"project_id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	ProjectID     string    `json:"project_id"`
+	Name          string    `json:"name"`
+	Repository    string    `json:"repository,omitempty"`
+	ProductionRef string    `json:"production_ref,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 func NewArtifactResponse(record deployment.Artifact) ArtifactResponse {
@@ -128,6 +145,7 @@ func NewDeploymentResponse(record deployment.Deployment) DeploymentResponse {
 		ID: record.ID, ProjectID: record.ProjectID, AppID: record.AppID,
 		Runtime: record.Runtime, EntryPoint: record.EntryPoint,
 		Status: record.Status, Source: NewArtifactResponse(record.Source),
+		CommitSHA: record.CommitSHA, GitRef: record.GitRef,
 		Builds:    NewBuildResponses(record.Builds),
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
@@ -159,6 +177,24 @@ func NewProjectResponses(records []deployment.Project) []ProjectResponse {
 func NewAppResponse(record deployment.App) AppResponse {
 	return AppResponse{
 		ID: record.ID, ProjectID: record.ProjectID, Name: record.Name,
+		Repository: record.Repository, ProductionRef: record.ProductionRef,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+	}
+}
+
+type InstallationResponse struct {
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organization_id"`
+	InstallationID int64     `json:"installation_id"`
+	AccountLogin   string    `json:"account_login"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+func NewInstallationResponse(record deployment.Installation) InstallationResponse {
+	return InstallationResponse{
+		ID: record.ID, OrganizationID: record.OrganizationID,
+		InstallationID: record.InstallationID, AccountLogin: record.AccountLogin,
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }

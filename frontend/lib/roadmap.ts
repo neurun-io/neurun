@@ -38,6 +38,18 @@ export const ROADMAP = {
       "an authenticated session event stream (SSE) with Last-Event-ID resume",
     ],
   },
+  aiAutomationBuilder: {
+    title: "AI automation builder",
+    summary:
+      "Prompt to pipeline. Describe the site and the fields you want, and a model writes the handler, its output schema and the pipeline around it — a working scrape app in under five minutes. The generated code is the artifact, not a hidden prompt: you read it, edit it, and it deploys through the same path as anything you wrote yourself, pinned to a build like any other. The model writes code and never runs your scrape, which is the whole line — a generator that also executes is one whose mistakes you find in production rather than in a diff.",
+    requires: [
+      "a model call under a strict JSON schema returning a handler, its requirements and an output schema, so a bad generation fails validation instead of deploying",
+      "a dry run against the target URL before the first deploy, under the same egress and robots policy an execution gets, so the draft is checked against the real page rather than the model's guess of it",
+      "a template catalogue the generator starts from, and a diff against it, so a regeneration is reviewable rather than a black box that changed its mind",
+      "the generated output schema handed to the data-health baseline, so drift is measured against what the generator promised on day one",
+      "generation recorded against the app — prompt, model, template version — because a handler nobody can explain is worse than one nobody wrote",
+    ],
+  },
   runners: {
     title: "Runners",
     summary:

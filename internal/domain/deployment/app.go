@@ -3,6 +3,8 @@ package deployment
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -13,11 +15,32 @@ var (
 
 // App is the durable project-scoped owner of deployments.
 type App struct {
-	ID        string    `json:"id"`
-	ProjectID string    `json:"project_id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
+	// Repository is owner/name on GitHub, empty when the app is deployed by
+	// upload instead.
+	Repository    string    `json:"repository,omitempty"`
+	ProductionRef string    `json:"production_ref,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// Connect points the app at a GitHub repository. An empty repository
+// disconnects it, which also clears the ref there is no longer anything to
+// resolve against.
+func (record *App) Connect(repository, productionRef string, now time.Time) error {
+	repository = strings.TrimSpace(repository)
+	productionRef = strings.TrimSpace(productionRef)
+	if repository == "" {
+		record.Repository, record.ProductionRef = "", ""
+		record.UpdatedAt = notBefore(now, record.CreatedAt)
+		return record.Validate()
+	}
+	record.Repository = repository
+	record.ProductionRef = productionRef
+	record.UpdatedAt = notBefore(now, record.CreatedAt)
+	return record.Validate()
 }
 
 func NewApp(id, projectID, name string, now time.Time) (App, error) {
@@ -60,8 +83,16 @@ func (record App) Validate() error {
 		record.UpdatedAt.Before(record.CreatedAt) {
 		return fmt.Errorf("%w: app timestamps are invalid", ErrInvalid)
 	}
+	if record.Repository != "" && !repositoryPattern.MatchString(record.Repository) {
+		return fmt.Errorf("%w: repository must be owner/name", ErrInvalid)
+	}
+	if record.ProductionRef != "" && record.Repository == "" {
+		return fmt.Errorf("%w: a production ref needs a repository", ErrInvalid)
+	}
 	return nil
 }
+
+var repositoryPattern = regexp.MustCompile(`^[^/[:space:]]+/[^/[:space:]]+$`)
 
 func normalizeAppName(raw string) (string, error) {
 	return normalizeDisplayName("app", raw)

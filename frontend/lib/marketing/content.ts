@@ -86,6 +86,11 @@ export const CAPABILITIES: Capability[] = [
     state: "partial",
   },
   {
+    name: "AI automation builder",
+    detail: "Describe a site and the fields you want; a model writes the handler, its output schema and the pipeline. You read the code before it deploys.",
+    state: "roadmap",
+  },
+  {
     name: "Runners",
     detail: "A server that holds one app resident and exposes an endpoint, billed for the time it is up instead of per execution.",
     state: "roadmap",

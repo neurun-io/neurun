@@ -11,7 +11,8 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
-const appColumns = `id, project_id, name, created_at, updated_at`
+const appColumns = `id, project_id, name, COALESCE(repository, ''),
+	COALESCE(production_ref, ''), created_at, updated_at`
 
 type AppRepository struct {
 	pool *pgxpool.Pool
@@ -28,6 +29,7 @@ func scanApp(row pgx.CollectableRow) (deployment.App, error) {
 	var record deployment.App
 	if err := row.Scan(
 		&record.ID, &record.ProjectID, &record.Name,
+		&record.Repository, &record.ProductionRef,
 		&record.CreatedAt, &record.UpdatedAt,
 	); err != nil {
 		return deployment.App{}, err
@@ -47,10 +49,12 @@ func (repository *AppRepository) Create(
 	}
 	rows, err := repository.pool.Query(
 		ctx,
-		`INSERT INTO apps (id, project_id, name, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO apps
+		 (id, project_id, name, repository, production_ref, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING `+appColumns,
 		record.ID, record.ProjectID, record.Name,
+		nullableString(record.Repository), nullableString(record.ProductionRef),
 		record.CreatedAt, record.UpdatedAt,
 	)
 	if err != nil {
@@ -141,11 +145,13 @@ func (repository *AppRepository) Update(
 	}
 	rows, err := repository.pool.Query(
 		ctx,
-		`UPDATE apps SET name = $2, updated_at = $3
+		`UPDATE apps SET name = $2, updated_at = $3,
+		     repository = $6, production_ref = $7
 		 WHERE id = $1 AND created_at = $4 AND`+
 			fmt.Sprintf(inOrganization, "$5")+
 			` RETURNING `+appColumns,
 		record.ID, record.Name, record.UpdatedAt, record.CreatedAt, organizationID,
+		nullableString(record.Repository), nullableString(record.ProductionRef),
 	)
 	if err != nil {
 		return deployment.App{}, fmt.Errorf(
