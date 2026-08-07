@@ -45,6 +45,12 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/overview", label: "Overview", icon: "layout-dashboard", availability: "future" },
       {
+        href: "/stealth",
+        label: "AI stealth coherence",
+        icon: "radar",
+        availability: "future",
+      },
+      {
         href: "/ai-builder",
         label: "AI automation builder",
         icon: "sparkles",

@@ -8,9 +8,8 @@ import { Callout } from "@/components/neurun/feedback";
 import { Logo } from "@/components/neurun/logo";
 import { Panel } from "@/components/neurun/panel";
 import { Eyebrow, Section, SectionHeading } from "@/components/marketing/parts";
-import { ExecutionDemo } from "@/components/marketing/execution-demo";
 import { FirstCall, PlanGrid } from "@/components/marketing/pricing";
-import { CAPABILITIES, MODEL, REFUSED, type CapabilityState } from "@/lib/marketing/content";
+import { CAPABILITIES, REFUSED, type CapabilityState } from "@/lib/marketing/content";
 import { ALWAYS_INCLUDED, COMPARISON, FAQ, UNIT } from "@/lib/marketing/plans";
 
 export const metadata: Metadata = {
@@ -49,7 +48,6 @@ export default function Home() {
         <div className="relative mx-auto w-full max-w-(--nr-container-max) px-6 pt-16 sm:pt-22">
           <div className="grid items-center gap-14 lg:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
             <div className="flex flex-col gap-6.5">
-              <Eyebrow>Execution plane · api v1 · 0.1.0</Eyebrow>
               <h1 className="text-[clamp(44px,6.4vw,104px)] leading-[0.96] tracking-display">
                 Run the web.
                 <br />
@@ -60,7 +58,7 @@ export default function Home() {
                 behind. We&rsquo;re bridging that gap.
               </p>
               <p className="max-w-[560px] text-lg leading-[1.55] text-fg-secondary">
-                An execution plane for scrapers, crawlers, browser automation and HTTP pipelines.
+                An execution plane for scrapers, crawlers, browsers and HTTP pipelines.
               </p>
 
               <div className="flex flex-wrap gap-3">
@@ -86,64 +84,18 @@ export default function Home() {
                   className="ml-auto h-3.5 w-1.5 shrink-0 bg-(--nr-accent) motion-safe:animate-caret"
                 />
               </p>
-
-              <ul className="nr-label flex flex-wrap gap-x-5.5 gap-y-2">
-                <li>One contract</li>
-                <li>Priced per compute</li>
-                <li>Free credit to start</li>
-                <li>OpenAPI 3.1</li>
-              </ul>
             </div>
 
             <div className="grid place-items-center max-lg:hidden">
-              <Logo className="size-90" />
+              <Logo className="size-120" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ------------------------------------------------------------- live run */}
-      <Section bare innerClassName="pt-16 pb-24 sm:pt-16 sm:pb-28">
-        <div className="mb-3.5 flex flex-wrap items-end gap-4">
-          <Eyebrow>Live run</Eyebrow>
-          <p className="nr-label ml-auto">no screenshots · this is the interface</p>
-        </div>
-        <ExecutionDemo />
-      </Section>
-
-      {/* ---------------------------------------------------------------- model */}
-      <Section id="model">
-        <SectionHeading
-          className="mb-14"
-          eyebrow="The model"
-          title="Four objects. Nothing else to learn."
-          lead="There is no workflow builder and no DSL. You create an app, deploy source to it, and read back the builds and executions that came out."
-        />
-        <ol className="flex flex-col">
-          {MODEL.map((object, index) => (
-            <li
-              key={object.id}
-              className="grid items-baseline gap-6 border-t border-line py-6.5 last:border-b lg:grid-cols-[40px_minmax(0,180px)_minmax(0,1fr)_minmax(0,210px)]"
-            >
-              <span className="font-mono text-meta text-fg-faint">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <span className="text-[22px] font-medium tracking-title">{object.name}</span>
-              <p className="text-[15px] leading-[1.6] text-fg-secondary">{object.body}</p>
-              <span className="font-mono text-meta text-fg-muted">
-                {object.meta.map((line) => (
-                  <span key={line} className="block">
-                    {line}
-                  </span>
-                ))}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </Section>
-
+      
       {/* ----------------------------------------------------------- executions */}
-      <Section id="executions" className="bg-surface-sunken">
+      <Section id="executions" className="bg-surface-sunken mt-24 mb-24">
         <div className="grid items-start gap-11 lg:grid-cols-2 lg:gap-14">
           <div className="flex flex-col gap-4.5 lg:sticky lg:top-24">
             <Eyebrow>Executions</Eyebrow>
@@ -158,13 +110,6 @@ export default function Home() {
               reason a rerun means anything — it repeats the same input against the same build, and
               refuses if that build is no longer ready rather than quietly running a newer one.
             </p>
-            <div className="mt-0.5 flex flex-wrap gap-1.5">
-              {["queued", "running", "succeeded", "failed"].map((state) => (
-                <Badge key={state} variant="outline">
-                  {state}
-                </Badge>
-              ))}
-            </div>
           </div>
 
           <div className="flex min-w-0 flex-col gap-3">

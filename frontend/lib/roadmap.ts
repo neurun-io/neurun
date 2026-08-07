@@ -26,6 +26,22 @@ export const ROADMAP = {
       "browser-image and compatibility versions in GET /version",
     ],
   },
+  stealth: {
+    title: "AI stealth coherence",
+    summary:
+      "Anti-bot systems catch contradictions, not bad user agents: a ClientHello that says Chrome while the header order says Go, a datacenter ASN whose timezone is residential Berlin, a cursor that reaches every button in a straight line. So this is one declared profile across transport, presentation and behaviour, checked for coherence before the first request and watched for drift during the run. When a target starts refusing, the output names the layer that diverged and when — not a retry through a different proxy.",
+    requires: [
+      "a versioned profile — transport, presentation, behaviour — pinned to an execution the way a build is",
+      "transport checks: TLS (JA3/JA4) and HTTP/2 SETTINGS against the claimed browser, ALPN, header order and casing, Sec-Fetch-* and Sec-CH-UA completeness",
+      "network checks: ASN class, exit geography against timezone and Accept-Language, rDNS, WebRTC and DNS resolving outside the tunnel",
+      "presentation checks: UA against navigator.platform and WebGL vendor, fonts against the claimed OS, screen and outer/inner deltas, hardwareConcurrency and deviceMemory",
+      "leak probes for what the automation adds: navigator.webdriver, CDP artifacts, patched natives that stop reading as native, headless codec and matchMedia gaps",
+      "behaviour scored rather than asserted: pointer velocity and overshoot, click scatter inside a target, dwell and inter-keystroke timing, scroll momentum, cadence variance, honeypot contact",
+      "stability across runs: a canvas hash that changes every time is as loud as a known-bad one, and one fingerprint hopping ASNs is louder still",
+      "a detection oracle: challenge-page classification, 403/429 clustering by profile cohort rather than by app, and silent degradation read off the data-health baseline instead of a second one",
+      "a preflight verdict that refuses the run, and a break recorded as an event on the execution with the offending layer and its last coherent version",
+    ],
+  },
   browsers: {
     title: "Browsers",
     summary:

@@ -26,6 +26,7 @@ describe("focused navigation", () => {
         .map((item) => item.href),
     ).toEqual([
       "/overview",
+      "/stealth",
       "/ai-builder",
       "/runners",
       "/browsers",

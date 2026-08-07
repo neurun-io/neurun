@@ -86,6 +86,12 @@ export const CAPABILITIES: Capability[] = [
     state: "partial",
   },
   {
+    name: "AI stealth coherence",
+    detail:
+      "One declared profile across transport, presentation and behaviour, checked before the run and watched during it. A break names the layer that diverged.",
+    state: "roadmap",
+  },
+  {
     name: "AI automation builder",
     detail: "Describe a site and the fields you want; a model writes the handler, its output schema and the pipeline. You read the code before it deploys.",
     state: "roadmap",

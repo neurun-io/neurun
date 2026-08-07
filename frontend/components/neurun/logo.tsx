@@ -12,6 +12,7 @@ export function Logo({
   title?: string;
 }) {
   return (
+    // eslint-disable-next-line @next/next/no-img-element -- next/image will not optimise an SVG without dangerouslyAllowSVG
     <img
       src="/logo.svg"
       alt={title}
