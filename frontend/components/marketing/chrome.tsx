@@ -143,7 +143,6 @@ export function SiteFooter() {
           <span className="hidden flex-1 sm:block" />
           <span>All rights reserved</span>
           <span>api v1</span>
-          <span>0.1.0</span>
         </div>
       </div>
     </footer>

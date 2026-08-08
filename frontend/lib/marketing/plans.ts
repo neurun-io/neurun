@@ -95,33 +95,3 @@ export const ALWAYS_INCLUDED = [
   "The operator dashboard, in full",
   "Export, on every plan and on exit",
 ];
-
-export const COMPARISON: { label: string; values: [string, string, string] }[] = [
-  { label: "Included compute", values: ["50 GB-hours", "1,000 GB-hours", "committed"] },
-  { label: "Projects", values: ["1", "10", "unlimited"] },
-  { label: "Seats", values: ["1", "10", "unlimited"] },
-  { label: "Execution retention", values: ["7 days", "90 days", "you set it"] },
-  { label: "Scoped API keys", values: ["1 key", "unlimited", "unlimited"] },
-  { label: "Deployment", values: ["hosted", "hosted", "your VPC"] },
-  { label: "Runners", values: ["roadmap", "roadmap", "roadmap"] },
-  { label: "Support", values: ["community", "next business day", "named contact"] },
-];
-
-export const FAQ = [
-  {
-    q: "What exactly is metered?",
-    a: "Memory reserved multiplied by wall time, from the moment a worker claims the execution to the moment it goes terminal. Queued time is free. A build is free. A rerun costs whatever it consumes, like any other execution.",
-  },
-  {
-    q: "What happens at the plan limit?",
-    a: "By default you continue and the overage is itemised. Turn on the hard cap and further executions are refused with a documented error instead — never silently dropped.",
-  },
-  {
-    q: "Can I run it inside my own network?",
-    a: "On Enterprise. You get the licensed container and run it in your VPC; execution output never leaves your infrastructure. Source code is not distributed.",
-  },
-  {
-    q: "If I leave, do I keep my history?",
-    a: "Yes. Export is an endpoint on every plan, not a retention lever. Apps, deployments, builds and executions come out as newline-delimited JSON.",
-  },
-];
