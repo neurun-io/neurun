@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 import { Panel } from "@/components/neurun/panel";
 import { KeyValue } from "@/components/neurun/key-value";
 import { cn } from "@/lib/utils";
 import { NO_VALUE } from "@/lib/view/units";
+import { useReducedMotion } from "@/lib/view/use-reduced-motion";
 
 /**
  * A run, rendered by the real interface rather than photographed.
@@ -31,14 +32,6 @@ const REQUEST = `curl -sS -X POST \\
     "input": { "url": "https://example.com" }
   }'`;
 
-const MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-
-function subscribeMotion(onChange: () => void) {
-  const media = window.matchMedia(MOTION_QUERY);
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
-}
-
 /** Tick → phase. Roughly 3.8s of run, then back to queued. */
 function phaseFor(tick: number) {
   if (tick < 10) return { step: 0, ms: 0 };
@@ -48,11 +41,7 @@ function phaseFor(tick: number) {
 
 export function ExecutionDemo() {
   const [tick, setTick] = useState(0);
-  const reduced = useSyncExternalStore(
-    subscribeMotion,
-    () => window.matchMedia(MOTION_QUERY).matches,
-    () => false,
-  );
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (reduced) return;

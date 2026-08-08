@@ -6,8 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/neurun/feedback";
 import { Logo } from "@/components/neurun/logo";
-import { Panel } from "@/components/neurun/panel";
 import { Eyebrow, Section, SectionHeading } from "@/components/marketing/parts";
+import { RuntimeField } from "@/components/marketing/runtime-field";
 import { FirstCall, PlanGrid } from "@/components/marketing/pricing";
 import { CAPABILITIES, REFUSED, type CapabilityState } from "@/lib/marketing/content";
 import { ALWAYS_INCLUDED, COMPARISON, FAQ, UNIT } from "@/lib/marketing/plans";
@@ -105,81 +105,15 @@ export default function Home() {
               Automation workloads.
             </h2>
             <p className="text-[17px] leading-[1.6] text-fg-secondary">
-              The environment already carries what a scraper needs to be fast — the browser stack,
-              the HTTP and parsing libraries, the system packages a headless run depends on — so a
-              handler ships as code rather than as a Dockerfile that reinstalls the world on every
-              build. Egress is declared per app, and the plane owns the queueing, the claim and the
-              retry so your script does not.
+              Web scraping and stealth browsers are not difficult, it just lacks the environment to support it.
             </p>
             <p className="text-[17px] leading-[1.6] text-fg-secondary">
-              Every execution stays pinned to the build that was ready when it was created, so a
-              rerun repeats the same input against the same code — and refuses if that build is no
-              longer ready rather than quietly running a newer one.
+              Our AI systems and kernels contantly evaluate your automation processes both in build and in runtime. We something breaks, you know.
             </p>
           </div>
 
           <div className="flex min-w-0 flex-col gap-3">
-            <Panel flush label="Executions" actions={<span className="font-mono text-micro text-fg-muted">dep_01HXQ8F2K9 · 3 of 3</span>}>
-              <div className="nr-label grid grid-cols-[64px_minmax(0,1fr)_92px_72px] items-center gap-3 border-b border-line px-3.5 py-2.5">
-                <span>#</span>
-                <span>Started</span>
-                <span>Status</span>
-                <span className="text-right">Ran</span>
-              </div>
-              {[
-                { n: "1", at: "12:03:58.104", status: "failed", ran: "30.0s", note: "worker_restarted" },
-                { n: "2", at: "12:04:34.902", status: "failed", ran: "15.0s", note: "handler_error" },
-                { n: "3", at: "12:05:22.318", status: "succeeded", ran: "2.8s", note: "" },
-              ].map((row, index, rows) => (
-                <div
-                  key={row.n}
-                  className={cnRow(index === rows.length - 1)}
-                >
-                  <span className="font-mono text-meta text-fg">{row.n} / 3</span>
-                  <span className="min-w-0 truncate font-mono text-meta text-fg-muted">
-                    {row.at}
-                    {row.note ? <span className="text-fg-faint"> · {row.note}</span> : null}
-                  </span>
-                  <Badge variant={row.status === "succeeded" ? "outline" : "secondary"}>
-                    {row.status}
-                  </Badge>
-                  <span className="text-right font-mono text-meta text-fg-muted">{row.ran}</span>
-                </div>
-              ))}
-            </Panel>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Panel label="Rerun" actions={<span className="font-mono text-micro text-fg-muted">server-owned</span>}>
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 font-mono text-meta">
-                  {[
-                    ["build_id", "bld_9F3AC41"],
-                    ["source_sha256", "9f3a…c41"],
-                    ["rerun_of", "exe_01HXQ8F2M4"],
-                    ["refused_when", "build not ready"],
-                  ].map(([key, value]) => (
-                    <div key={key} className="contents">
-                      <dt className="text-fg-muted">{key}</dt>
-                      <dd className="min-w-0 truncate text-fg-secondary">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </Panel>
-              <Panel label="Compute" actions={<span className="font-mono text-micro text-fg-muted">metered</span>}>
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 font-mono text-meta">
-                  {[
-                    ["memory", "512 MiB"],
-                    ["ran", "2.8s"],
-                    ["billed", "1.43 GB-s"],
-                    ["queued_time", "not billed"],
-                  ].map(([key, value]) => (
-                    <div key={key} className="contents">
-                      <dt className="text-fg-muted">{key}</dt>
-                      <dd className="min-w-0 truncate text-fg-secondary">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </Panel>
-            </div>
+            <RuntimeField />
           </div>
         </div>
       </Section>
@@ -479,12 +413,4 @@ export default function Home() {
       </Section>
     </>
   );
-}
-
-/** Execution table rows: hairline between, and the last one inverted-marked. */
-function cnRow(last: boolean) {
-  return [
-    "grid grid-cols-[64px_minmax(0,1fr)_92px_72px] items-center gap-3 px-3.5 py-2",
-    last ? "bg-surface-raised shadow-[inset_2px_0_0_var(--nr-accent)]" : "border-b border-line",
-  ].join(" ");
 }
