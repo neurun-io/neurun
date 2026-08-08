@@ -15,7 +15,7 @@ import { ALWAYS_INCLUDED, COMPARISON, FAQ, UNIT } from "@/lib/marketing/plans";
 export const metadata: Metadata = {
   title: "Neurun — run the web, skip the infra",
   description:
-    "An execution plane for your scrapers, crawlers, HTTP pipelines and Browsers. Every run pins an immutable build and leaves a record you can query afterwards. Priced per compute.",
+    "An execution plane for your scrapers, crawlers, HTTP pipelines and Browsers. Every run pins an immutable build and leaves a record you can query afterwards. Priced per GB-hour.",
 };
 
 const STATE_BADGE: Record<CapabilityState, { variant: "outline" | "secondary" | "dotted"; icon: typeof Check }> = {
@@ -95,20 +95,26 @@ export default function Home() {
 
       
       {/* ----------------------------------------------------------- executions */}
-      <Section id="executions" className="bg-surface-sunken mt-24 mb-24">
+      <Section id="executions" className="bg-surface-sunken mt-18 mb-18">
         <div className="grid items-start gap-11 lg:grid-cols-2 lg:gap-14">
           <div className="flex flex-col gap-4.5 lg:sticky lg:top-24">
             <Eyebrow>Executions</Eyebrow>
             <h2 className="text-[clamp(30px,3.1vw,46px)] leading-[1.04] tracking-display">
-              Provenance is a field,
+              Intelligent Runtime for
               <br />
-              not a convention.
+              Automation workloads.
             </h2>
             <p className="text-[17px] leading-[1.6] text-fg-secondary">
-              An execution is pinned to the build that was ready when it was created, and never
-              moves. Ten rebuilds later it still names the code that ran. That pinning is the only
-              reason a rerun means anything — it repeats the same input against the same build, and
-              refuses if that build is no longer ready rather than quietly running a newer one.
+              The environment already carries what a scraper needs to be fast — the browser stack,
+              the HTTP and parsing libraries, the system packages a headless run depends on — so a
+              handler ships as code rather than as a Dockerfile that reinstalls the world on every
+              build. Egress is declared per app, and the plane owns the queueing, the claim and the
+              retry so your script does not.
+            </p>
+            <p className="text-[17px] leading-[1.6] text-fg-secondary">
+              Every execution stays pinned to the build that was ready when it was created, so a
+              rerun repeats the same input against the same code — and refuses if that build is no
+              longer ready rather than quietly running a newer one.
             </p>
           </div>
 
@@ -292,16 +298,16 @@ export default function Home() {
           <div className="flex flex-col gap-5">
             <Eyebrow>Pricing</Eyebrow>
             <h2 className="text-[clamp(30px,3.1vw,46px)] leading-[1.04] tracking-display">
-              Priced per compute.
+              Priced per GB-hour.
               <br />
               Never per seat.
             </h2>
             <p className="text-[17px] leading-[1.6] text-fg-secondary">
-              An app is executed, not hosted. The meter is the compute an execution consumes —
-              memory reserved multiplied by wall time, from the moment a worker claims it to the
-              moment it goes terminal. Queued time is free, because a queued execution is holding no
-              worker. Builds are free. Plans differ by volume, retention and support, never by
-              whether you can explain a failure.
+              An app is executed, not hosted. A GB-hour is memory reserved multiplied by wall time,
+              counted from the moment a worker claims an execution to the moment it goes terminal.
+              Queued time is free, because a queued execution is holding no worker. Builds are free.
+              Plans differ by volume, retention and support, never by whether you can explain a
+              failure.
             </p>
 
             <div className="mt-1 flex flex-col">
