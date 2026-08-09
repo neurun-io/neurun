@@ -113,7 +113,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 func (server *Server) routes() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
-	engine.Use(requestID(), securityHeaders(), gin.Logger(), recovery())
+	engine.Use(securityHeaders(), gin.Logger(), recovery())
 	engine.NoRoute(func(ctx *gin.Context) {
 		notFound(ctx, "resource")
 	})
@@ -239,10 +239,7 @@ func principalOf(ctx *gin.Context) auth.Principal {
 }
 
 func writeProblem(ctx *gin.Context, status int, problem dto.Problem) {
-	ctx.AbortWithStatusJSON(status, dto.ErrorResponse{
-		Error:     problem,
-		RequestID: requestIDOf(ctx),
-	})
+	ctx.AbortWithStatusJSON(status, dto.ErrorResponse{Error: problem})
 }
 
 func invalidRequest(ctx *gin.Context, message string) {
@@ -322,7 +319,6 @@ func writeError(ctx *gin.Context, err error) {
 		// without leaking internals. Log it instead — an unmapped 500 with no
 		// trace is the one failure nobody can diagnose.
 		slog.Error("unhandled error",
-			"request_id", requestIDOf(ctx),
 			"method", ctx.Request.Method,
 			"path", ctx.FullPath(),
 			"error", err,

@@ -592,8 +592,7 @@ Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
     "code": "validation_failed",
     "message": "runtime must be python",
     "details": {"field": "runtime"}
-  },
-  "request_id": "req_01HXQ8F31"
+  }
 }`}</Snippet>
           </Panel>
           <Panel flush label="Missing" actions={<Meta>404</Meta>}>
@@ -601,8 +600,7 @@ Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
   "error": {
     "code": "app_not_found",
     "message": "app not found"
-  },
-  "request_id": "req_01HXQ8F32"
+  }
 }`}</Snippet>
           </Panel>
         </Split>
@@ -610,8 +608,7 @@ Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
         <H2 id="branch">Branch on the code</H2>
         <P>
           Never parse <C>message</C>, and never branch on the status code alone — several distinct
-          refusals share a status. Quote <C>request_id</C> in any support thread; it is how a run is
-          found on the server side.
+          refusals share a status.
         </P>
         <Rows
           items={[

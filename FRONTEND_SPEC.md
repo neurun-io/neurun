@@ -438,12 +438,11 @@ Render the standard envelope:
     "code": "invalid_request",
     "message": "Human-readable summary",
     "details": {}
-  },
-  "request_id": "req_..."
+  }
 }
 ```
 
-Always expose a copyable request ID. If present, expose the trace ID and
+If present, expose the trace ID and
 configured trace URL. Current validation failures expose human-readable paths
 such as `$.field` inside messages rather than structured JSON Pointer
 violations. Preserve and display those messages without brittle parsing. Add
@@ -580,7 +579,7 @@ gateway must:
 - allow only configured dashboard origins;
 - allow `Authorization`, `Content-Type`, `Idempotency-Key`, and
   `Last-Event-ID`;
-- expose `Request-ID`, `Trace-ID`, `Retry-After`, `Location`,
+- expose `Trace-ID`, `Retry-After`, `Location`,
   `Idempotent-Replayed`, `Neurun-Job-Durability`, and rate-limit headers;
 - support `GET`, `POST`, `PATCH`, `DELETE`, and preflight `OPTIONS`;
 - never combine wildcard origins with credentials.

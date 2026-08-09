@@ -548,7 +548,6 @@ export interface components {
         };
         OperatorEnvelope: {
             operator: components["schemas"]["Operator"];
-            request_id?: string;
         };
         Project: {
             id: string;
@@ -711,7 +710,6 @@ export interface components {
         };
         ErrorEnvelope: {
             error: components["schemas"]["Problem"];
-            request_id?: string;
         };
     };
     responses: {
@@ -832,7 +830,6 @@ export interface operations {
                         organization?: components["schemas"]["Organization"];
                         member: components["schemas"]["Member"];
                         operator?: components["schemas"]["Operator"];
-                        request_id?: string;
                     };
                 };
             };

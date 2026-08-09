@@ -7,45 +7,13 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/neurun-io/neurun/internal/domain/auth"
 	"github.com/neurun-io/neurun/internal/domain/operator"
 	"github.com/neurun-io/neurun/internal/dto"
-	"github.com/neurun-io/neurun/internal/ids"
 )
-
-const requestIDKey = "neurun_request_id"
-
-func requestIDOf(ctx *gin.Context) string {
-	value, _ := ctx.Value(requestIDKey).(string)
-	return value
-}
-
-// requestID echoes a caller-supplied Request-ID or mints one, so a client and
-// the server logs can name the same request.
-func requestID() gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		value := strings.TrimSpace(ctx.GetHeader("Request-ID"))
-		if value == "" || len(value) > 128 {
-			generated, err := ids.New("req")
-			if err != nil {
-				ctx.AbortWithStatusJSON(http.StatusInternalServerError, dto.ErrorResponse{
-					Error: dto.Problem{
-						Code: "internal_error", Message: "could not allocate request ID",
-					},
-				})
-				return
-			}
-			value = generated
-		}
-		ctx.Set(requestIDKey, value)
-		ctx.Header("Request-ID", value)
-		ctx.Next()
-	}
-}
 
 func securityHeaders() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -62,7 +30,6 @@ func securityHeaders() gin.HandlerFunc {
 func recovery() gin.HandlerFunc {
 	return gin.CustomRecovery(func(ctx *gin.Context, recovered any) {
 		slog.Error("panic in HTTP handler",
-			"request_id", requestIDOf(ctx),
 			"method", ctx.Request.Method,
 			"path", ctx.Request.URL.Path,
 			"panic", recovered,

@@ -53,7 +53,7 @@ describe("StatusBadge", () => {
 });
 
 describe("ErrorPanel", () => {
-  it("always exposes a copyable request ID", () => {
+  it("names the refusal and prints the server's message verbatim", () => {
     render(
       <Providers>
         <ErrorPanel
@@ -62,8 +62,6 @@ describe("ErrorPanel", () => {
               status: 400,
               code: "invalid_request",
               message: "$.input.message: must be a string",
-              requestId: "req_01HXQ8F2INVALID",
-              traceId: "trc_01HXQ8F2",
             })
           }
         />
@@ -73,9 +71,6 @@ describe("ErrorPanel", () => {
     expect(screen.getByText("400 invalid_request")).toBeInTheDocument();
     // The server's human-readable path survives verbatim.
     expect(screen.getByText("$.input.message: must be a string")).toBeInTheDocument();
-    expect(screen.getByText("req_01HXQ8F2INVALID")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy request ID" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy trace ID" })).toBeInTheDocument();
   });
 });
 

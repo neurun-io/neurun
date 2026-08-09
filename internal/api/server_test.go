@@ -57,26 +57,6 @@ func TestRoutesRegisterAndUnauthenticatedPathsRespond(t *testing.T) {
 	}
 }
 
-// Every response carries a Request-ID, and a caller-supplied one is echoed so
-// the client and the server logs name the same request.
-func TestRequestIDIsAlwaysPresentAndEchoed(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-
-	response := do(t, server, http.MethodGet, "/healthz")
-	if response.Header().Get("Request-ID") == "" {
-		t.Fatal("no Request-ID on the response")
-	}
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	request.Header.Set("Request-ID", "caller-supplied")
-	server.ServeHTTP(recorder, request)
-	if got := recorder.Header().Get("Request-ID"); got != "caller-supplied" {
-		t.Fatalf("Request-ID = %q", got)
-	}
-}
-
 func TestSecurityHeadersAreSetOnEveryResponse(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
@@ -159,12 +139,11 @@ func TestUnknownRouteIsAProblemDocument(t *testing.T) {
 		Error struct {
 			Code string `json:"code"`
 		} `json:"error"`
-		RequestID string `json:"request_id"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Error.Code != "resource_not_found" || envelope.RequestID == "" {
+	if envelope.Error.Code != "resource_not_found" {
 		t.Fatalf("problem document = %s", response.Body)
 	}
 }

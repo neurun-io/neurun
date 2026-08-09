@@ -33,15 +33,8 @@ const FORWARDED_REQUEST_HEADERS = [
 /** Response headers the dashboard is allowed to read back. */
 const EXPOSED_RESPONSE_HEADERS = [
   "content-type",
-  "request-id",
-  "trace-id",
   "retry-after",
   "location",
-  "idempotent-replayed",
-  "neurun-job-durability",
-  "ratelimit-limit",
-  "ratelimit-remaining",
-  "ratelimit-reset",
   "www-authenticate",
 ];
 

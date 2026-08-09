@@ -2,7 +2,6 @@
 
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CopyId } from "./copy-id";
 import { Panel } from "./panel";
 import { cn } from "@/lib/utils";
 import {
@@ -14,9 +13,6 @@ import {
 
 /**
  * Renders the standard error envelope.
- *
- * The request ID is always exposed and always copyable — it is the one thing
- * that lets an operator and a backend engineer talk about the same request.
  *
  * Validation messages are printed as the server wrote them. The current
  * contract puts human-readable paths like `$.field` inside the message rather
@@ -77,27 +73,6 @@ export function ErrorPanel({
           </ul>
         ) : null}
 
-        {apiError?.requestId || apiError?.traceId ? (
-          <dl className="space-y-1 border-t border-line pt-2">
-            {apiError.requestId ? (
-              <div className="flex items-center justify-between gap-3">
-                <dt className="nr-label">Request ID</dt>
-                <dd>
-                  <CopyId value={apiError.requestId} label="request ID" />
-                </dd>
-              </div>
-            ) : null}
-            {apiError.traceId ? (
-              <div className="flex items-center justify-between gap-3">
-                <dt className="nr-label">Trace ID</dt>
-                <dd>
-                  <CopyId value={apiError.traceId} label="trace ID" />
-                </dd>
-              </div>
-            ) : null}
-          </dl>
-        ) : null}
-
         {apiError?.details && Object.keys(apiError.details).length > 0 ? (
           <details className="border-t border-line pt-2">
             <summary className="nr-label cursor-pointer select-none">Details</summary>
@@ -113,20 +88,12 @@ export function ErrorPanel({
 
 /** Compact inline variant for forms and dialogs. */
 export function InlineError({ error, className }: { error: unknown; className?: string }) {
-  const apiError = error instanceof NeurunApiError ? error : null;
-
   return (
     <div
       role="alert"
       className={cn("rounded-md border border-line-strong bg-surface-panel p-2.5", className)}
     >
       <p className="text-sm text-fg-secondary">{errorMessageFor(error)}</p>
-      {apiError?.requestId ? (
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <span className="nr-label">Request ID</span>
-          <CopyId value={apiError.requestId} label="request ID" truncate />
-        </div>
-      ) : null}
     </div>
   );
 }

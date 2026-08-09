@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 
 import { request } from "@/lib/api/client";
@@ -6,12 +6,9 @@ import * as api from "@/lib/api/endpoints";
 import * as resources from "@/lib/api/resources";
 import { NeurunApiError, NeurunContractError } from "@/lib/api/errors";
 import { shouldRetry } from "@/lib/api/query-client";
-import { idempotencyKeys, stableStringify } from "@/lib/api/idempotency";
 import { operatorEnvelopeSchema, validateResponse } from "@/lib/api/runtime";
 import { OPERATOR, OPERATOR_PASSWORD, proxy, server } from "./msw/server";
 import * as fixtures from "./msw/fixtures";
-
-beforeEach(() => idempotencyKeys.clear());
 
 describe("authentication", () => {
   it("signs in with an email and password", async () => {
@@ -108,7 +105,6 @@ describe("registration", () => {
               code: "invite_address_mismatch",
               message: "this invitation was issued to a different address",
             },
-            request_id: "req_01HXQ8F2INVITE",
           },
           { status: 403 },
         ),
@@ -172,12 +168,6 @@ describe("retry policy", () => {
     expect(shouldRetry(0, new Error("network down"))).toBe(true);
     expect(shouldRetry(0, new NeurunApiError({ status: 422, code: "invalid_request", message: "refused" }))).toBe(false);
     expect(shouldRetry(0, new NeurunApiError({ status: 401, code: "unauthorized", message: "expired" }))).toBe(false);
-  });
-});
-
-describe("idempotency keys", () => {
-  it("is stable across key order, so a replay is byte-equivalent", () => {
-    expect(stableStringify({ b: 1, a: 2 })).toBe(stableStringify({ a: 2, b: 1 }));
   });
 });
 

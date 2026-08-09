@@ -70,10 +70,7 @@ func (server *Server) register(ctx *gin.Context) {
 		}
 	}
 
-	payload := gin.H{
-		"user":       dto.NewUserResponse(record),
-		"request_id": requestIDOf(ctx),
-	}
+	payload := gin.H{"user": dto.NewUserResponse(record)}
 	if membership.OrganizationID != "" {
 		payload["member"] = dto.NewMemberResponse(membership)
 		if found, err := server.organizations.Get(

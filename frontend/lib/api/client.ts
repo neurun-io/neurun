@@ -15,7 +15,6 @@
  *   rides along because the browser attaches it, and script cannot read it.
  */
 import { NeurunApiError, NeurunTransportError, parseErrorEnvelope } from "./errors";
-import { idempotencyKeys } from "./idempotency";
 import { validateResponse } from "./runtime";
 import type { z } from "zod";
 
@@ -28,21 +27,12 @@ export interface RequestOptions {
   path: string;
   query?: Record<string, string | number | string[] | undefined>;
   body?: unknown;
-  /** Send an `Idempotency-Key`, generated and reused per logical request. */
-  idempotent?: boolean;
   signal?: AbortSignal;
 }
 
 /** Response metadata an operator may need to correlate or escalate. */
 export interface ResponseMeta {
   status: number;
-  requestId?: string;
-  traceId?: string;
-  /** Present on accepted asynchronous mutations. */
-  durability?: string;
-  /** `"true"` when the server replayed a prior idempotent request. */
-  idempotentReplayed: boolean;
-  location?: string;
   retryAfter?: string;
 }
 
@@ -71,11 +61,6 @@ function buildQuery(query: RequestOptions["query"]): string {
 function readMeta(response: Response): ResponseMeta {
   return {
     status: response.status,
-    requestId: response.headers.get("Request-ID") ?? undefined,
-    traceId: response.headers.get("Trace-ID") ?? undefined,
-    durability: response.headers.get("Neurun-Job-Durability") ?? undefined,
-    idempotentReplayed: response.headers.get("Idempotent-Replayed") === "true",
-    location: response.headers.get("Location") ?? undefined,
     retryAfter: response.headers.get("Retry-After") ?? undefined,
   };
 }
@@ -109,10 +94,6 @@ export async function request<T>(
   if (options.body !== undefined && !isFormData) {
     headers.set("Content-Type", "application/json");
   }
-  if (options.idempotent) {
-    headers.set("Idempotency-Key", idempotencyKeys.keyFor(method, path, options.body));
-  }
-
   let response: Response;
   try {
     response = await fetch(url, {
@@ -131,8 +112,6 @@ export async function request<T>(
       credentials: "same-origin",
     });
   } catch (cause) {
-    // Deliberately do NOT release the idempotency key here: the server may
-    // already hold this request, so the retry must reuse the same key.
     if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
     throw new NeurunTransportError(
       "Could not reach the control plane. Check that the server is running.",
@@ -145,10 +124,6 @@ export async function request<T>(
 
   if (!response.ok) {
     const envelope = parseErrorEnvelope(body);
-    if (options.idempotent && response.status >= 400 && response.status < 500) {
-      // The server decided on the merits; a fresh submission deserves a fresh key.
-      idempotencyKeys.release(method, path, options.body);
-    }
     throw new NeurunApiError({
       status: response.status,
       code: envelope?.error.code ?? `http_${response.status}`,
@@ -156,15 +131,9 @@ export async function request<T>(
         envelope?.error.message ??
         (typeof body === "string" && body ? body : `Request failed with HTTP ${response.status}.`),
       details: envelope?.error.details,
-      requestId: envelope?.request_id ?? meta.requestId,
-      traceId: meta.traceId,
       retryAfter: meta.retryAfter,
       envelope,
     });
-  }
-
-  if (options.idempotent) {
-    idempotencyKeys.release(method, path, options.body);
   }
 
   const data = schema ? validateResponse(schema, path, body) : (body as T);

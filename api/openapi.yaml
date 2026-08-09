@@ -80,7 +80,6 @@ paths:
                   organization: {$ref: "#/components/schemas/Organization"}
                   member: {$ref: "#/components/schemas/Member"}
                   operator: {$ref: "#/components/schemas/Operator"}
-                  request_id: {type: string}
         "403": {$ref: "#/components/responses/Problem"}
         "409": {$ref: "#/components/responses/Problem"}
         "410": {$ref: "#/components/responses/Problem"}
@@ -834,7 +833,6 @@ components:
       required: [operator]
       properties:
         operator: {$ref: "#/components/schemas/Operator"}
-        request_id: {type: string}
     Project:
       type: object
       required: [id, organization_id, name, created_at, updated_at]
@@ -1020,4 +1018,3 @@ components:
       required: [error]
       properties:
         error: {$ref: "#/components/schemas/Problem"}
-        request_id: {type: string}

@@ -102,10 +102,7 @@ func (server *Server) operatorLogin(ctx *gin.Context) {
 		return
 	}
 	http.SetCookie(ctx.Writer, server.sessionCookie(token, session.ExpiresAt))
-	ctx.JSON(http.StatusOK, gin.H{
-		"operator":   dto.NewOperatorResponse(session),
-		"request_id": requestIDOf(ctx),
-	})
+	ctx.JSON(http.StatusOK, gin.H{"operator": dto.NewOperatorResponse(session)})
 }
 
 func (server *Server) operatorLogout(ctx *gin.Context) {

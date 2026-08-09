@@ -91,7 +91,6 @@ export const unknownStateExecution: Execution = {
 
 export const invalidCredentials = {
   error: { code: "invalid_credentials", message: "invalid email or password" },
-  request_id: "req_01HXQ8F2BADLOGIN",
 };
 
 export const signInUnavailable = {
@@ -99,12 +98,10 @@ export const signInUnavailable = {
     code: "operator_signin_unavailable",
     message: "operator sign-in is not configured on this server",
   },
-  request_id: "req_01HXQ8F2NOACCOUNTS",
 };
 
 export const unauthorized = {
   error: { code: "unauthorized", message: "your session expired; sign in again" },
-  request_id: "req_01HXQ8F2UNAUTH",
 };
 
 export const invalidRequest = {
@@ -113,5 +110,4 @@ export const invalidRequest = {
     // Human-readable path inside the message, as the current server emits.
     message: "$.input.message: must be a string",
   },
-  request_id: "req_01HXQ8F2INVALID",
 };

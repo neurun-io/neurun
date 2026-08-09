@@ -9,6 +9,5 @@ type Problem struct {
 }
 
 type ErrorResponse struct {
-	Error     Problem `json:"error"`
-	RequestID string  `json:"request_id,omitempty"`
+	Error Problem `json:"error"`
 }

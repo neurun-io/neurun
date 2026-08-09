@@ -1,25 +1,10 @@
 import type { ErrorEnvelope, Problem } from "./types";
 
-/**
- * The error code returned (with HTTP 503) when asynchronous mutations are
- * disabled because no durable backend is configured and volatile development
- * jobs were not explicitly enabled. Synchronous execution remains available,
- * so the UI disables only the async control on this code.
- */
-export const DURABLE_BACKEND_UNAVAILABLE = "durable_backend_unavailable";
-
-/**
- * A failed API response, carrying the standard envelope plus the transport
- * correlation IDs an operator needs to file a report.
- *
- * Every surface that renders one of these must expose a copyable request ID.
- */
+/** A failed API response, carrying the standard envelope. */
 export class NeurunApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details?: Problem["details"];
-  readonly requestId?: string;
-  readonly traceId?: string;
   readonly retryAfter?: string;
   /** The parsed body, when the server returned a well-formed envelope. */
   readonly envelope?: ErrorEnvelope;
@@ -29,8 +14,6 @@ export class NeurunApiError extends Error {
     code: string;
     message: string;
     details?: Problem["details"];
-    requestId?: string;
-    traceId?: string;
     retryAfter?: string;
     envelope?: ErrorEnvelope;
   }) {
@@ -39,15 +22,8 @@ export class NeurunApiError extends Error {
     this.status = init.status;
     this.code = init.code;
     this.details = init.details;
-    this.requestId = init.requestId;
-    this.traceId = init.traceId;
     this.retryAfter = init.retryAfter;
     this.envelope = init.envelope;
-  }
-
-  /** Async mutations are disabled on this deployment; sync still works. */
-  get isDurableBackendUnavailable() {
-    return this.status === 503 && this.code === DURABLE_BACKEND_UNAVAILABLE;
   }
 
   /** The key was rejected. Stop retrying and send the operator back to connect. */
@@ -61,15 +37,6 @@ export class NeurunApiError extends Error {
 
   get isNotFound() {
     return this.status === 404;
-  }
-
-  /**
-   * A terminal function failure carries the persisted invocation snapshot in
-   * `error.details.invocation` (HTTP 502 / 504).
-   */
-  get invocationSnapshot(): unknown {
-    const details = this.details as Record<string, unknown> | undefined;
-    return details?.invocation;
   }
 }
 
@@ -110,10 +77,6 @@ export function parseErrorEnvelope(body: unknown): ErrorEnvelope | undefined {
   const { code, message } = body.error;
   if (typeof code !== "string" || typeof message !== "string") return undefined;
   return body as unknown as ErrorEnvelope;
-}
-
-export function isNeurunApiError(error: unknown): error is NeurunApiError {
-  return error instanceof NeurunApiError;
 }
 
 /**

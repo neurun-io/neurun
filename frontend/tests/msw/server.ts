@@ -40,7 +40,7 @@ export const handlers = [
       return HttpResponse.json(fixtures.invalidCredentials, { status: 401 });
     }
     return HttpResponse.json(
-      { operator: OPERATOR, request_id: "req_01HXQ8F2LOGIN" },
+      { operator: OPERATOR },
       {
         status: 200,
         headers: {
