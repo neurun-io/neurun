@@ -3,7 +3,7 @@
 /**
  * Observed capabilities of the connected control plane.
  *
- * The current contract has no capability-discovery endpoint, so the dashboard
+ * The current contract has no capability-discovery endpoint, so the session
  * learns two things only by attempting work, and must remember them:
  *
  * 1. **Durability.** Every accepted asynchronous mutation returns `durability`
@@ -38,8 +38,8 @@ interface CapabilityContextValue {
 const CapabilityContext = createContext<CapabilityContextValue | null>(null);
 
 export function CapabilityProvider({ children }: { children: ReactNode }) {
-  const { operator } = useSession();
-  const scope = sessionScope(operator);
+  const { session } = useSession();
+  const scope = sessionScope(session);
 
   const [observed, setObserved] = useState<{
     scope: string;

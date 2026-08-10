@@ -20,7 +20,7 @@ import { createPersistedStore } from "@/lib/storage/persisted-store";
 
 const TIME_ZONE_KEY = "neurun.timezone";
 
-// UTC is the default: it is the zone the API speaks, and the one two operators
+// UTC is the default: it is the zone the API speaks, and the one two users
 // in different places can agree on.
 const timeZoneStore = createPersistedStore<TimeZoneMode>({
   key: TIME_ZONE_KEY,

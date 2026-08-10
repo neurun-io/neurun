@@ -29,10 +29,8 @@ export default function UsersPage() {
         description="People in this organization. They arrive by invitation."
       />
       <div className="space-y-4 p-6">
-        <Callout kind="note" title="Accounts are not created here">
-          Somebody joins by accepting an invitation, which is what sets their role. There is no
-          endpoint that mints an account with a password on their behalf.{" "}
-          <Link href="/settings/identities">Send an invitation</Link>.
+        <Callout kind="note">
+          <Link href="/organization">Invite new users here</Link>.
         </Callout>
 
         {query.isError ? (

@@ -110,7 +110,7 @@ func TestSignInRoutesAreReachableWithoutCredentials(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	// Operators are unset here, so these report the feature as unavailable —
+	// Sessions are unset here, so these report the feature as unavailable —
 	// what matters is that neither answers 401.
 	if code := do(t, server, http.MethodPost, "/v1/auth/login").Code; code == http.StatusUnauthorized {
 		t.Fatal("login sits behind authentication")

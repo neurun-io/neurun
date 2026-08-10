@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Neurun operator dashboard",
+  title: "Neurun dashboard",
   description: "Execution and evidence for every Neurun run.",
 };
 

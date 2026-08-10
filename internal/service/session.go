@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/neurun-io/neurun/internal/domain/operator"
 	"github.com/neurun-io/neurun/internal/domain/organization"
+	sessiondomain "github.com/neurun-io/neurun/internal/domain/session"
 	"github.com/neurun-io/neurun/internal/repository"
 )
 
@@ -37,9 +37,9 @@ var timingDecoyHash = sync.OnceValue(func() string {
 	return string(hash)
 })
 
-// OperatorService exchanges a username and password for a session, and resolves
+// SessionService exchanges a username and password for a session, and resolves
 // session tokens back to the person holding them.
-type OperatorService struct {
+type SessionService struct {
 	users         *repository.UserRepository
 	organizations *repository.OrganizationRepository
 	sessions      *repository.SessionRepository
@@ -47,23 +47,23 @@ type OperatorService struct {
 	now           func() time.Time
 }
 
-func NewOperatorService(
+func NewSessionService(
 	users *repository.UserRepository,
 	organizations *repository.OrganizationRepository,
 	sessions *repository.SessionRepository,
 	sessionTTL time.Duration,
 	now func() time.Time,
-) (*OperatorService, error) {
+) (*SessionService, error) {
 	if users == nil || organizations == nil || sessions == nil {
-		return nil, errors.New("operator service requires its repositories")
+		return nil, errors.New("session service requires its repositories")
 	}
 	if sessionTTL <= 0 {
-		return nil, errors.New("operator session TTL must be positive")
+		return nil, errors.New("session TTL must be positive")
 	}
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
 	}
-	return &OperatorService{
+	return &SessionService{
 		users: users, organizations: organizations, sessions: sessions,
 		sessionTTL: sessionTTL, now: now,
 	}, nil
@@ -71,18 +71,18 @@ func NewOperatorService(
 
 // Login verifies credentials and issues a session in one organization. The
 // returned token is the only time the caller sees it: storage keeps a hash.
-func (service *OperatorService) Login(
+func (service *SessionService) Login(
 	ctx context.Context,
 	email string,
 	password string,
-) (operator.Session, string, error) {
+) (sessiondomain.Session, string, error) {
 	found, err := service.authenticate(ctx, email, password)
 	if err != nil {
-		return operator.Session{}, "", err
+		return sessiondomain.Session{}, "", err
 	}
 	membership, err := service.organizations.FirstForUser(ctx, found.ID)
 	if err != nil && !errors.Is(err, organization.ErrNotMember) {
-		return operator.Session{}, "", err
+		return sessiondomain.Session{}, "", err
 	}
 	// Belonging nowhere is a real state, not a failure: the account signs in and
 	// is asked to create an organization or accept an invitation.
@@ -92,80 +92,80 @@ func (service *OperatorService) Login(
 // StartSession issues a session for an account whose membership the caller
 // already holds — the path registration and invitation acceptance take, where
 // the password has just been set rather than presented.
-func (service *OperatorService) StartSession(
+func (service *SessionService) StartSession(
 	ctx context.Context,
 	userID string,
 	membership organization.Member,
-) (operator.Session, string, error) {
+) (sessiondomain.Session, string, error) {
 	found, err := service.users.CredentialByID(ctx, userID)
 	if err != nil {
-		return operator.Session{}, "", err
+		return sessiondomain.Session{}, "", err
 	}
 	return service.issue(ctx, found, membership)
 }
 
-func (service *OperatorService) authenticate(
+func (service *SessionService) authenticate(
 	ctx context.Context,
 	email string,
 	password string,
-) (operator.Account, error) {
+) (sessiondomain.Account, error) {
 	found, err := service.users.CredentialByEmail(ctx, email)
 	switch {
-	case errors.Is(err, operator.ErrAccountNotFound):
+	case errors.Is(err, sessiondomain.ErrAccountNotFound):
 		// Spend comparable time before failing, so timing does not reveal
 		// whether the address exists.
-		_, _ = operator.VerifyPassword(timingDecoyHash(), password)
-		return operator.Account{}, ErrInvalidCredentials
+		_, _ = sessiondomain.VerifyPassword(timingDecoyHash(), password)
+		return sessiondomain.Account{}, ErrInvalidCredentials
 	case err != nil:
-		return operator.Account{}, err
+		return sessiondomain.Account{}, err
 	}
 
 	matched, err := found.Authenticate(password)
 	if err != nil {
 		// A malformed stored hash is a configuration fault, not a bad password.
-		return operator.Account{}, fmt.Errorf("verify operator password: %w", err)
+		return sessiondomain.Account{}, fmt.Errorf("verify password: %w", err)
 	}
 	if !matched {
 		if found.Disabled {
-			_, _ = operator.VerifyPassword(timingDecoyHash(), password)
+			_, _ = sessiondomain.VerifyPassword(timingDecoyHash(), password)
 		}
-		return operator.Account{}, ErrInvalidCredentials
+		return sessiondomain.Account{}, ErrInvalidCredentials
 	}
 	return found, nil
 }
 
-func (service *OperatorService) issue(
+func (service *SessionService) issue(
 	ctx context.Context,
-	found operator.Account,
+	found sessiondomain.Account,
 	membership organization.Member,
-) (operator.Session, string, error) {
-	token, err := operator.NewToken()
+) (sessiondomain.Session, string, error) {
+	token, err := sessiondomain.NewToken()
 	if err != nil {
-		return operator.Session{}, "", err
+		return sessiondomain.Session{}, "", err
 	}
 	session, err := service.sessions.Create(
 		ctx, found, membership, token, service.now().Add(service.sessionTTL),
 	)
 	if err != nil {
-		return operator.Session{}, "", err
+		return sessiondomain.Session{}, "", err
 	}
 	return session, token, nil
 }
 
 // Session resolves a token to its live session, or ErrSessionNotFound /
 // ErrSessionExpired.
-func (service *OperatorService) Session(
+func (service *SessionService) Session(
 	ctx context.Context,
 	token string,
-) (operator.Session, error) {
+) (sessiondomain.Session, error) {
 	if token == "" {
-		return operator.Session{}, operator.ErrSessionNotFound
+		return sessiondomain.Session{}, sessiondomain.ErrSessionNotFound
 	}
 	return service.sessions.ByToken(ctx, token, service.now())
 }
 
 // Logout revokes a session. Idempotent.
-func (service *OperatorService) Logout(ctx context.Context, token string) error {
+func (service *SessionService) Logout(ctx context.Context, token string) error {
 	if token == "" {
 		return nil
 	}
@@ -173,6 +173,6 @@ func (service *OperatorService) Logout(ctx context.Context, token string) error 
 }
 
 // PruneSessions drops expired sessions, for periodic maintenance.
-func (service *OperatorService) PruneSessions(ctx context.Context) (int, error) {
+func (service *SessionService) PruneSessions(ctx context.Context) (int, error) {
 	return service.sessions.DeleteExpired(ctx, service.now())
 }

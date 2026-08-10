@@ -57,7 +57,7 @@ func TestLoadMinimalConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.MaxRunInputBytes <= 0 || cfg.OperatorCookieSecure ||
+	if cfg.MaxRunInputBytes <= 0 || cfg.SessionCookieSecure ||
 		cfg.DatabaseSchema == "" {
 		t.Fatalf("configuration = %#v", cfg)
 	}

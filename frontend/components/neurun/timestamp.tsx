@@ -75,7 +75,7 @@ export interface TimestampProps {
 /**
  * An instant, shown relative with the exact value one hover — or one focus —
  * away. The original instant is preserved; UTC versus local is a display
- * choice the operator makes in the shell.
+ * choice the user makes in the shell.
  */
 export function Timestamp({ value, className, absolute = false }: TimestampProps) {
   const { timeZone } = usePreferences();

@@ -14,7 +14,7 @@ type Schemas = components["schemas"];
 
 export type Problem = Schemas["Problem"];
 export type ErrorEnvelope = Schemas["ErrorEnvelope"];
-export type Operator = Schemas["Operator"];
+export type Session = Schemas["Session"];
 export type Role = Schemas["Role"];
 
 export type Organization = Schemas["Organization"];

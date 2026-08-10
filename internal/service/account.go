@@ -8,7 +8,7 @@ import (
 
 	"github.com/neurun-io/neurun/internal/domain/account"
 	"github.com/neurun-io/neurun/internal/domain/auth"
-	"github.com/neurun-io/neurun/internal/domain/operator"
+	"github.com/neurun-io/neurun/internal/domain/session"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/ids"
 	"github.com/neurun-io/neurun/internal/repository"
@@ -43,7 +43,7 @@ func (service *AccountService) CreateUser(
 	ctx context.Context,
 	request dto.CreateUserRequest,
 ) (account.User, error) {
-	passwordHash, err := operator.HashPassword(request.Password)
+	passwordHash, err := session.HashPassword(request.Password)
 	if err != nil {
 		return account.User{}, fmt.Errorf("%w: %v", account.ErrInvalid, err)
 	}

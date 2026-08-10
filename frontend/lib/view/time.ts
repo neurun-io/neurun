@@ -3,7 +3,7 @@
  *
  * - RFC 3339 timestamps are parsed once and the original instant is kept.
  * - The default display is relative, with the exact UTC value one hover away.
- * - The operator chooses UTC or local for the exact value; the choice is a
+ * - The user chooses UTC or local for the exact value; the choice is a
  *   display preference and never changes the stored instant.
  */
 
@@ -67,7 +67,7 @@ const LOCAL_FORMAT: Intl.DateTimeFormatOptions = {
   hour12: false,
 };
 
-/** The exact instant, in the operator's chosen zone, with the zone named. */
+/** The exact instant, in the user's chosen zone, with the zone named. */
 export function formatAbsolute(date: Date, mode: TimeZoneMode = "utc"): string {
   if (mode === "utc") {
     return `${new Intl.DateTimeFormat("en-GB", UTC_FORMAT).format(date).replace(",", "")} UTC`;

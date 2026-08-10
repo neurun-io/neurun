@@ -9,7 +9,7 @@
  *   app's own `/api/proxy/*` route handler, which forwards them. See
  *   `app/api/proxy/[...path]/route.ts`.
  * - **The browser holds no credential it can read.** Authentication is an
- *   `HttpOnly` operator session cookie issued by `POST /v1/auth/login`. There is
+ *   `HttpOnly` session cookie issued by `POST /v1/auth/login`. There is
  *   no API key in any client module, no bearer header assembled here, and
  *   nothing written to `sessionStorage`, `localStorage` or a URL. The cookie
  *   rides along because the browser attaches it, and script cannot read it.
@@ -30,7 +30,7 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
-/** Response metadata an operator may need to correlate or escalate. */
+/** Response metadata a user may need to correlate or escalate. */
 export interface ResponseMeta {
   status: number;
   retryAfter?: string;
@@ -106,7 +106,7 @@ export async function request<T>(
             ? (options.body as FormData)
             : JSON.stringify(options.body),
       signal: options.signal,
-      // Never let a browser or intermediary cache an operator's evidence.
+      // Never let a browser or intermediary cache a user's evidence.
       cache: "no-store",
       // Sends the HttpOnly session cookie; this is the whole authentication.
       credentials: "same-origin",

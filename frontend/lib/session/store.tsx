@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Operator session state.
+ * Session state.
  *
  * There is no credential in this module, and deliberately no storage of any
  * kind. Authentication lives in an `HttpOnly` cookie the browser attaches and
@@ -16,25 +16,25 @@ import { createContext, useCallback, useContext, useMemo, type ReactNode } from 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/lib/api/endpoints";
 import { NeurunApiError } from "@/lib/api/errors";
-import type { Operator } from "@/lib/api/types";
+import type { Session } from "@/lib/api/types";
 
 /** Why the dashboard is not showing evidence. */
 export type SessionStatus =
   | "loading"
   | "authenticated"
   | "anonymous"
-  /** The server has no operator accounts configured. */
+  /** The server has no dashboard accounts configured. */
   | "unavailable";
 
 export const SESSION_QUERY_KEY = ["neurun", "session"] as const;
 
 interface SessionContextValue {
-  operator: Operator | null;
+  session: Session | null;
   status: SessionStatus;
   /** Set when the session probe itself failed for an unexpected reason. */
   error: unknown;
-  login: (username: string, password: string) => Promise<Operator>;
-  register: (request: api.RegisterRequest) => Promise<Operator | null>;
+  login: (username: string, password: string) => Promise<Session>;
+  register: (request: api.RegisterRequest) => Promise<Session | null>;
   logout: () => Promise<void>;
   isLoggingIn: boolean;
   loginError: unknown;
@@ -45,7 +45,7 @@ interface SessionContextValue {
 const SessionContext = createContext<SessionContextValue | null>(null);
 
 type Probe =
-  | { kind: "operator"; operator: Operator }
+  | { kind: "session"; session: Session }
   | { kind: "anonymous" }
   | { kind: "unavailable" };
 
@@ -55,7 +55,7 @@ type Probe =
  */
 async function probeSession(signal?: AbortSignal): Promise<Probe> {
   try {
-    return { kind: "operator", operator: await api.getOperatorSession(signal) };
+    return { kind: "session", session: await api.getSession(signal) };
   } catch (error) {
     if (error instanceof NeurunApiError) {
       if (error.status === 401) return { kind: "anonymous" };
@@ -72,7 +72,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     queryKey: SESSION_QUERY_KEY,
     queryFn: ({ signal }) => probeSession(signal),
     // Sessions expire on an absolute deadline, so re-check periodically and
-    // whenever the operator returns to the tab.
+    // whenever the user returns to the tab.
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: true,
@@ -81,9 +81,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: ({ username, password }: { username: string; password: string }) =>
-      api.operatorLogin(username, password),
-    onSuccess: (operator) => {
-      queryClient.setQueryData(SESSION_QUERY_KEY, { kind: "operator", operator } satisfies Probe);
+      api.login(username, password),
+    onSuccess: (session) => {
+      queryClient.setQueryData(SESSION_QUERY_KEY, { kind: "session", session } satisfies Probe);
     },
   });
 
@@ -96,12 +96,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const registerMutation = useMutation({
     mutationFn: (request: api.RegisterRequest) => api.register(request),
-    onSuccess: (operator) => {
+    onSuccess: (session) => {
       // The server signs a new account in as part of registering, so seed the
       // probe rather than making the first paint wait on a round trip. When it
       // could not, leave the cache alone and let the sign-in form take over.
-      if (operator) {
-        queryClient.setQueryData(SESSION_QUERY_KEY, { kind: "operator", operator } satisfies Probe);
+      if (session) {
+        queryClient.setQueryData(SESSION_QUERY_KEY, { kind: "session", session } satisfies Probe);
       }
     },
   });
@@ -113,10 +113,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await api.operatorLogout();
+      await api.logout();
     } finally {
       // Clear regardless of the response: a failed sign-out must still drop this
-      // operator's cached evidence rather than leaving it on screen.
+      // user's cached evidence rather than leaving it on screen.
       queryClient.clear();
       queryClient.setQueryData(SESSION_QUERY_KEY, { kind: "anonymous" } satisfies Probe);
     }
@@ -125,7 +125,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const status: SessionStatus = useMemo(() => {
     if (probe.isPending) return "loading";
     switch (probe.data?.kind) {
-      case "operator":
+      case "session":
         return "authenticated";
       case "unavailable":
         return "unavailable";
@@ -136,7 +136,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SessionContextValue>(
     () => ({
-      operator: probe.data?.kind === "operator" ? probe.data.operator : null,
+      session: probe.data?.kind === "session" ? probe.data.session : null,
       status,
       error: probe.error,
       login,
@@ -173,29 +173,29 @@ export function useSession(): SessionContextValue {
 }
 
 /**
- * The operator, asserted present. Use inside routes that already sit behind the
+ * The session, asserted present. Use inside routes that already sit behind the
  * session gate.
  */
-export function useRequiredOperator(): Operator {
-  const { operator } = useSession();
-  if (!operator) {
-    throw new Error("This route requires a signed-in operator.");
+export function useRequiredSession(): Session {
+  const { session } = useSession();
+  if (!session) {
+    throw new Error("This route requires a signed-in user.");
   }
-  return operator;
+  return session;
 }
 
 /**
- * Cache partition for the signed-in operator. Query keys carry this so one
- * operator's evidence can never be read from another's cached data — the
+ * Cache partition for the signed-in user. Query keys carry this so one
+ * user's evidence can never be read from another's cached data — the
  * session is also cleared outright on sign-out, so this is defence in depth.
  */
-export function sessionScope(operator: Operator | null): string {
-  if (!operator) return "anonymous";
-  return `${operator.organization_id}#${operator.operator_id}`;
+export function sessionScope(session: Session | null): string {
+  if (!session) return "anonymous";
+  return `${session.organization_id}#${session.user_id}`;
 }
 
-/** True when the operator's role grants the scope. */
-export function hasScope(operator: Operator | null, scope: string): boolean {
-  if (!operator) return false;
-  return operator.scopes.some((granted) => granted === "*" || granted === scope);
+/** True when the user's role grants the scope. */
+export function hasScope(session: Session | null, scope: string): boolean {
+  if (!session) return false;
+  return session.scopes.some((granted) => granted === "*" || granted === scope);
 }

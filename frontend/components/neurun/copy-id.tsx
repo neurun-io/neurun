@@ -15,7 +15,7 @@ export interface CopyButtonProps {
  * Copy-to-clipboard with a transient confirmation.
  *
  * The confirmation is text as well as glyph, and it is announced politely — an
- * operator using a screen reader needs to know the copy landed too.
+ * user using a screen reader needs to know the copy landed too.
  */
 export function CopyButton({ value, label, className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
@@ -88,7 +88,7 @@ export function CopyId({ value, label = "identifier", truncate = false, classNam
 }
 
 /**
- * A digest, shown at the length an operator can actually compare, with the full
+ * A digest, shown at the length a user can actually compare, with the full
  * value one copy away. The resolved digest is never hidden — it is the proof
  * that a run used the code you think it used.
  */

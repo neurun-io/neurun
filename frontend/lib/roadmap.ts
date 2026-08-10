@@ -45,7 +45,7 @@ export const ROADMAP = {
   browsers: {
     title: "Browsers",
     summary:
-      "The browsers available to run against, and the live sessions running on them. Uses what is already installed on the host rather than shipping its own: the server reports what it found, an operator can import one by pointing at an executable, enable or disable it, mark a default, and request one be added when the browser they need is not present. A session is one running instance of a registered browser, with resource pressure and signed CDP access — which is why the two are one page: a session list with nothing registered to launch is an empty page explaining another empty page.",
+      "The browsers available to run against, and the live sessions running on them. Uses what is already installed on the host rather than shipping its own: the server reports what it found, a user can import one by pointing at an executable, enable or disable it, mark a default, and request one be added when the browser they need is not present. A session is one running instance of a registered browser, with resource pressure and signed CDP access — which is why the two are one page: a session list with nothing registered to launch is an empty page explaining another empty page.",
     requires: [
       "a discovery pass that reports installed browsers with their executable path, version and channel",
       "import by path, with the server verifying the executable is a browser it can drive before accepting it",
@@ -91,37 +91,21 @@ export const ROADMAP = {
   dataHealth: {
     title: "Data health",
     summary:
-      'Scraped payloads rot quietly. A field disappears, a list that returned forty rows returns none, a price that read "$41.99" reads "Sign in to see price" — still a string, still non-empty, still passing every validator downstream. Structural drift is a diff and needs no model: compare an execution\'s output against the shape its predecessors agreed on and name the missing key, the changed type, the collapsed cardinality. Semantic drift is what is left over, and it is the only part worth spending a model on — a field whose shape is intact but whose meaning is gone. The verdict is advisory and recorded: a run is never failed on one model call an operator cannot read and overrule.',
+      'Scraped payloads rot quietly. A field disappears, a list that returned forty rows returns none, a price that read "$41.99" reads "Sign in to see price" — still a string, still non-empty, still passing every validator downstream. Structural drift is a diff and needs no model: compare an execution\'s output against the shape its predecessors agreed on and name the missing key, the changed type, the collapsed cardinality. Semantic drift is what is left over, and it is the only part worth spending a model on — a field whose shape is intact but whose meaning is gone. The verdict is advisory and recorded: a run is never failed on one model call a user cannot read and overrule.',
     requires: [
       "a per-app output baseline derived from prior executions, versioned so a deliberate schema change resets it rather than alarming forever",
       "a deterministic structural pass — missing field, type change, cardinality collapse — that runs first, and is the only thing that runs when it already explains the drift",
       "a semantic judge over the residue: an llm model call under a strict JSON schema, returning per-field verdict, confidence and the offending value rather than one score",
-      "GET /v1/executions/{id}/data-health, with an operator override recorded beside the verdict rather than replacing it",
+      "GET /v1/executions/{id}/data-health, with a user override recorded beside the verdict rather than replacing it",
     ],
   },
-  projects: {
-    title: "Projects",
+  browserProfiles: {
+    title: "Browser profiles",
     summary:
-      "Quotas, domain policy, robots mode, retention and allowed origins need project contracts. The current API key determines the project; a locally selected project ID is never treated as authority.",
-    requires: ["GET /v1/projects", "GET /v1/projects/{id}", "PATCH /v1/projects/{id}"],
-  },
-  apiKeys: {
-    title: "API keys",
-    summary:
-      "Key creation, scoping and revocation are not part of this release. When they ship, the complete key is shown exactly once at creation and never again.",
+      "Who a browser appears to be, and what it remembers. Presentation is the fingerprint surface a site measures — user agent, locale, timezone, screen metrics, fonts, canvas and WebGL signatures — and it is coherent when those agree with each other, incoherent when they contradict, such as claiming macOS Safari while carrying Linux fonts and a Chrome WebGL vendor. State is what survives between sessions: cookies, localStorage, IndexedDB and logged-in state, and one profile may carry several sets of it. Both are versioned and immutable, because changing either mid-run makes the evidence unreadable. Exporting state exports live session cookies, which is exporting credentials, so import and export carry an elevated-scope warning and explicit confirmation.",
     requires: [
-      "GET /v1/api-keys",
-      "POST /v1/api-keys",
-      "POST /v1/api-keys/{id}/revoke",
-    ],
-  },
-  identities: {
-    title: "Identities",
-    summary:
-      "Who a browser appears to be, and what it remembers. Presentation is the fingerprint surface a site measures — user agent, locale, timezone, screen metrics, fonts, canvas and WebGL signatures — and it is coherent when those agree with each other, incoherent when they contradict, such as claiming macOS Safari while carrying Linux fonts and a Chrome WebGL vendor. State is what survives between sessions: cookies, localStorage, IndexedDB and logged-in state, and one identity may carry several sets of it. Both are versioned and immutable, because changing either mid-run makes the evidence unreadable. Exporting state exports live session cookies, which is exporting credentials, so import and export carry an elevated-scope warning and explicit confirmation.",
-    requires: [
-      "a registered browser to present the identity and own the state",
-      "identity and stored-state list, detail and immutable version-history contracts",
+      "a registered browser to present the profile and own the state",
+      "browser-profile and stored-state list, detail and immutable version-history contracts",
       "coherence validation, reporting which fields contradict rather than a single pass or fail",
       "controlled state import/export endpoints, scoped separately from ordinary reads",
     ],
@@ -139,7 +123,7 @@ export const ROADMAP = {
   activity: {
     title: "Activity",
     summary:
-      "Who changed what, and when: every mutating call against a resource — a deployment created, an app deleted, a key revoked — alongside the security and administrative events that are not resource changes at all, such as a sign-in or a widened scope. One append-only log rather than two, because splitting them means an operator reconstructing an incident has to read both and guess which one holds the next event. The server writes no such log today, and deriving one in the browser would mean inventing history the backend never agreed to.",
+      "Who changed what, and when: every mutating call against a resource — a deployment created, an app deleted, a key revoked — alongside the security and administrative events that are not resource changes at all, such as a sign-in or a widened scope. One append-only log rather than two, because splitting them means a user reconstructing an incident has to read both and guess which one holds the next event. The server writes no such log today, and deriving one in the browser would mean inventing history the backend never agreed to.",
     requires: [
       "GET /v1/activity?actor_id=&subject_type=&subject_id=&project_id=&event_type=&created_after=&limit=&cursor=",
       "an append-only record written inside the same transaction as the change it describes, so a successful write can never lack its entry",

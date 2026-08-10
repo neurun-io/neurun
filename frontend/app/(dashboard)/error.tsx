@@ -9,7 +9,7 @@ import { ErrorPanel } from "@/components/neurun/error-panel";
  * Route-level error boundary.
  *
  * Scoped to the dashboard segment so a failing route falls back inside the
- * shell — the operator keeps their navigation and can move somewhere else
+ * shell — the user keeps their navigation and can move somewhere else
  * instead of losing the whole application.
  */
 export default function DashboardError({

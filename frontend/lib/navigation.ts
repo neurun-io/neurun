@@ -28,7 +28,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/projects", label: "Projects", icon: "folder", availability: "current" },
       { href: "/apps", label: "Apps", icon: "server", availability: "current" },
-      { href: "/deployments", label: "Deployments", icon: "box", availability: "current" },
+      { href: "/deployments", label: "Deployments", icon: "rocket", availability: "current" },
       { href: "/builds", label: "Builds", icon: "list-checks", availability: "current" },
       { href: "/executions", label: "Executions", icon: "activity", availability: "current" },
     ],
@@ -38,6 +38,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/users", label: "Users", icon: "user-round", availability: "current" },
       { href: "/api-keys", label: "API keys", icon: "key", availability: "current" },
+      { href: "/organization", label: "Organization", icon: "building", availability: "current" },
     ],
   },
   {
@@ -71,20 +72,8 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Roadmap settings",
     items: [
       {
-        href: "/settings/projects",
-        label: "Project settings",
-        icon: "folder",
-        availability: "future",
-      },
-      {
-        href: "/settings/api-keys",
-        label: "API key settings",
-        icon: "key",
-        availability: "future",
-      },
-      {
-        href: "/settings/identities",
-        label: "Identities",
+        href: "/settings/browser-profiles",
+        label: "Browser profiles",
         icon: "fingerprint",
         availability: "future",
       },
@@ -110,20 +99,3 @@ export function isActiveRoute(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/**
- * Route an operator-pasted identifier to its detail page.
- *
- * The prefixes are the ones the focused contract declares. Anything
- * else is not guessed at — a wrong guess sends the operator to a 404 and wastes
- * their time.
- */
-export function routeForIdentifier(raw: string): string | null {
-  const value = raw.trim();
-  if (!value) return null;
-  if (value.startsWith("prj_")) return `/projects/${value}`;
-  if (value.startsWith("app_")) return `/apps/${value}`;
-  if (value.startsWith("dep_")) return `/deployments/${value}`;
-  if (value.startsWith("bld_")) return `/builds/${value}`;
-  if (value.startsWith("exe_")) return `/executions/${value}`;
-  return null;
-}

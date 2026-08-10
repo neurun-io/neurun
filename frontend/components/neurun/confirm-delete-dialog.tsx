@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 /**
- * A destructive confirmation that only unlocks once the operator types the
+ * A destructive confirmation that only unlocks once the user types the
  * resource's own name, the way GitHub and AWS gate an irreversible delete.
  *
  * The name rather than the identifier: the identifier is already on screen next
@@ -31,7 +31,7 @@ export interface ConfirmDeleteDialogProps {
   onOpenChange: (open: boolean) => void;
   /** What is being destroyed, e.g. `project` or `app`. Lower case. */
   kind: string;
-  /** The exact string the operator must type. */
+  /** The exact string the user must type. */
   name: string;
   /** What else disappears. State the cascade plainly. */
   consequence: ReactNode;

@@ -45,7 +45,7 @@ export function createQueryClient(): QueryClient {
     defaultOptions: {
       queries: {
         retry: shouldRetry,
-        // Evidence goes stale quickly; an operator reading a job wants the
+        // Evidence goes stale quickly; a user reading a job wants the
         // current snapshot, not a cached one from two minutes ago.
         staleTime: 5_000,
         gcTime: 5 * 60_000,

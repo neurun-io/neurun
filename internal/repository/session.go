@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/domain/operator"
 	"github.com/neurun-io/neurun/internal/domain/organization"
+	sessiondomain "github.com/neurun-io/neurun/internal/domain/session"
 	"github.com/neurun-io/neurun/internal/ids"
 )
 
 const sessionKeyPrefix = "session:"
 
-// SessionRepository keeps issued operator sessions in the cache, keyed by the
+// SessionRepository keeps issued sessions in the cache, keyed by the
 // token's digest — the token itself is never stored, so a dump of the cache
 // cannot be replayed as a live cookie.
 //
@@ -42,25 +42,25 @@ func NewSessionRepository(
 }
 
 func sessionKey(token string) string {
-	digest := operator.TokenDigest(token)
+	digest := sessiondomain.TokenDigest(token)
 	return sessionKeyPrefix + hex.EncodeToString(digest[:])
 }
 
 func (repository *SessionRepository) Create(
 	ctx context.Context,
-	account operator.Account,
+	account sessiondomain.Account,
 	membership organization.Member,
 	token string,
 	expiresAt time.Time,
-) (operator.Session, error) {
+) (sessiondomain.Session, error) {
 	if strings.TrimSpace(token) == "" {
-		return operator.Session{}, errors.New("session token is required")
+		return sessiondomain.Session{}, errors.New("session token is required")
 	}
 	sessionID, err := ids.New("oses")
 	if err != nil {
-		return operator.Session{}, fmt.Errorf("allocate operator session ID: %w", err)
+		return sessiondomain.Session{}, fmt.Errorf("allocate session ID: %w", err)
 	}
-	session := operator.Session{
+	session := sessiondomain.Session{
 		ID:             sessionID,
 		AccountID:      account.ID,
 		Email:          account.Email,
@@ -71,16 +71,16 @@ func (repository *SessionRepository) Create(
 	}
 	encoded, err := json.Marshal(session)
 	if err != nil {
-		return operator.Session{}, fmt.Errorf("encode operator session: %w", err)
+		return sessiondomain.Session{}, fmt.Errorf("encode session: %w", err)
 	}
 	// The entry expires with the session, so an abandoned cookie cannot outlive
 	// its own deadline in the cache.
 	ttl := time.Until(session.ExpiresAt)
 	if ttl <= 0 {
-		return operator.Session{}, errors.New("session expiry is already past")
+		return sessiondomain.Session{}, errors.New("session expiry is already past")
 	}
 	if err := repository.cache.Set(ctx, sessionKey(token), encoded, ttl); err != nil {
-		return operator.Session{}, fmt.Errorf("store operator session: %w", err)
+		return sessiondomain.Session{}, fmt.Errorf("store session: %w", err)
 	}
 	return session, nil
 }
@@ -89,29 +89,29 @@ func (repository *SessionRepository) ByToken(
 	ctx context.Context,
 	token string,
 	now time.Time,
-) (operator.Session, error) {
+) (sessiondomain.Session, error) {
 	key := sessionKey(token)
 	encoded, found, err := repository.cache.Get(ctx, key)
 	if err != nil {
-		return operator.Session{}, fmt.Errorf("read operator session: %w", err)
+		return sessiondomain.Session{}, fmt.Errorf("read session: %w", err)
 	}
 	if !found {
-		return operator.Session{}, operator.ErrSessionNotFound
+		return sessiondomain.Session{}, sessiondomain.ErrSessionNotFound
 	}
-	var session operator.Session
+	var session sessiondomain.Session
 	if err := json.Unmarshal(encoded, &session); err != nil {
-		return operator.Session{}, fmt.Errorf("decode operator session: %w", err)
+		return sessiondomain.Session{}, fmt.Errorf("decode session: %w", err)
 	}
 	if session.Expired(now) {
 		// Drop it here so an expired token cannot be probed repeatedly.
 		_ = repository.cache.Delete(ctx, key)
-		return operator.Session{}, operator.ErrSessionExpired
+		return sessiondomain.Session{}, sessiondomain.ErrSessionExpired
 	}
 	if session.OrganizationID == "" {
 		// No membership to re-read; the account itself is still the gate.
 		if live, err := repository.users.Exists(ctx, session.AccountID); err != nil || !live {
 			_ = repository.cache.Delete(ctx, key)
-			return operator.Session{}, operator.ErrSessionNotFound
+			return sessiondomain.Session{}, sessiondomain.ErrSessionNotFound
 		}
 		return session, nil
 	}
@@ -120,7 +120,7 @@ func (repository *SessionRepository) ByToken(
 		// A deleted or disabled account, or one removed from the organization,
 		// invalidates the session outright; the caller must not be told which.
 		_ = repository.cache.Delete(ctx, key)
-		return operator.Session{}, operator.ErrSessionNotFound
+		return sessiondomain.Session{}, sessiondomain.ErrSessionNotFound
 	}
 	session.Role = role
 	return session, nil

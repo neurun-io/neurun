@@ -1,10 +1,10 @@
-// Package operator provides human identity for the control plane.
+// Package session provides human identity for the control plane.
 //
 // The API key in internal/domain/auth authenticates a *program*. This package
 // describes a *person*: an account whose email and password are exchanged for
 // an opaque session token delivered as an HttpOnly cookie. Both paths converge
 // on auth.Principal, so scope enforcement stays in one place.
-package operator
+package session
 
 import (
 	"crypto/rand"
@@ -18,10 +18,10 @@ import (
 )
 
 var (
-	ErrAccountNotFound = errors.New("operator account not found")
-	ErrAccountDisabled = errors.New("operator account is disabled")
-	ErrSessionNotFound = errors.New("operator session not found")
-	ErrSessionExpired  = errors.New("operator session has expired")
+	ErrAccountNotFound = errors.New("account not found")
+	ErrAccountDisabled = errors.New("account is disabled")
+	ErrSessionNotFound = errors.New("session not found")
+	ErrSessionExpired  = errors.New("session has expired")
 	// ErrNoOrganization is a real account with nowhere to act: every
 	// membership it held was removed. It signs in and can do nothing.
 	ErrNoOrganization = errors.New("account belongs to no organization")

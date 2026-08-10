@@ -36,12 +36,12 @@ func TestPrincipalRoundTripsThroughContext(t *testing.T) {
 		t.Fatal("bare context reported a principal")
 	}
 	want := Principal{
-		Kind: KindOperator, OperatorID: "usr_1", Email: "ada@example.com",
+		Kind: KindSession, UserID: "usr_1", Email: "ada@example.com",
 		OrganizationID: "org_1",
 		Scopes:         []string{ScopeAll},
 	}
 	got, ok := FromContext(WithPrincipal(context.Background(), want))
-	if !ok || got.OperatorID != want.OperatorID || got.Kind != KindOperator {
+	if !ok || got.UserID != want.UserID || got.Kind != KindSession {
 		t.Fatalf("round trip = %#v, %v", got, ok)
 	}
 }

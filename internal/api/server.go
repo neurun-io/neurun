@@ -46,26 +46,26 @@ type ServerOptions struct {
 	Deployments            *service.DeploymentService
 	Executions             *service.ExecutionService
 	Accounts               *service.AccountService
-	Operators              *service.OperatorService
+	Sessions               *service.SessionService
 	Organizations          *service.OrganizationService
 	GitHub                 *service.GitHubService
 	Ready                  ReadyCheck
 	MaximumBodyBytes       int64
 	MaximumDeploymentBytes int64
-	OperatorCookieSecure   bool
+	SessionCookieSecure    bool
 }
 
 type Server struct {
 	deployments            *service.DeploymentService
 	executions             *service.ExecutionService
 	accounts               *service.AccountService
-	operators              *service.OperatorService
+	sessions               *service.SessionService
 	organizations          *service.OrganizationService
 	gitHub                 *service.GitHubService
 	ready                  ReadyCheck
 	maximumBodyBytes       int64
 	maximumDeploymentBytes int64
-	operatorCookieSecure   bool
+	sessionCookieSecure    bool
 	engine                 *gin.Engine
 }
 
@@ -94,13 +94,13 @@ func NewServer(options ServerOptions) (*Server, error) {
 		deployments:            options.Deployments,
 		executions:             options.Executions,
 		accounts:               options.Accounts,
-		operators:              options.Operators,
+		sessions:               options.Sessions,
 		organizations:          options.Organizations,
 		gitHub:                 options.GitHub,
 		ready:                  options.Ready,
 		maximumBodyBytes:       options.MaximumBodyBytes,
 		maximumDeploymentBytes: options.MaximumDeploymentBytes,
-		operatorCookieSecure:   options.OperatorCookieSecure,
+		sessionCookieSecure:    options.SessionCookieSecure,
 	}
 	server.engine = server.routes()
 	return server, nil
@@ -133,9 +133,9 @@ func (server *Server) routes() *gin.Engine {
 	// The invite lookup joins them, so a sign-up page can name the organization
 	// it is about to add somebody to.
 	engine.POST("/v1/auth/register", server.register)
-	engine.POST("/v1/auth/login", server.operatorLogin)
-	engine.POST("/v1/auth/logout", server.operatorLogout)
-	engine.GET("/v1/auth/session", server.operatorSession)
+	engine.POST("/v1/auth/login", server.login)
+	engine.POST("/v1/auth/logout", server.logout)
+	engine.GET("/v1/auth/session", server.currentSession)
 	engine.GET("/v1/invites/lookup", server.lookupInvite)
 
 	v1 := engine.Group("/v1", server.authenticate())

@@ -14,11 +14,11 @@ import { NeurunContractError } from "./errors";
 const timestamp = z.string();
 
 /**
- * The signed-in operator. `role` stays an open string for the same reason every
+ * The signed-in user. `role` stays an open string for the same reason every
  * other enum does: a server that learns a new role must not break the shell.
  */
-export const operatorSchema = z.looseObject({
-  operator_id: z.string(),
+export const sessionSchema = z.looseObject({
+  user_id: z.string(),
   email: z.string(),
   organization_id: z.string(),
   role: z.string(),
@@ -27,19 +27,19 @@ export const operatorSchema = z.looseObject({
   expires_at: timestamp,
 });
 
-export const operatorEnvelopeSchema = z.looseObject({
-  operator: operatorSchema,
+export const sessionEnvelopeSchema = z.looseObject({
+  session: sessionSchema,
 });
 
 /**
- * Registration answers with the account, and with the operator only when the
+ * Registration answers with the account, and with the user only when the
  * server also managed to sign it in.
  */
 export const registrationSchema = z.looseObject({
   user: z.looseObject({ id: z.string(), email: z.string() }),
   organization: z.looseObject({ id: z.string(), name: z.string() }).optional(),
   member: z.looseObject({ role: z.string() }).optional(),
-  operator: operatorSchema.optional(),
+  session: sessionSchema.optional(),
 });
 
 export const organizationSchema = z.looseObject({

@@ -92,6 +92,6 @@ export const ALWAYS_INCLUDED = [
   "Executions pinned to a build, and rerun against it",
   "Logs, output and structured failures",
   "The full /v1 contract and OpenAPI document",
-  "The operator dashboard, in full",
+  "The dashboard, in full",
   "Export, on every plan and on exit",
 ];

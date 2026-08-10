@@ -69,17 +69,20 @@ paths:
         "201":
           description: >-
             Account created. The session cookie is set unless sign-in failed, in
-            which case operator is absent and the caller signs in normally.
+            which case session is absent and the caller signs in normally.
+            member and organization are absent when no organization was named,
+            or when the organization step failed — the account still stands, and
+            the caller starts or joins one afterwards.
           content:
             application/json:
               schema:
                 type: object
-                required: [user, member]
+                required: [user]
                 properties:
                   user: {$ref: "#/components/schemas/User"}
                   organization: {$ref: "#/components/schemas/Organization"}
                   member: {$ref: "#/components/schemas/Member"}
-                  operator: {$ref: "#/components/schemas/Operator"}
+                  session: {$ref: "#/components/schemas/Session"}
         "403": {$ref: "#/components/responses/Problem"}
         "409": {$ref: "#/components/responses/Problem"}
         "410": {$ref: "#/components/responses/Problem"}
@@ -114,7 +117,7 @@ paths:
   /v1/auth/login:
     post:
       security: []
-      operationId: operatorLogin
+      operationId: login
       requestBody:
         required: true
         content:
@@ -128,27 +131,27 @@ paths:
                 password: {type: string}
       responses:
         "200":
-          description: Operator session created.
+          description: Session created.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/OperatorEnvelope"}
+              schema: {$ref: "#/components/schemas/SessionEnvelope"}
         "401": {$ref: "#/components/responses/Problem"}
   /v1/auth/logout:
     post:
       security: []
-      operationId: operatorLogout
+      operationId: logout
       responses:
         "204": {description: Session cleared.}
   /v1/auth/session:
     get:
       security: []
-      operationId: getOperatorSession
+      operationId: getSession
       responses:
         "200":
-          description: Current operator.
+          description: Current session.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/OperatorEnvelope"}
+              schema: {$ref: "#/components/schemas/SessionEnvelope"}
         "401": {$ref: "#/components/responses/Problem"}
   /v1/organizations:
     post:
@@ -815,11 +818,11 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   schemas:
-    Operator:
+    Session:
       type: object
-      required: [operator_id, email, organization_id, role, scopes, session_id, expires_at]
+      required: [user_id, email, organization_id, role, scopes, session_id, expires_at]
       properties:
-        operator_id: {type: string}
+        user_id: {type: string}
         email: {type: string, format: email}
         organization_id: {type: string}
         role: {$ref: "#/components/schemas/Role"}
@@ -828,11 +831,11 @@ components:
           items: {type: string}
         session_id: {type: string}
         expires_at: {type: string, format: date-time}
-    OperatorEnvelope:
+    SessionEnvelope:
       type: object
-      required: [operator]
+      required: [session]
       properties:
-        operator: {$ref: "#/components/schemas/Operator"}
+        session: {$ref: "#/components/schemas/Session"}
     Project:
       type: object
       required: [id, organization_id, name, created_at, updated_at]

@@ -1,6 +1,6 @@
-# Neurun operator dashboard
+# Neurun dashboard
 
-The operator client for the Neurun control plane. Built against the public `/v1`
+The client for the Neurun control plane. Built against the public `/v1`
 API and the published OpenAPI document only — it imports no server package and
 infers no internal database state.
 
@@ -37,14 +37,16 @@ cp .env.example .env.local     # point NEURUN_API_BASE_URL at your control plane
 npm run dev                    # http://localhost:3001
 ```
 
-Sign in with an operator username and password. Create an account first, from the
-repository root:
+Sign in with an email and password. Create an account first — at `/register`, or
+against the control plane directly:
 
 ```bash
-scripts/create-operator.sh admin admin
+curl -sS -X POST "$NEURUN_API_BASE_URL/v1/auth/register" \
+  -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"secret","organization_name":"Acme"}'
 ```
 
-Passwords are at least 12 characters. Roles are `admin` (all scopes), `operator`
+Passwords are at least 6 characters. Roles are `admin` (all scopes), `operator`
 (read plus submit and cancel), and `viewer` (read only) — a viewer cannot start
 or cancel execution, enforced server-side by scope.
 
@@ -71,14 +73,14 @@ app/
   api/proxy/[...path] same-origin proxy — the only thing that talks to the control plane
 lib/
   api/                generated types, the single client, zod boundaries, query hooks
-  session/            operator session state and observed server capabilities
+  session/            session state and observed server capabilities
   view/               status legend, time, units, redaction, schema-driven forms
   storage/            useSyncExternalStore-backed Web Storage (display prefs only)
 components/
   auth/               login screen
   ui/                 shadcn primitives, aligned to the design system
-  neurun/             the evidence language: Panel, StatusBadge, StateFlow, CopyId,
-                      KeyValue, JsonView, EventTimeline, Timestamp
+  neurun/             the evidence language: Panel, StatusBadge, CopyId,
+                      KeyValue, JsonView, Timestamp
   shell/              top nav, side nav, durability banner, sign-in gate
 ```
 
@@ -115,8 +117,8 @@ inherit the system rather than fighting it.
   `Secure`, `SameSite=Strict` session cookie issued by `POST /v1/auth/login`.
   There is no API key in any client module, and nothing is written to
   `sessionStorage`, `localStorage`, IndexedDB, a URL, or an error breadcrumb.
-- **Query keys are partitioned by session** (project + operator ID), and the
-  cache is cleared on sign-out, so evidence cannot bleed between operators.
+- **Query keys are partitioned by session** (project + user ID), and the
+  cache is cleared on sign-out, so evidence cannot bleed between users.
 - **Sign-in failures are indistinguishable.** An unknown username, a wrong
   password and a disabled account all return the same `invalid_credentials`
   response, and the server spends comparable time on each so timing cannot be
@@ -126,21 +128,8 @@ inherit the system rather than fighting it.
   as a neutral badge carrying its raw value. It is never mapped onto success and
   never crashes a route.
 - **Polling, not streaming.** The current contract exposes no SSE endpoint.
-  Non-terminal jobs, attempts and events poll every 2s and stop on a terminal
-  state; polling pauses while the document is hidden.
-- **Durability is tracked per session.** `AcceptedJob.durability` and the
-  `Neurun-Job-Durability` header are recorded on every accepted async mutation.
-  `process_local` raises a standing banner. The Job schema does not repeat
-  durability on list or detail responses, so no per-job guarantee is invented.
-- **Async gating.** A `durable_backend_unavailable` 503 disables the async
-  control and leaves synchronous invocation working.
-- **Idempotency keys are reused across retries.** A key is memoised against a
-  stable fingerprint of the logical request and released only on a decisive
-  outcome — never after a transport failure, when the server may already hold
-  the request.
-- **Nanoseconds are converted explicitly.** `retry_policy.initial_backoff` and
-  `max_backoff` are Go durations in nanoseconds; `formatNanoseconds` is separate
-  from `formatDurationMs` so the conversion is visible at every call site.
+  Non-terminal resources poll and stop on a terminal state; polling pauses while
+  the document is hidden.
 - **A missing metric is `—`, never `0`.**
 
 ## Testing
@@ -149,17 +138,13 @@ inherit the system rather than fighting it.
 npm test
 ```
 
-MSW fixtures live in `tests/msw/`. The load-bearing one is `acceptedJob`: the
-accepted response carries a `queued` snapshot while the event stream holds both
-`job.accepted` and `job.queued` in sequence order — `accepted` is normally never
-observable as a polled state, and that asymmetry has to survive.
+MSW fixtures live in `tests/msw/`.
 
 Covered: sign-in success and failure, session probe and stop-on-401, the client
-assembling no credential of its own, error envelope and request-ID display,
-cursor pagination including the empty-string terminator, durability body/header,
-`durable_backend_unavailable` gating, idempotency-key reuse, unknown enums and
-partial payloads, status and failure rendering, time/unit/nanosecond handling,
-secret redaction, and schema-generated forms.
+assembling no credential of its own, the error envelope, cursor pagination
+including the empty-string terminator, unknown enums and partial payloads,
+status and failure rendering, time and unit handling, secret redaction, and
+schema-generated forms.
 
 ## Backend gaps
 
@@ -175,9 +160,9 @@ search.
 ## Authentication
 
 Spec §4 listed the API key in the browser as a production release blocker, and
-required either an exchange endpoint issuing a short-lived `HttpOnly` operator
+required either an exchange endpoint issuing a short-lived `HttpOnly` session
 session, or a BFF holding the key server-side. **The first option now exists**:
-the control plane has real operator accounts and `POST /v1/auth/login` issues the
+the control plane has real accounts and `POST /v1/auth/login` issues the
 session. No API key reaches the browser, so that blocker is closed.
 
 Two honest limits remain:

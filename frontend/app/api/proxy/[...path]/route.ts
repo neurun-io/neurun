@@ -9,7 +9,7 @@
  * choose it, which is what stops this handler from being an open relay for
  * arbitrary outbound requests.
  *
- * Authentication is the operator's `HttpOnly` session cookie, forwarded upstream
+ * Authentication is the user's `HttpOnly` session cookie, forwarded upstream
  * and back. This handler injects no credential of its own: it holds no API key,
  * so a request without a valid session simply gets the control plane's 401.
  */

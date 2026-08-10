@@ -3,8 +3,8 @@
 /**
  * Query and mutation hooks.
  *
- * Every key is prefixed with the session scope (project + operator ID) so cached
- * evidence can never bleed between operators. Mutations invalidate explicitly —
+ * Every key is prefixed with the session scope (project + dashboard ID) so cached
+ * evidence can never bleed between users. Mutations invalidate explicitly —
  * nothing here relies on a blanket refetch to eventually become correct.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,8 +23,8 @@ import { isTerminalExecutionStatus } from "./resource-types";
  * nothing in a cache key can ever contain a secret.
  */
 export function useScope(): string {
-  const { operator } = useSession();
-  return sessionScope(operator);
+  const { session } = useSession();
+  return sessionScope(session);
 }
 
 export const queryKeys = {

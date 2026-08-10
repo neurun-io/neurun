@@ -56,7 +56,7 @@ interface Entry {
 
 /**
  * The status legend. Job states, invocation statuses and attempt states share
- * it, because an operator reading a job detail should not have to learn three
+ * it, because a user reading a job detail should not have to learn three
  * vocabularies for the same ideas.
  */
 const LEGEND: Record<string, Entry> = {

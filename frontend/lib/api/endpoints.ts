@@ -9,12 +9,12 @@ import { request } from "./client";
 import {
   invitePreviewSchema,
   memberSchema,
-  operatorEnvelopeSchema,
+  sessionEnvelopeSchema,
   organizationSchema,
   registrationSchema,
   versionSchema,
 } from "./runtime";
-import type { Operator, Version } from "./types";
+import type { Session, Version } from "./types";
 
 export interface InvitePreview {
   organization: { id: string; name: string };
@@ -40,30 +40,30 @@ export interface RegisterRequest {
  *
  * Sign-up is the only way an account comes into being — there is no CLI
  * bootstrap. The session arrives as the same `HttpOnly` cookie sign-in issues,
- * so a successful registration lands already authenticated. `operator` is
+ * so a successful registration lands already authenticated. `session` is
  * absent only when the account was created but signing it in failed, in which
  * case the caller signs in normally rather than being told nothing happened.
  */
 export async function register(body: RegisterRequest) {
-  const { data } = await request<{ operator?: Operator }>(
+  const { data } = await request<{ session?: Session }>(
     { method: "POST", path: "/v1/auth/register", body },
     registrationSchema as never,
   );
-  return data.operator ?? null;
+  return data.session ?? null;
 }
 
 /**
  * Exchange an email and password for a session.
  *
  * The token is never visible here: the server returns it as an `HttpOnly`
- * cookie, and this response carries only the operator projection.
+ * cookie, and this response carries only the user projection.
  */
-export async function operatorLogin(email: string, password: string) {
-  const { data } = await request<{ operator: Operator }>(
+export async function login(email: string, password: string) {
+  const { data } = await request<{ session: Session }>(
     { method: "POST", path: "/v1/auth/login", body: { email, password } },
-    operatorEnvelopeSchema as never,
+    sessionEnvelopeSchema as never,
   );
-  return data.operator;
+  return data.session;
 }
 
 /** Name the organization an invitation would join, without spending it. */
@@ -76,17 +76,17 @@ export async function lookupInvite(token: string, signal?: AbortSignal) {
 }
 
 /** Revoke the current session. Idempotent, and always succeeds. */
-export async function operatorLogout(): Promise<void> {
+export async function logout(): Promise<void> {
   await request({ method: "POST", path: "/v1/auth/logout" });
 }
 
-/** The signed-in operator, or a 401 when there is no live session. */
-export async function getOperatorSession(signal?: AbortSignal) {
-  const { data } = await request<{ operator: Operator }>(
+/** The signed-in session, or a 401 when there is no live session. */
+export async function getSession(signal?: AbortSignal) {
+  const { data } = await request<{ session: Session }>(
     { path: "/v1/auth/session", signal },
-    operatorEnvelopeSchema as never,
+    sessionEnvelopeSchema as never,
   );
-  return data.operator;
+  return data.session;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -120,6 +120,21 @@ export async function createOrganization(name: string) {
     organizationSchema as never,
   );
   return data;
+}
+
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  owner_user_id?: string;
+}
+
+/** Every organization the account belongs to, owned or joined. */
+export async function listOrganizations(signal?: AbortSignal) {
+  const { data } = await request<{ organizations: OrganizationSummary[] }>({
+    path: "/v1/organizations",
+    signal,
+  });
+  return data.organizations;
 }
 
 /** Accept an invitation as a signed-in account. */

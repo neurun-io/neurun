@@ -95,7 +95,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["operatorLogin"];
+        post: operations["login"];
         delete?: never;
         options?: never;
         head?: never;
@@ -111,7 +111,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["operatorLogout"];
+        post: operations["logout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -125,7 +125,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getOperatorSession"];
+        get: operations["getSession"];
         put?: never;
         post?: never;
         delete?: never;
@@ -535,8 +535,8 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        Operator: {
-            operator_id: string;
+        Session: {
+            user_id: string;
             /** Format: email */
             email: string;
             organization_id: string;
@@ -546,8 +546,8 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
         };
-        OperatorEnvelope: {
-            operator: components["schemas"]["Operator"];
+        SessionEnvelope: {
+            session: components["schemas"]["Session"];
         };
         Project: {
             id: string;
@@ -819,7 +819,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Account created. The session cookie is set unless sign-in failed, in which case operator is absent and the caller signs in normally. */
+            /** @description Account created. The session cookie is set unless sign-in failed, in which case session is absent and the caller signs in normally. member and organization are absent when no organization was named, or when the organization step failed — the account still stands, and the caller starts or joins one afterwards. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -828,8 +828,8 @@ export interface operations {
                     "application/json": {
                         user: components["schemas"]["User"];
                         organization?: components["schemas"]["Organization"];
-                        member: components["schemas"]["Member"];
-                        operator?: components["schemas"]["Operator"];
+                        member?: components["schemas"]["Member"];
+                        session?: components["schemas"]["Session"];
                     };
                 };
             };
@@ -869,7 +869,7 @@ export interface operations {
             410: components["responses"]["Problem"];
         };
     };
-    operatorLogin: {
+    login: {
         parameters: {
             query?: never;
             header?: never;
@@ -886,19 +886,19 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Operator session created. */
+            /** @description Session created. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperatorEnvelope"];
+                    "application/json": components["schemas"]["SessionEnvelope"];
                 };
             };
             401: components["responses"]["Problem"];
         };
     };
-    operatorLogout: {
+    logout: {
         parameters: {
             query?: never;
             header?: never;
@@ -916,7 +916,7 @@ export interface operations {
             };
         };
     };
-    getOperatorSession: {
+    getSession: {
         parameters: {
             query?: never;
             header?: never;
@@ -925,13 +925,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Current operator. */
+            /** @description Current session. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperatorEnvelope"];
+                    "application/json": components["schemas"]["SessionEnvelope"];
                 };
             };
             401: components["responses"]["Problem"];

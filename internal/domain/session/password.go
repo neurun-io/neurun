@@ -1,4 +1,4 @@
-package operator
+package session
 
 import (
 	"errors"
@@ -13,9 +13,9 @@ import (
 // The cost is encoded in every hash, so raising it later does not invalidate
 // existing ones: an old hash keeps verifying at the cost it was written with.
 const (
-	// MinimumPasswordLength is counted in runes — a twelve-character passphrase
+	// MinimumPasswordLength is counted in runes — a six-character passphrase
 	// should not be rejected because its characters are multi-byte.
-	MinimumPasswordLength = 12
+	MinimumPasswordLength = 6
 
 	// MaximumPasswordBytes is bcrypt's own input limit, not a policy choice.
 	// x/crypto refuses a longer password rather than silently truncating it, so
@@ -58,7 +58,7 @@ func hashPasswordWithCost(password string, cost int) (string, error) {
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), cost)
 	if err != nil {
-		return "", fmt.Errorf("hash operator password: %w", err)
+		return "", fmt.Errorf("hash password: %w", err)
 	}
 	return string(hash), nil
 }

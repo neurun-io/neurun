@@ -5,7 +5,7 @@
  * any payload is shown in a JSON viewer. This is defence in depth, not a
  * substitute for the server's own redaction: the server owns the authoritative
  * `redaction` policy in each function manifest, and this pass only stops the
- * obvious things an operator would otherwise paste into a ticket.
+ * obvious things a user would otherwise paste into a ticket.
  */
 
 const SECRET_KEY_PATTERN =
@@ -42,7 +42,7 @@ export function redactString(value: string): string {
 /**
  * Walk a payload and redact secret-looking values.
  *
- * Structure is preserved: an operator comparing a redacted copy against the
+ * Structure is preserved: a user comparing a redacted copy against the
  * original should see the same shape, with the sensitive leaves replaced.
  * Cycles are tolerated, so this is safe on arbitrary server payloads.
  */

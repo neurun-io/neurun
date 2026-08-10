@@ -55,7 +55,7 @@ func (server *Server) updateUser(ctx *gin.Context) {
 // with their attribution cleared, and every project resource stands.
 func (server *Server) deleteUser(ctx *gin.Context) {
 	target := ctx.Param("user_id")
-	if target == principalOf(ctx).OperatorID {
+	if target == principalOf(ctx).UserID {
 		writeProblem(ctx, http.StatusConflict, dto.Problem{
 			Code:    "cannot_delete_self",
 			Message: "you cannot delete your own account",

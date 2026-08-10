@@ -28,7 +28,7 @@ Sign-up is open, so **per-IP limiting belongs at the edge**, alongside the
 throttle that used to sit in front of sign-in. The server deliberately holds no
 rate limiter of its own.
 
-The password is a minimum of 12 characters and is stored as a bcrypt hash. There
+The password is a minimum of 6 characters and is stored as a bcrypt hash. There
 are no credentials in configuration — nothing in `.env` creates or restores an
 account, so a password changed later is never silently reverted by a restart.
 

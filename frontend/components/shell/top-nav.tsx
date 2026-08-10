@@ -1,12 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, Search } from "lucide-react";
+import { ChevronDown, LogOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,10 +18,9 @@ import { ThemeToggle } from "@/components/neurun/theme-toggle";
 import { useVersionQuery } from "@/lib/api/queries";
 import { useSession } from "@/lib/session/store";
 import { usePreferences } from "@/lib/preferences/store";
-import { routeForIdentifier } from "@/lib/navigation";
 
 export function TopNav() {
-  const { operator, logout } = useSession();
+  const { session, logout } = useSession();
   const { timeZone, toggleTimeZone } = usePreferences();
   const version = useVersionQuery();
 
@@ -33,8 +29,6 @@ export function TopNav() {
       <Link href="/projects" className="shrink-0 rounded-xs">
         <Wordmark />
       </Link>
-
-      <IdentifierSearch />
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
         {/* Control-plane health and version. Unknown is stated, never faked. */}
@@ -85,20 +79,20 @@ export function TopNav() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-1.5 font-mono text-micro">
-              {operator?.email ?? "signed out"}
+              {session?.email ?? "signed out"}
               <ChevronDown aria-hidden className="size-3" strokeWidth={1.5} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72">
             <DropdownMenuLabel className="font-normal">
-              <span className="block font-mono text-caption text-fg">{operator?.email}</span>
+              <span className="block font-mono text-caption text-fg">{session?.email}</span>
               <span className="block font-mono text-micro text-fg-muted">
-                {operator?.role}
+                {session?.role}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <div className="px-2 py-1.5 text-caption text-fg-muted">
-              Scopes: <span className="font-mono">{operator?.scopes.join(" ")}</span>
+              Scopes: <span className="font-mono">{session?.scopes.join(" ")}</span>
             </div>
             <div className="px-2 pb-1.5 text-caption text-fg-muted">
               The session determines the project. Project switching requires the future project API.
@@ -112,62 +106,5 @@ export function TopNav() {
         </DropdownMenu>
       </div>
     </header>
-  );
-}
-
-/**
- * Identifier navigation.
- *
- * Deliberately not a search box: there is no cross-resource search contract, so
- * this resolves the ID prefixes the API actually declares (`job_`, `fni_`) and
- * says so plainly rather than pretending to search.
- */
-function IdentifierSearch() {
-  const router = useRouter();
-  const [value, setValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    const href = routeForIdentifier(value);
-    if (!href) {
-      setError("Enter a job ID (job_…) or invocation ID (fni_…).");
-      return;
-    }
-    setError(null);
-    setValue("");
-    router.push(href);
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="hidden min-w-0 max-w-sm flex-1 lg:block">
-      <label htmlFor="identifier-nav" className="sr-only">
-        Go to a job or invocation by ID
-      </label>
-      <div className="relative">
-        <Search
-          aria-hidden
-          className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-muted"
-          strokeWidth={1.5}
-        />
-        <Input
-          id="identifier-nav"
-          value={value}
-          onChange={(event) => {
-            setValue(event.target.value);
-            if (error) setError(null);
-          }}
-          placeholder="job_… or fni_…"
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? "identifier-nav-error" : undefined}
-          className="h-(--nr-control-h-sm) pl-8 font-mono text-caption"
-        />
-      </div>
-      {error ? (
-        <p id="identifier-nav-error" role="alert" className="mt-1 text-micro text-fg-muted">
-          {error}
-        </p>
-      ) : null}
-    </form>
   );
 }

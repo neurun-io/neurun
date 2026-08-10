@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/neurun-io/neurun/internal/domain/account"
-	"github.com/neurun-io/neurun/internal/domain/operator"
 	"github.com/neurun-io/neurun/internal/domain/organization"
+	"github.com/neurun-io/neurun/internal/domain/session"
 )
 
 const userColumns = `id, email, disabled, created_at, updated_at`
@@ -175,8 +175,8 @@ func (repository *UserRepository) Exists(
 func (repository *UserRepository) CredentialByEmail(
 	ctx context.Context,
 	email string,
-) (operator.Account, error) {
-	var record operator.Account
+) (session.Account, error) {
+	var record session.Account
 	err := repository.pool.QueryRow(
 		ctx,
 		`SELECT id, email, password_hash, disabled, created_at
@@ -187,10 +187,10 @@ func (repository *UserRepository) CredentialByEmail(
 		&record.PasswordHash, &record.Disabled, &record.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return operator.Account{}, operator.ErrAccountNotFound
+		return session.Account{}, session.ErrAccountNotFound
 	}
 	if err != nil {
-		return operator.Account{}, fmt.Errorf("read operator account: %w", err)
+		return session.Account{}, fmt.Errorf("read account: %w", err)
 	}
 	return record, nil
 }
@@ -200,8 +200,8 @@ func (repository *UserRepository) CredentialByEmail(
 func (repository *UserRepository) CredentialByID(
 	ctx context.Context,
 	userID string,
-) (operator.Account, error) {
-	var record operator.Account
+) (session.Account, error) {
+	var record session.Account
 	err := repository.pool.QueryRow(
 		ctx,
 		`SELECT id, email, password_hash, disabled, created_at
@@ -212,10 +212,10 @@ func (repository *UserRepository) CredentialByID(
 		&record.PasswordHash, &record.Disabled, &record.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return operator.Account{}, operator.ErrAccountNotFound
+		return session.Account{}, session.ErrAccountNotFound
 	}
 	if err != nil {
-		return operator.Account{}, fmt.Errorf("read operator account: %w", err)
+		return session.Account{}, fmt.Errorf("read account: %w", err)
 	}
 	return record, nil
 }
@@ -245,7 +245,7 @@ func (repository *UserRepository) LiveRole(
 		return "", fmt.Errorf("read member role: %w", err)
 	}
 	if disabled {
-		return "", operator.ErrAccountDisabled
+		return "", session.ErrAccountDisabled
 	}
 	return organization.Role(role), nil
 }

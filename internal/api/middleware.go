@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/neurun-io/neurun/internal/domain/auth"
-	"github.com/neurun-io/neurun/internal/domain/operator"
+	sessiondomain "github.com/neurun-io/neurun/internal/domain/session"
 	"github.com/neurun-io/neurun/internal/dto"
 )
 
@@ -41,7 +41,7 @@ func recovery() gin.HandlerFunc {
 	})
 }
 
-// authenticate accepts either a bearer API key or an operator session cookie.
+// authenticate accepts either a bearer API key or an session cookie.
 //
 // The bearer header wins when both are present: an Authorization header is a
 // deliberate act by a caller, whereas a cookie rides along automatically.
@@ -62,23 +62,23 @@ func (server *Server) authenticate() gin.HandlerFunc {
 			unauthenticated(ctx, "sign in, or supply a bearer API key")
 			return
 		}
-		if server.operators == nil {
-			unauthenticated(ctx, "operator sign-in is not configured on this server")
+		if server.sessions == nil {
+			unauthenticated(ctx, "sign-in is not configured on this server")
 			return
 		}
-		session, err := server.operators.Session(ctx.Request.Context(), token)
+		session, err := server.sessions.Session(ctx.Request.Context(), token)
 		if err != nil {
 			// Clear an expired or unknown session so the browser stops resending
 			// a token that will never work again.
 			http.SetCookie(ctx.Writer, server.clearSessionCookie())
 			message := "your session is no longer valid; sign in again"
-			if errors.Is(err, operator.ErrSessionExpired) {
+			if errors.Is(err, sessiondomain.ErrSessionExpired) {
 				message = "your session expired; sign in again"
 			}
 			unauthenticated(ctx, message)
 			return
 		}
-		server.withPrincipal(ctx, operatorPrincipal(session))
+		server.withPrincipal(ctx, sessionPrincipal(session))
 	}
 }
 

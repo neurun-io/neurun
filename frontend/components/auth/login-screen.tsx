@@ -194,7 +194,7 @@ function RegisterForm() {
       <Field
         label="Password"
         htmlFor="password"
-        hint="12 characters minimum. Hashed with bcrypt, never recoverable."
+        hint="6 characters minimum."
       >
         <IconInput
           icon={KeyRound}
@@ -205,7 +205,7 @@ function RegisterForm() {
           onChange={(event) => setPassword(event.target.value)}
           autoComplete="new-password"
           required
-          minLength={12}
+          minLength={6}
           placeholder="••••••••••••"
         />
       </Field>
@@ -373,7 +373,7 @@ function Editorial() {
 
       <Link href="/" className="relative flex w-fit items-center gap-3">
         <Logo />
-        <span className="nr-label border-l border-line-default pl-3">operator access</span>
+        <span className="nr-label border-l border-line-default pl-3">dashboard access</span>
       </Link>
 
       <div className="relative flex max-w-[460px] flex-col gap-6.5">

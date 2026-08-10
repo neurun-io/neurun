@@ -32,7 +32,7 @@ const (
 	defaultRunTimeout               = 5 * time.Minute
 	defaultWorkerPollInterval       = 250 * time.Millisecond
 	defaultDatabaseURL              = "postgres://neurun:neurun-local-change-me@localhost:5432/neurun?sslmode=disable"
-	defaultOperatorSessionTTL       = 12 * time.Hour
+	defaultSessionTTL               = 12 * time.Hour
 	defaultDatabaseSchema           = "neurun"
 	defaultDatabaseMaxConns         = 25
 	defaultDatabaseConnMaxLifetime  = 5 * time.Minute
@@ -63,8 +63,8 @@ type Config struct {
 	DatabaseMaxConns            int
 	DatabaseConnMaxLifetime     time.Duration
 	DatabaseConnMaxIdleTime     time.Duration
-	OperatorSessionTTL          time.Duration
-	OperatorCookieSecure        bool
+	SessionTTL                  time.Duration
+	SessionCookieSecure         bool
 	GitHubAppID                 int64
 	GitHubPrivateKey            []byte
 }
@@ -98,8 +98,8 @@ func Load() (Config, error) {
 		DatabaseMaxConns:            defaultDatabaseMaxConns,
 		DatabaseConnMaxLifetime:     defaultDatabaseConnMaxLifetime,
 		DatabaseConnMaxIdleTime:     defaultDatabaseConnMaxIdleTime,
-		OperatorSessionTTL:          defaultOperatorSessionTTL,
-		OperatorCookieSecure:        false,
+		SessionTTL:                  defaultSessionTTL,
+		SessionCookieSecure:         false,
 	}
 
 	var err error
@@ -114,8 +114,8 @@ func Load() (Config, error) {
 			)
 		}
 	}
-	if cfg.OperatorCookieSecure, err = boolValue(
-		"NEURUN_OPERATOR_COOKIE_SECURE", cfg.OperatorCookieSecure,
+	if cfg.SessionCookieSecure, err = boolValue(
+		"NEURUN_SESSION_COOKIE_SECURE", cfg.SessionCookieSecure,
 	); err != nil {
 		return Config{}, err
 	}
@@ -127,7 +127,7 @@ func Load() (Config, error) {
 		{"NEURUN_DEPLOYMENT_BUILD_TIMEOUT", &cfg.DeploymentBuildTimeout},
 		{"NEURUN_EXECUTION_TIMEOUT", &cfg.RunTimeout},
 		{"NEURUN_WORKER_POLL_INTERVAL", &cfg.WorkerPollInterval},
-		{"NEURUN_OPERATOR_SESSION_TTL", &cfg.OperatorSessionTTL},
+		{"NEURUN_SESSION_TTL", &cfg.SessionTTL},
 	}
 	for _, field := range durationFields {
 		if *field.dst, err = durationValue(field.name, *field.dst); err != nil {
@@ -288,7 +288,7 @@ func (c Config) Validate() error {
 		{"NEURUN_DEPLOYMENT_BUILD_TIMEOUT", c.DeploymentBuildTimeout},
 		{"NEURUN_EXECUTION_TIMEOUT", c.RunTimeout},
 		{"NEURUN_WORKER_POLL_INTERVAL", c.WorkerPollInterval},
-		{"NEURUN_OPERATOR_SESSION_TTL", c.OperatorSessionTTL},
+		{"NEURUN_SESSION_TTL", c.SessionTTL},
 	}
 	for _, field := range positiveDurations {
 		if field.value <= 0 {

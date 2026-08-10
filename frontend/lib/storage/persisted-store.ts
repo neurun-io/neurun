@@ -9,7 +9,7 @@
  *
  * `hydrated` is part of the snapshot: consumers can distinguish "no value" from
  * "not read yet", which is the difference between showing a connection screen
- * and briefly flashing one at an operator who is already connected.
+ * and briefly flashing one at a user who is already connected.
  */
 
 export interface PersistedSnapshot<T> {

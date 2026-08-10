@@ -9,8 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/neurun-io/neurun/internal/domain/operator"
 	"github.com/neurun-io/neurun/internal/domain/organization"
+	"github.com/neurun-io/neurun/internal/domain/session"
 	"github.com/neurun-io/neurun/internal/dto"
 )
 
@@ -20,7 +20,7 @@ import (
 // it, or present an invitation and join one. Per-IP limiting belongs at the
 // edge, not here.
 func (server *Server) register(ctx *gin.Context) {
-	if server.operators == nil || server.organizations == nil {
+	if server.sessions == nil || server.organizations == nil {
 		writeProblem(ctx, http.StatusServiceUnavailable, dto.Problem{
 			Code:    "registration_unavailable",
 			Message: "registration is not configured on this server",
@@ -55,18 +55,13 @@ func (server *Server) register(ctx *gin.Context) {
 
 	var membership organization.Member
 	if organizationName != "" || inviteToken != "" {
+		// The account stands on its own. If the organization step fails the
+		// registration still holds: the caller lands on the pick-an-organization
+		// screen and either starts one there or accepts an invitation.
 		membership, err = server.joinOrCreate(ctx, record.ID, email, organizationName, inviteToken)
 		if err != nil {
-			// The account was made for an organization it could not reach. Undo
-			// it rather than stranding a login somebody meant to attach.
-			if deleteErr := server.accounts.DeleteUser(
-				ctx.Request.Context(), record.ID,
-			); deleteErr != nil {
-				slog.Error("could not roll back a half-finished registration",
-					"user_id", record.ID, "error", deleteErr)
-			}
-			writeError(ctx, err)
-			return
+			slog.Warn("registered an account with no organization",
+				"user_id", record.ID, "error", err)
 		}
 	}
 
@@ -80,12 +75,12 @@ func (server *Server) register(ctx *gin.Context) {
 		}
 	}
 
-	session, token, err := server.operators.StartSession(
+	session, token, err := server.sessions.StartSession(
 		ctx.Request.Context(), record.ID, membership,
 	)
 	if err == nil {
 		http.SetCookie(ctx.Writer, server.sessionCookie(token, session.ExpiresAt))
-		payload["operator"] = dto.NewOperatorResponse(session)
+		payload["session"] = dto.NewSessionResponse(session)
 	}
 	ctx.JSON(http.StatusCreated, payload)
 }
@@ -150,20 +145,20 @@ func (server *Server) createOrganization(ctx *gin.Context) {
 	}
 	principal := principalOf(ctx)
 	created, err := server.organizations.Create(
-		ctx.Request.Context(), principal.OperatorID, body.Name,
+		ctx.Request.Context(), principal.UserID, body.Name,
 	)
 	if err != nil {
 		writeError(ctx, err)
 		return
 	}
 	membership, err := server.organizations.Membership(
-		ctx.Request.Context(), created.ID, principal.OperatorID,
+		ctx.Request.Context(), created.ID, principal.UserID,
 	)
 	if err != nil {
 		writeError(ctx, err)
 		return
 	}
-	server.reissue(ctx, principal.OperatorID, membership)
+	server.reissue(ctx, principal.UserID, membership)
 	ctx.Header("Location", "/v1/organization")
 	ctx.JSON(http.StatusCreated, dto.NewOrganizationResponse(created))
 }
@@ -176,13 +171,13 @@ func (server *Server) reissue(
 	userID string,
 	membership organization.Member,
 ) {
-	if server.operators == nil {
+	if server.sessions == nil {
 		return
 	}
 	if token := sessionToken(ctx); token != "" {
-		_ = server.operators.Logout(ctx.Request.Context(), token)
+		_ = server.sessions.Logout(ctx.Request.Context(), token)
 	}
-	session, token, err := server.operators.StartSession(
+	session, token, err := server.sessions.StartSession(
 		ctx.Request.Context(), userID, membership,
 	)
 	if err != nil {
@@ -195,7 +190,7 @@ func (server *Server) reissue(
 
 func (server *Server) listOrganizations(ctx *gin.Context) {
 	records, err := server.organizations.ListForUser(
-		ctx.Request.Context(), principalOf(ctx).OperatorID,
+		ctx.Request.Context(), principalOf(ctx).UserID,
 	)
 	if err != nil {
 		writeError(ctx, err)
@@ -266,7 +261,7 @@ func (server *Server) updateMember(ctx *gin.Context) {
 func (server *Server) removeMember(ctx *gin.Context) {
 	principal := principalOf(ctx)
 	target := ctx.Param("user_id")
-	if target == principal.OperatorID {
+	if target == principal.UserID {
 		writeProblem(ctx, http.StatusConflict, dto.Problem{
 			Code:    "cannot_remove_self",
 			Message: "you cannot remove your own membership",
@@ -305,7 +300,7 @@ func (server *Server) createInvite(ctx *gin.Context) {
 	}
 	principal := principalOf(ctx)
 	record, err := server.organizations.Invite(
-		ctx.Request.Context(), principal.OrganizationID, principal.OperatorID, body,
+		ctx.Request.Context(), principal.OrganizationID, principal.UserID, body,
 	)
 	if err != nil {
 		writeError(ctx, err)
@@ -339,7 +334,7 @@ func (server *Server) acceptInvite(ctx *gin.Context) {
 	}
 	principal := principalOf(ctx)
 	record, err := server.organizations.Accept(
-		ctx.Request.Context(), body.Token, principal.OperatorID, principal.Email,
+		ctx.Request.Context(), body.Token, principal.UserID, principal.Email,
 	)
 	if err != nil {
 		writeError(ctx, err)
@@ -348,7 +343,7 @@ func (server *Server) acceptInvite(ctx *gin.Context) {
 	// An account with nowhere to act has just gained somewhere. Move its session
 	// there rather than making it sign in again.
 	if principal.OrganizationID == "" {
-		server.reissue(ctx, principal.OperatorID, record)
+		server.reissue(ctx, principal.UserID, record)
 	}
 	ctx.JSON(http.StatusOK, dto.NewMemberResponse(record))
 }
@@ -395,7 +390,7 @@ func writeOrganizationError(ctx *gin.Context, err error) bool {
 		})
 	case errors.Is(err, organization.ErrInvalid):
 		invalidRequest(ctx, err.Error())
-	case errors.Is(err, operator.ErrNoOrganization):
+	case errors.Is(err, session.ErrNoOrganization):
 		writeProblem(ctx, http.StatusForbidden, dto.Problem{
 			Code:    "no_organization",
 			Message: "this account belongs to no organization",

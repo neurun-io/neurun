@@ -105,7 +105,7 @@ curl -sS $NEURUN_URL/version
   -d '{"username":"ada",
        "password":"a-long-password"}'
 
-# 201 {"user":{...},"operator":{...}}`}</Snippet>
+# 201 {"user":{...},"dashboard":{...}}`}</Snippet>
 
         <H2 id="key">Issue a key</H2>
         <P>
@@ -490,7 +490,7 @@ Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
       { id: "register", label: "Registration" },
       { id: "keys", label: "Key format" },
       { id: "scopes", label: "Scopes are the model" },
-      { id: "sessions", label: "Operator sessions" },
+      { id: "sessions", label: "Dashboard sessions" },
       { id: "storage", label: "Where a key may live" },
       { id: "revoke", label: "Revocation" },
     ],
@@ -536,11 +536,11 @@ Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
           everything, including scopes added in later releases.
         </Callout>
 
-        <H2 id="sessions">Operator sessions</H2>
+        <H2 id="sessions">Dashboard sessions</H2>
         <P>
           <C>POST /v1/auth/login</C> answers with an <C>HttpOnly</C>, <C>Secure</C>,{" "}
           <C>SameSite=Strict</C> cookie, so the dashboard holds no credential a script could read.{" "}
-          <C>GET /v1/auth/session</C> returns the operator, their role and their scopes;{" "}
+          <C>GET /v1/auth/session</C> returns the dashboard, their role and their scopes;{" "}
           <C>POST /v1/auth/logout</C> ends it. A signed-in user is unrestricted by project — roles are{" "}
           <C>admin</C>, <C>operator</C> and <C>viewer</C>.
         </P>

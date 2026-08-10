@@ -161,11 +161,11 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure account service: %w", err)
 	}
-	operatorService, err := service.NewOperatorService(
-		users, organizations, sessions, cfg.OperatorSessionTTL, nil,
+	sessionService, err := service.NewSessionService(
+		users, organizations, sessions, cfg.SessionTTL, nil,
 	)
 	if err != nil {
-		return fmt.Errorf("configure operator sign-in: %w", err)
+		return fmt.Errorf("configure sign-in: %w", err)
 	}
 	organizationService, err := service.NewOrganizationService(
 		organizations, users, nil, nil,
@@ -242,7 +242,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Deployments:   deploymentService,
 		Executions:    executionService,
 		Accounts:      accountService,
-		Operators:     operatorService,
+		Sessions:      sessionService,
 		Organizations: organizationService,
 		GitHub:        gitHubService,
 		Ready: func(readyCtx context.Context) error {
@@ -253,7 +253,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		},
 		MaximumBodyBytes:       cfg.MaxRequestBodyBytes,
 		MaximumDeploymentBytes: cfg.MaxDeploymentSourceBytes,
-		OperatorCookieSecure:   cfg.OperatorCookieSecure,
+		SessionCookieSecure:    cfg.SessionCookieSecure,
 	})
 	if err != nil {
 		return fmt.Errorf("configure control API: %w", err)
@@ -279,7 +279,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}()
 	go func() {
 		defer background.Done()
-		pruneSessions(runtimeCtx, operatorService, logger)
+		pruneSessions(runtimeCtx, sessionService, logger)
 	}()
 	go func() {
 		logger.Info("neurun listening", "address", cfg.HTTPAddr,
@@ -307,17 +307,17 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 func pruneSessions(
 	ctx context.Context,
-	operators *service.OperatorService,
+	sessions *service.SessionService,
 	logger *slog.Logger,
 ) {
-	if operators == nil {
+	if sessions == nil {
 		<-ctx.Done()
 		return
 	}
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
-		if _, err := operators.PruneSessions(ctx); err != nil &&
+		if _, err := sessions.PruneSessions(ctx); err != nil &&
 			!errors.Is(err, context.Canceled) {
 			logger.Error("prune expired sessions", "error", err)
 		}

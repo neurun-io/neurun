@@ -6,26 +6,26 @@ import * as api from "@/lib/api/endpoints";
 import * as resources from "@/lib/api/resources";
 import { NeurunApiError, NeurunContractError } from "@/lib/api/errors";
 import { shouldRetry } from "@/lib/api/query-client";
-import { operatorEnvelopeSchema, validateResponse } from "@/lib/api/runtime";
-import { OPERATOR, OPERATOR_PASSWORD, proxy, server } from "./msw/server";
+import { sessionEnvelopeSchema, validateResponse } from "@/lib/api/runtime";
+import { SESSION, SESSION_PASSWORD, proxy, server } from "./msw/server";
 import * as fixtures from "./msw/fixtures";
 
 describe("authentication", () => {
   it("signs in with an email and password", async () => {
-    const operator = await api.operatorLogin(OPERATOR.email, OPERATOR_PASSWORD);
-    expect(operator.email).toBe("alice@example.com");
-    expect(operator.role).toBe("admin");
-    expect(operator.scopes).toContain("*");
+    const session = await api.login(SESSION.email, SESSION_PASSWORD);
+    expect(session.email).toBe("alice@example.com");
+    expect(session.role).toBe("admin");
+    expect(session.scopes).toContain("*");
   });
 
   it("carries the organization the session acts in", async () => {
-    const operator = await api.getOperatorSession();
-    expect(operator.organization_id).toBe("org_01HXQ8F2ACME");
+    const session = await api.getSession();
+    expect(session.organization_id).toBe("org_01HXQ8F2ACME");
   });
 
   it("reports bad credentials without distinguishing which part was wrong", async () => {
     const error = await api
-      .operatorLogin("alice@example.com", "not the password")
+      .login("alice@example.com", "not the password")
       .catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(NeurunApiError);
@@ -41,7 +41,7 @@ describe("authentication", () => {
     );
 
     const error = await api
-      .operatorLogin("alice@example.com", OPERATOR_PASSWORD)
+      .login("alice@example.com", SESSION_PASSWORD)
       .catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(NeurunApiError);
@@ -58,19 +58,19 @@ describe("registration", () => {
             user: { id: "usr_01HXQ8F2NEW", email: "ada@example.com" },
             organization: { id: "org_01HXQ8F2ACME", name: "Acme Data" },
             member: { role: "admin" },
-            operator: OPERATOR,
+            session: SESSION,
           },
           { status: 201 },
         ),
       ),
     );
 
-    const operator = await api.register({
+    const session = await api.register({
       email: "ada@example.com",
       password: "a-long-enough-password",
       organization_name: "Acme Data",
     });
-    expect(operator?.organization_id).toBe("org_01HXQ8F2ACME");
+    expect(session?.organization_id).toBe("org_01HXQ8F2ACME");
   });
 
   it("returns null when the account was made but sign-in did not follow", async () => {
@@ -156,8 +156,8 @@ describe("error envelope", () => {
 
   it("rejects a response that does not match the contract", () => {
     expect(() =>
-      validateResponse(operatorEnvelopeSchema as never, "/v1/auth/session", {
-        operator: { operator_id: 12 },
+      validateResponse(sessionEnvelopeSchema as never, "/v1/auth/session", {
+        session: { user_id: 12 },
       }),
     ).toThrow(NeurunContractError);
   });

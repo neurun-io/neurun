@@ -26,7 +26,7 @@ export class NeurunApiError extends Error {
     this.envelope = init.envelope;
   }
 
-  /** The key was rejected. Stop retrying and send the operator back to connect. */
+  /** The key was rejected. Stop retrying and send the user back to connect. */
   get isUnauthenticated() {
     return this.status === 401;
   }

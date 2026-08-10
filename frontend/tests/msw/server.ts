@@ -10,14 +10,14 @@ import * as fixtures from "./fixtures";
  * about the unauthenticated path override a specific route with a 401 rather
  * than simulating cookie storage, which jsdom does not model for HttpOnly
  * cookies by design. The real cookie round-trip — flags included — is covered by
- * the Go tests in `internal/api/operatorauth_test.go`.
+ * the Go tests in `internal/api/sessionauth_test.go`.
  */
 export const proxy = (path: string) => `http://localhost:3000/api/proxy${path}`;
 
-export const OPERATOR_PASSWORD = "correct horse battery staple";
+export const SESSION_PASSWORD = "correct horse battery staple";
 
-export const OPERATOR = {
-  operator_id: "opr_01HXQ8F2ALICE",
+export const SESSION = {
+  user_id: "opr_01HXQ8F2ALICE",
   email: "alice@example.com",
   organization_id: "org_01HXQ8F2ACME",
   role: "admin",
@@ -27,7 +27,7 @@ export const OPERATOR = {
 };
 
 /**
- * Default handlers describe a healthy control plane with an operator signed in
+ * Default handlers describe a healthy control plane with a user signed in
  * and volatile jobs enabled. Individual tests override with `server.use(...)` to
  * describe the case they are actually about.
  */
@@ -36,16 +36,16 @@ export const handlers = [
 
   http.post(proxy("/v1/auth/login"), async ({ request }) => {
     const body = (await request.json()) as { email?: string; password?: string };
-    if (body.email !== OPERATOR.email || body.password !== OPERATOR_PASSWORD) {
+    if (body.email !== SESSION.email || body.password !== SESSION_PASSWORD) {
       return HttpResponse.json(fixtures.invalidCredentials, { status: 401 });
     }
     return HttpResponse.json(
-      { operator: OPERATOR },
+      { session: SESSION },
       {
         status: 200,
         headers: {
           "Set-Cookie":
-            "neurun_operator_session=opaque-token; Path=/; HttpOnly; Secure; SameSite=Strict",
+            "neurun_session=opaque-token; Path=/; HttpOnly; Secure; SameSite=Strict",
         },
       },
     );
@@ -53,7 +53,7 @@ export const handlers = [
 
   http.post(proxy("/v1/auth/logout"), () => new HttpResponse(null, { status: 204 })),
 
-  http.get(proxy("/v1/auth/session"), () => HttpResponse.json({ operator: OPERATOR })),
+  http.get(proxy("/v1/auth/session"), () => HttpResponse.json({ session: SESSION })),
 
   /* --------------------------------- health --------------------------------- */
 

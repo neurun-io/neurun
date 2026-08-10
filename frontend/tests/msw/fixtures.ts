@@ -95,8 +95,8 @@ export const invalidCredentials = {
 
 export const signInUnavailable = {
   error: {
-    code: "operator_signin_unavailable",
-    message: "operator sign-in is not configured on this server",
+    code: "signin_unavailable",
+    message: "sign-in is not configured on this server",
   },
 };
 

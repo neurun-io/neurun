@@ -3,7 +3,7 @@ package dto
 import (
 	"time"
 
-	"github.com/neurun-io/neurun/internal/domain/operator"
+	"github.com/neurun-io/neurun/internal/domain/session"
 )
 
 type LoginRequest struct {
@@ -36,10 +36,10 @@ type UpdateMemberRequest struct {
 	Role string `json:"role"`
 }
 
-// OperatorResponse is the safe projection of a session: no token, no password
+// SessionResponse is the safe projection of a session: no token, no password
 // material, no API key.
-type OperatorResponse struct {
-	OperatorID     string    `json:"operator_id"`
+type SessionResponse struct {
+	UserID         string    `json:"user_id"`
 	Email          string    `json:"email"`
 	OrganizationID string    `json:"organization_id"`
 	Role           string    `json:"role"`
@@ -48,9 +48,9 @@ type OperatorResponse struct {
 	ExpiresAt      time.Time `json:"expires_at"`
 }
 
-func NewOperatorResponse(session operator.Session) OperatorResponse {
-	return OperatorResponse{
-		OperatorID:     session.AccountID,
+func NewSessionResponse(session session.Session) SessionResponse {
+	return SessionResponse{
+		UserID:         session.AccountID,
 		Email:          session.Email,
 		OrganizationID: session.OrganizationID,
 		Role:           string(session.Role),

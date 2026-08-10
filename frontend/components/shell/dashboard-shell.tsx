@@ -16,12 +16,12 @@ import { useCapability } from "@/lib/session/capability";
  * The dashboard shell, and the sign-in gate in front of it.
  *
  * Gating happens here rather than through a redirect so that a deep link —
- * `/jobs/job_01HXQ…` pasted into a chat — survives signing in. The operator
+ * `/jobs/job_01HXQ…` pasted into a chat — survives signing in. The user
  * lands on the login screen and, once authenticated, is already looking at the
  * job they were sent.
  */
 export function DashboardShell({ children }: { children: ReactNode }) {
-  const { status, error, operator } = useSession();
+  const { status, error, session } = useSession();
 
   if (status === "loading") {
     return (
@@ -46,7 +46,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   // Signed in, but belonging nowhere. Nothing below an organization exists yet,
   // so this is the whole surface until there is one.
-  if (!operator?.organization_id) return <OrganizationSetup />;
+  if (!session?.organization_id) return <OrganizationSetup />;
 
   return (
     <div className="flex min-h-dvh flex-col">

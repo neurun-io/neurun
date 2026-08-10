@@ -27,7 +27,7 @@ type Route = "create" | "join";
  * either path, so there is no second sign-in.
  */
 export function OrganizationSetup() {
-  const { operator, logout } = useSession();
+  const { session, logout } = useSession();
   const queryClient = useQueryClient();
   const [route, setRoute] = useState<Route>("create");
   const [name, setName] = useState("");
@@ -134,7 +134,7 @@ export function OrganizationSetup() {
               />
               <p className="text-micro text-fg-muted">
                 It must have been issued to{" "}
-                <span className="font-mono text-fg-secondary">{operator?.email}</span>, and it
+                <span className="font-mono text-fg-secondary">{session?.email}</span>, and it
                 expires seven days after it was sent.
               </p>
             </div>
@@ -156,11 +156,6 @@ export function OrganizationSetup() {
             )}
           </Button>
         </form>
-
-        <Callout kind="note" title="Nothing is billed yet">
-          Compute is metered per organization, and a new one starts with free credit. Nothing is
-          charged until that credit is spent.
-        </Callout>
       </div>
     </main>
   );

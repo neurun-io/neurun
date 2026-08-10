@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { NAV_SECTIONS, routeForIdentifier } from "@/lib/navigation";
+import { NAV_SECTIONS } from "@/lib/navigation";
 
 describe("focused navigation", () => {
   it("contains the project-owned app hierarchy", () => {
@@ -16,6 +16,7 @@ describe("focused navigation", () => {
       "Executions",
       "Users",
       "API keys",
+      "Organization",
     ]);
   });
 
@@ -32,20 +33,9 @@ describe("focused navigation", () => {
       "/browsers",
       "/proxies",
       "/data-health",
-      "/settings/projects",
-      "/settings/api-keys",
-      "/settings/identities",
+      "/settings/browser-profiles",
       "/settings/webhooks",
       "/settings/activity",
     ]);
-  });
-
-  it("routes focused resource identifiers", () => {
-    expect(routeForIdentifier("prj_123")).toBe("/projects/prj_123");
-    expect(routeForIdentifier("app_123")).toBe("/apps/app_123");
-    expect(routeForIdentifier("dep_123")).toBe("/deployments/dep_123");
-    expect(routeForIdentifier("bld_123")).toBe("/builds/bld_123");
-    expect(routeForIdentifier("exe_123")).toBe("/executions/exe_123");
-    expect(routeForIdentifier("job_123")).toBeNull();
   });
 });
