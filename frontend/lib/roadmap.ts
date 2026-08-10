@@ -99,17 +99,6 @@ export const ROADMAP = {
       "GET /v1/executions/{id}/data-health, with a user override recorded beside the verdict rather than replacing it",
     ],
   },
-  browserProfiles: {
-    title: "Browser profiles",
-    summary:
-      "Who a browser appears to be, and what it remembers. Presentation is the fingerprint surface a site measures — user agent, locale, timezone, screen metrics, fonts, canvas and WebGL signatures — and it is coherent when those agree with each other, incoherent when they contradict, such as claiming macOS Safari while carrying Linux fonts and a Chrome WebGL vendor. State is what survives between sessions: cookies, localStorage, IndexedDB and logged-in state, and one profile may carry several sets of it. Both are versioned and immutable, because changing either mid-run makes the evidence unreadable. Exporting state exports live session cookies, which is exporting credentials, so import and export carry an elevated-scope warning and explicit confirmation.",
-    requires: [
-      "a registered browser to present the profile and own the state",
-      "browser-profile and stored-state list, detail and immutable version-history contracts",
-      "coherence validation, reporting which fields contradict rather than a single pass or fail",
-      "controlled state import/export endpoints, scoped separately from ordinary reads",
-    ],
-  },
   webhooks: {
     title: "Webhooks",
     summary:

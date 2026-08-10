@@ -31,6 +31,12 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/deployments", label: "Deployments", icon: "rocket", availability: "current" },
       { href: "/builds", label: "Builds", icon: "list-checks", availability: "current" },
       { href: "/executions", label: "Executions", icon: "activity", availability: "current" },
+      {
+        href: "/browser-profiles",
+        label: "Browser profiles",
+        icon: "fingerprint",
+        availability: "current",
+      },
     ],
   },
   {
@@ -71,12 +77,6 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Roadmap settings",
     items: [
-      {
-        href: "/settings/browser-profiles",
-        label: "Browser profiles",
-        icon: "fingerprint",
-        availability: "future",
-      },
       {
         href: "/settings/webhooks",
         label: "Webhooks",

@@ -99,6 +99,88 @@ export interface CreatedApiKey extends ApiKey {
   secret: string;
 }
 
+export type BrowserKind = "chrome" | "firefox";
+
+/** What a browser claims to be. There is no Firefox brand upstream. */
+export type BrowserBrand = "chrome" | "safari" | "edge";
+
+export interface BrowserIdentity {
+  device_model?: string;
+  has_battery: boolean;
+  has_mouse: boolean;
+  has_touch: boolean;
+  os: "Windows" | "Macintosh" | "Linux" | "Android" | "Ios";
+  os_version: string;
+  platform: {
+    bitness?: string;
+    architecture?: string;
+    navigator_platform: string;
+    version: string;
+  };
+  brand: BrowserBrand;
+  browser_version: number[];
+  screen: {
+    logical_width: number;
+    logical_height: number;
+    original_width: number;
+    original_height: number;
+    density_pixel_ratio: number;
+  };
+  hardware_concurrency: number;
+  memory: number;
+  gpu: { vendor: string; webgl_renderer: string; webgl_vendor: string };
+  geo: string;
+  language: string[];
+  history_count?: number;
+  /** Write-only. Never present on a response — see `proxy_set`. */
+  proxy?: string;
+  timezone?: string;
+}
+
+/** The identity as the API returns it: the proxy is reported, never disclosed. */
+export interface RedactedBrowserIdentity extends Omit<BrowserIdentity, "proxy"> {
+  proxy_set: boolean;
+}
+
+/**
+ * A cookie as the profile endpoints return it — enough to see what a profile is
+ * logged into, and to delete it, without reading the credential.
+ */
+export interface RedactedCookie {
+  name: string;
+  domain: string;
+  path: string;
+  expires?: number;
+  secure: boolean;
+  http_only: boolean;
+  same_site?: string;
+  value_size: number;
+}
+
+export interface BrowserProfile {
+  id: string;
+  name: string;
+  browser: BrowserKind;
+  identity: RedactedBrowserIdentity | null;
+  cookies: RedactedCookie[];
+  storage_origins: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BrowserCookie extends Omit<RedactedCookie, "value_size"> {
+  value: string;
+}
+
+/** Origin to key to value. */
+export type BrowserStorage = Record<string, Record<string, string>>;
+
+export interface BrowserProfileState {
+  cookies: BrowserCookie[];
+  local_storage: BrowserStorage;
+  session_storage: BrowserStorage;
+}
+
 export function isTerminalExecutionStatus(status: string): boolean {
   return status === "succeeded" || status === "failed";
 }

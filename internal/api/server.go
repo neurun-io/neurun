@@ -34,6 +34,10 @@ const (
 	ScopeExecutionsWrite  = "executions:write"
 	ScopeAppsRead         = "apps:read"
 	ScopeAppsWrite        = "apps:write"
+	// Reading a profile's state returns live cookies, so it takes the write
+	// scope rather than the read one.
+	ScopeBrowserProfilesRead  = "browser_profiles:read"
+	ScopeBrowserProfilesWrite = "browser_profiles:write"
 
 	defaultMaximumBodyBytes = int64(1 << 20)
 	defaultPageSize         = 50
@@ -49,6 +53,7 @@ type ServerOptions struct {
 	Sessions               *service.SessionService
 	Organizations          *service.OrganizationService
 	GitHub                 *service.GitHubService
+	Browsers               *service.BrowserService
 	Ready                  ReadyCheck
 	MaximumBodyBytes       int64
 	MaximumDeploymentBytes int64
@@ -62,6 +67,7 @@ type Server struct {
 	sessions               *service.SessionService
 	organizations          *service.OrganizationService
 	gitHub                 *service.GitHubService
+	browsers               *service.BrowserService
 	ready                  ReadyCheck
 	maximumBodyBytes       int64
 	maximumDeploymentBytes int64
@@ -97,6 +103,7 @@ func NewServer(options ServerOptions) (*Server, error) {
 		sessions:               options.Sessions,
 		organizations:          options.Organizations,
 		gitHub:                 options.GitHub,
+		browsers:               options.Browsers,
 		ready:                  options.Ready,
 		maximumBodyBytes:       options.MaximumBodyBytes,
 		maximumDeploymentBytes: options.MaximumDeploymentBytes,
@@ -192,6 +199,14 @@ func (server *Server) routes() *gin.Engine {
 	v1.PATCH("/users/:user_id", server.scoped(ScopeUsersWrite), server.updateUser)
 	v1.DELETE("/users/:user_id", server.scoped(ScopeUsersWrite), server.deleteUser)
 
+	v1.GET("/browser-profiles", server.scoped(ScopeBrowserProfilesRead), server.listBrowserProfiles)
+	v1.POST("/browser-profiles", server.scoped(ScopeBrowserProfilesWrite), server.createBrowserProfile)
+	v1.GET("/browser-profiles/:browser_profile_id", server.scoped(ScopeBrowserProfilesRead), server.getBrowserProfile)
+	v1.PATCH("/browser-profiles/:browser_profile_id", server.scoped(ScopeBrowserProfilesWrite), server.updateBrowserProfile)
+	v1.DELETE("/browser-profiles/:browser_profile_id", server.scoped(ScopeBrowserProfilesWrite), server.deleteBrowserProfile)
+	v1.GET("/browser-profiles/:browser_profile_id/state", server.scoped(ScopeBrowserProfilesWrite), server.getBrowserProfileState)
+	v1.PUT("/browser-profiles/:browser_profile_id/state", server.scoped(ScopeBrowserProfilesWrite), server.saveBrowserProfileState)
+
 	v1.GET("/api-keys", server.scoped(ScopeAPIKeysRead), server.listAPIKeys)
 	v1.POST("/api-keys", server.scoped(ScopeAPIKeysWrite), server.createAPIKey)
 	v1.DELETE("/api-keys/:api_key_id", server.scoped(ScopeAPIKeysWrite), server.revokeAPIKey)
@@ -267,6 +282,9 @@ func writeError(ctx *gin.Context, err error) {
 		return
 	}
 	if writeGitHubError(ctx, err) {
+		return
+	}
+	if writeBrowserError(ctx, err) {
 		return
 	}
 	switch {

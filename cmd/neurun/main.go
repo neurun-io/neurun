@@ -173,6 +173,15 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure organizations: %w", err)
 	}
+	browserProfiles, err := repository.NewBrowserProfileRepository(pool)
+	if err != nil {
+		return err
+	}
+	browserService, err := service.NewBrowserService(browserProfiles, nil, nil)
+	if err != nil {
+		return fmt.Errorf("configure browser profiles: %w", err)
+	}
+
 	installations, err := repository.NewGitHubInstallationRepository(pool)
 	if err != nil {
 		return err
@@ -245,6 +254,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Sessions:      sessionService,
 		Organizations: organizationService,
 		GitHub:        gitHubService,
+		Browsers:      browserService,
 		Ready: func(readyCtx context.Context) error {
 			return errors.Join(
 				pool.Ping(readyCtx), blobStore.Check(readyCtx),

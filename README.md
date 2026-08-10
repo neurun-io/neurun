@@ -33,8 +33,15 @@ so the meter is the compute an execution consumes between `started_at` and
 one app resident behind an endpoint, metered by resident time — are the next
 capability and are not built; see [docs/runner.md](docs/runner.md).
 
-Browser sessions, proxies, fleet aggregation, webhooks, an activity log and data
-health remain later milestones. The dashboard's roadmap routes name the
+**Browser profiles** are the newest capability: an optional stealth identity plus
+the cookies and storage a browser keeps between runs. The control plane stores
+them and nothing more — sessions belong to the SDK, which reads a profile,
+launches Chrome or Firefox through `neurun-browser` (a Rust gRPC server on
+loopback beside it), drives the returned CDP or BiDi endpoint, and PUTs the
+captured state back. See [docs/browser-profile.md](docs/browser-profile.md).
+
+Registered-browser discovery, proxies, fleet aggregation, webhooks, an activity
+log and data health remain later milestones. The dashboard's roadmap routes name the
 contracts they still need rather than rendering placeholder data, and the public
 site's capability matrix marks the same rows rather than selling them.
 

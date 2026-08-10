@@ -14,6 +14,7 @@ describe("focused navigation", () => {
       "Deployments",
       "Builds",
       "Executions",
+      "Browser profiles",
       "Users",
       "API keys",
       "Organization",
@@ -33,7 +34,6 @@ describe("focused navigation", () => {
       "/browsers",
       "/proxies",
       "/data-health",
-      "/settings/browser-profiles",
       "/settings/webhooks",
       "/settings/activity",
     ]);

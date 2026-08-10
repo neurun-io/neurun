@@ -1,0 +1,30 @@
+CREATE TABLE browser_profiles (
+    id              text PRIMARY KEY,
+    organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name            text NOT NULL,
+    browser         text NOT NULL,
+    -- Null launches the browser as itself. A profile without an identity still
+    -- carries its cookies and storage.
+    identity        jsonb,
+    cookies         jsonb NOT NULL DEFAULT '[]'::jsonb,
+    local_storage   jsonb NOT NULL DEFAULT '{}'::jsonb,
+    session_storage jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at      timestamptz NOT NULL,
+    updated_at      timestamptz NOT NULL,
+    UNIQUE (organization_id, name),
+    CONSTRAINT browser_profiles_name_nonblank CHECK (length(btrim(name)) BETWEEN 1 AND 120),
+    CONSTRAINT browser_profiles_browser_known CHECK (browser IN ('chrome', 'firefox')),
+    CONSTRAINT browser_profiles_identity_object CHECK (
+        identity IS NULL OR jsonb_typeof(identity) = 'object'
+    ),
+    CONSTRAINT browser_profiles_cookies_array CHECK (jsonb_typeof(cookies) = 'array'),
+    CONSTRAINT browser_profiles_local_storage_object CHECK (
+        jsonb_typeof(local_storage) = 'object'
+    ),
+    CONSTRAINT browser_profiles_session_storage_object CHECK (
+        jsonb_typeof(session_storage) = 'object'
+    )
+);
+
+CREATE INDEX browser_profiles_organization_created
+    ON browser_profiles(organization_id, created_at DESC, id DESC);

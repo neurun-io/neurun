@@ -3,6 +3,10 @@ import { z } from "zod";
 import { request } from "./client";
 import type {
   ApiKey,
+  BrowserIdentity,
+  BrowserKind,
+  BrowserProfile,
+  BrowserProfileState,
   Build,
   CreatedApiKey,
   Deployment,
@@ -94,6 +98,41 @@ const keySchema = z.looseObject({
   revoked_at: timestampSchema.nullish(),
 });
 
+const redactedIdentitySchema = z.looseObject({
+  os: z.string(),
+  os_version: z.string(),
+  brand: z.string(),
+  geo: z.string(),
+  proxy_set: z.boolean(),
+});
+const redactedCookieSchema = z.looseObject({
+  name: z.string(),
+  domain: z.string(),
+  path: z.string(),
+  expires: z.number().nullish(),
+  secure: z.boolean(),
+  http_only: z.boolean(),
+  same_site: z.string().nullish(),
+  value_size: z.number(),
+});
+const browserProfileSchema = z.looseObject({
+  id: z.string(),
+  name: z.string(),
+  browser: z.enum(["chrome", "firefox"]),
+  identity: redactedIdentitySchema.nullish(),
+  cookies: z.array(redactedCookieSchema),
+  storage_origins: z.array(z.string()),
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+const browserStorageSchema = z.record(z.string(), z.record(z.string(), z.string()));
+const browserProfileStateSchema = z.looseObject({
+  cookies: z.array(redactedCookieSchema.omit({ value_size: true }).extend({
+    value: z.string(),
+  })),
+  local_storage: browserStorageSchema,
+  session_storage: browserStorageSchema,
+});
 function segment(identifier: string): string {
   return encodeURIComponent(identifier);
 }
@@ -274,3 +313,50 @@ export function revokeAPIKey(id: string) {
     keySchema as never,
   );
 }
+
+export function listBrowserProfiles(signal?: AbortSignal) {
+  return request<{ browser_profiles: BrowserProfile[] }>(
+    { path: "/v1/browser-profiles", query: { limit: 200 }, signal },
+    z.looseObject({ browser_profiles: z.array(browserProfileSchema) }) as never,
+  );
+}
+
+export function createBrowserProfile(body: {
+  name: string;
+  browser: BrowserKind;
+  identity?: BrowserIdentity | null;
+}) {
+  return request<BrowserProfile>(
+    { method: "POST", path: "/v1/browser-profiles", body },
+    browserProfileSchema as never,
+  );
+}
+
+export function updateBrowserProfile(
+  id: string,
+  body: { name?: string; identity?: BrowserIdentity | null },
+) {
+  return request<BrowserProfile>(
+    { method: "PATCH", path: `/v1/browser-profiles/${segment(id)}`, body },
+    browserProfileSchema as never,
+  );
+}
+
+export function deleteBrowserProfile(id: string) {
+  return request<void>({
+    method: "DELETE",
+    path: `/v1/browser-profiles/${segment(id)}`,
+  });
+}
+
+/**
+ * Returns cookie values and storage contents in the clear, which is why it is
+ * fetched on demand rather than folded into the profile.
+ */
+export function getBrowserProfileState(id: string, signal?: AbortSignal) {
+  return request<BrowserProfileState>(
+    { path: `/v1/browser-profiles/${segment(id)}/state`, signal },
+    browserProfileStateSchema as never,
+  );
+}
+

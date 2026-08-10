@@ -531,6 +531,127 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/User"}
+  /v1/browser-profiles:
+    get:
+      operationId: listBrowserProfiles
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Browser profiles in the organization.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [browser_profiles]
+                properties:
+                  browser_profiles:
+                    type: array
+                    items: {$ref: "#/components/schemas/BrowserProfile"}
+        "503": {$ref: "#/components/responses/Problem"}
+    post:
+      operationId: createBrowserProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, browser]
+              properties:
+                name: {type: string}
+                browser: {$ref: "#/components/schemas/BrowserKind"}
+                identity:
+                  allOf: [{$ref: "#/components/schemas/BrowserIdentity"}]
+                  nullable: true
+                  description: Absent launches the browser as itself.
+      responses:
+        "201":
+          description: Profile created.
+          headers:
+            Location: {$ref: "#/components/headers/Location"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserProfile"}
+  /v1/browser-profiles/{browser_profile_id}:
+    parameters:
+      - name: browser_profile_id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      operationId: getBrowserProfile
+      responses:
+        "200":
+          description: Browser profile.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserProfile"}
+        "404": {$ref: "#/components/responses/Problem"}
+    patch:
+      operationId: updateBrowserProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: {type: string}
+                identity:
+                  allOf: [{$ref: "#/components/schemas/BrowserIdentity"}]
+                  nullable: true
+                  description: Null strips the identity; omitted leaves it alone.
+      responses:
+        "200":
+          description: Profile updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserProfile"}
+    delete:
+      operationId: deleteBrowserProfile
+      responses:
+        "204": {description: Profile deleted.}
+        "404": {$ref: "#/components/responses/Problem"}
+  /v1/browser-profiles/{browser_profile_id}/state:
+    parameters:
+      - name: browser_profile_id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      operationId: getBrowserProfileState
+      description: >-
+        Cookie values and storage contents in the clear — what the SDK reads
+        before it opens a browser on loopback. This is exporting live
+        credentials, so it takes browser_profiles:write rather than :read.
+      responses:
+        "200":
+          description: Profile state.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserProfileState"}
+        "404": {$ref: "#/components/responses/Problem"}
+    put:
+      operationId: saveBrowserProfileState
+      description: >-
+        Stores what a closed session captured. A whole-state replace, not a
+        merge: the browser returns its entire cookie jar, so a cookie missing
+        from the body was deleted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BrowserProfileState"}
+      responses:
+        "200":
+          description: State stored; the profile is returned as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserProfile"}
+        "404": {$ref: "#/components/responses/Problem"}
   /v1/api-keys:
     get:
       operationId: listAPIKeys
@@ -908,6 +1029,141 @@ components:
             token:
               type: string
               description: Returned exactly once. Only a digest is stored.
+    BrowserKind:
+      type: string
+      enum: [chrome, firefox]
+    BrowserProfile:
+      type: object
+      description: >-
+        A browser persona. Cookie values and the identity proxy are secrets and
+        are never returned here; GET .../state returns them.
+      required: [id, name, browser, identity, cookies, storage_origins, created_at, updated_at]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        browser: {$ref: "#/components/schemas/BrowserKind"}
+        identity:
+          allOf: [{$ref: "#/components/schemas/RedactedBrowserIdentity"}]
+          nullable: true
+        cookies:
+          type: array
+          items: {$ref: "#/components/schemas/RedactedCookie"}
+        storage_origins:
+          type: array
+          items: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    BrowserIdentity:
+      type: object
+      description: Mirrors the rustenium-identity record the browser server applies.
+      required:
+        [os, os_version, platform, brand, browser_version, screen,
+         hardware_concurrency, memory, gpu, geo, language]
+      properties:
+        device_model: {type: string, description: Empty means desktop or laptop.}
+        has_battery: {type: boolean}
+        has_mouse: {type: boolean}
+        has_touch: {type: boolean}
+        os: {type: string, enum: [Windows, Macintosh, Linux, Android, Ios]}
+        os_version: {type: string}
+        platform:
+          type: object
+          required: [navigator_platform, version]
+          properties:
+            bitness: {type: string}
+            architecture: {type: string}
+            navigator_platform: {type: string}
+            version: {type: string}
+        brand:
+          type: string
+          enum: [chrome, safari, edge]
+          description: What the browser claims to be, not what it runs on.
+        browser_version:
+          type: array
+          items: {type: integer}
+        screen:
+          type: object
+          required:
+            [logical_width, logical_height, original_width, original_height,
+             density_pixel_ratio]
+          properties:
+            logical_width: {type: integer}
+            logical_height: {type: integer}
+            original_width: {type: integer}
+            original_height: {type: integer}
+            density_pixel_ratio: {type: number}
+        hardware_concurrency: {type: integer}
+        memory: {type: integer, description: deviceMemory in GiB.}
+        gpu:
+          type: object
+          required: [vendor, webgl_renderer, webgl_vendor]
+          properties:
+            vendor: {type: string}
+            webgl_renderer: {type: string}
+            webgl_vendor: {type: string}
+        geo:
+          type: string
+          enum: [US, UK, JP, DE, FR, CA, AU, IN, BR, KR, IT, ES, NL, PL, SE, MX, SG, ZA]
+        language:
+          type: array
+          items: {type: string}
+        history_count: {type: integer}
+        proxy:
+          type: string
+          description: >-
+            A full URL with credentials. Write-only: it is never returned.
+        timezone: {type: string, description: IANA name; empty resolves via the proxy.}
+    RedactedBrowserIdentity:
+      allOf:
+        - $ref: "#/components/schemas/BrowserIdentity"
+        - type: object
+          required: [proxy_set]
+          properties:
+            proxy_set:
+              type: boolean
+              description: Whether a proxy is configured. The URL itself is not returned.
+    RedactedCookie:
+      type: object
+      description: >-
+        Enough to see what a profile is logged into, and to delete it, without
+        reading the credential.
+      required: [name, domain, path, secure, http_only, value_size]
+      properties:
+        name: {type: string}
+        domain: {type: string}
+        path: {type: string}
+        expires: {type: number, description: Unix seconds; absent for a session cookie.}
+        secure: {type: boolean}
+        http_only: {type: boolean}
+        same_site: {type: string}
+        value_size: {type: integer}
+    Cookie:
+      type: object
+      required: [name, value, domain, path, secure, http_only]
+      properties:
+        name: {type: string}
+        value: {type: string}
+        domain: {type: string}
+        path: {type: string}
+        expires: {type: number}
+        secure: {type: boolean}
+        http_only: {type: boolean}
+        same_site: {type: string}
+    BrowserStorage:
+      type: object
+      description: Origin to key to value.
+      additionalProperties:
+        type: object
+        additionalProperties: {type: string}
+    BrowserProfileState:
+      type: object
+      required: [cookies, local_storage, session_storage]
+      properties:
+        cookies:
+          type: array
+          items: {$ref: "#/components/schemas/Cookie"}
+        local_storage: {$ref: "#/components/schemas/BrowserStorage"}
+        session_storage: {$ref: "#/components/schemas/BrowserStorage"}
     APIKey:
       type: object
       required: [id, organization_id, name, prefix, scopes, created_at]

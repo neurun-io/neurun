@@ -359,6 +359,60 @@ export interface paths {
         patch: operations["updateUser"];
         trace?: never;
     };
+    "/v1/browser-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBrowserProfiles"];
+        put?: never;
+        post: operations["createBrowserProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-profiles/{browser_profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                browser_profile_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getBrowserProfile"];
+        put?: never;
+        post?: never;
+        delete: operations["deleteBrowserProfile"];
+        options?: never;
+        head?: never;
+        patch: operations["updateBrowserProfile"];
+        trace?: never;
+    };
+    "/v1/browser-profiles/{browser_profile_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                browser_profile_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Cookie values and storage contents in the clear — what the SDK reads before it opens a browser on loopback. This is exporting live credentials, so it takes browser_profiles:write rather than :read. */
+        get: operations["getBrowserProfileState"];
+        /** @description Stores what a closed session captured. A whole-state replace, not a merge: the browser returns its entire cookie jar, so a cookie missing from the body was deleted. */
+        put: operations["saveBrowserProfileState"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/api-keys": {
         parameters: {
             query?: never;
@@ -617,6 +671,104 @@ export interface components {
         CreatedInvite: components["schemas"]["Invite"] & {
             /** @description Returned exactly once. Only a digest is stored. */
             token: string;
+        };
+        /** @enum {string} */
+        BrowserKind: "chrome" | "firefox";
+        /** @description A browser persona. Cookie values and the identity proxy are secrets and are never returned here; GET .../state returns them. */
+        BrowserProfile: {
+            id: string;
+            name: string;
+            browser: components["schemas"]["BrowserKind"];
+            identity: components["schemas"]["RedactedBrowserIdentity"] | null;
+            cookies: components["schemas"]["RedactedCookie"][];
+            storage_origins: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Mirrors the rustenium-identity record the browser server applies. */
+        BrowserIdentity: {
+            /** @description Empty means desktop or laptop. */
+            device_model?: string;
+            has_battery?: boolean;
+            has_mouse?: boolean;
+            has_touch?: boolean;
+            /** @enum {string} */
+            os: "Windows" | "Macintosh" | "Linux" | "Android" | "Ios";
+            os_version: string;
+            platform: {
+                bitness?: string;
+                architecture?: string;
+                navigator_platform: string;
+                version: string;
+            };
+            /**
+             * @description What the browser claims to be, not what it runs on.
+             * @enum {string}
+             */
+            brand: "chrome" | "safari" | "edge";
+            browser_version: number[];
+            screen: {
+                logical_width: number;
+                logical_height: number;
+                original_width: number;
+                original_height: number;
+                density_pixel_ratio: number;
+            };
+            hardware_concurrency: number;
+            /** @description deviceMemory in GiB. */
+            memory: number;
+            gpu: {
+                vendor: string;
+                webgl_renderer: string;
+                webgl_vendor: string;
+            };
+            /** @enum {string} */
+            geo: "US" | "UK" | "JP" | "DE" | "FR" | "CA" | "AU" | "IN" | "BR" | "KR" | "IT" | "ES" | "NL" | "PL" | "SE" | "MX" | "SG" | "ZA";
+            language: string[];
+            history_count?: number;
+            /** @description A full URL with credentials. Write-only: it is never returned. */
+            proxy?: string;
+            /** @description IANA name; empty resolves via the proxy. */
+            timezone?: string;
+        };
+        RedactedBrowserIdentity: components["schemas"]["BrowserIdentity"] & {
+            /** @description Whether a proxy is configured. The URL itself is not returned. */
+            proxy_set: boolean;
+        };
+        /** @description Enough to see what a profile is logged into, and to delete it, without reading the credential. */
+        RedactedCookie: {
+            name: string;
+            domain: string;
+            path: string;
+            /** @description Unix seconds; absent for a session cookie. */
+            expires?: number;
+            secure: boolean;
+            http_only: boolean;
+            same_site?: string;
+            value_size: number;
+        };
+        Cookie: {
+            name: string;
+            value: string;
+            domain: string;
+            path: string;
+            expires?: number;
+            secure: boolean;
+            http_only: boolean;
+            same_site?: string;
+        };
+        /** @description Origin to key to value. */
+        BrowserStorage: {
+            [key: string]: {
+                [key: string]: string;
+            };
+        };
+        BrowserProfileState: {
+            cookies: components["schemas"]["Cookie"][];
+            local_storage: components["schemas"]["BrowserStorage"];
+            session_storage: components["schemas"]["BrowserStorage"];
         };
         APIKey: {
             id: string;
@@ -1474,6 +1626,185 @@ export interface operations {
                     "application/json": components["schemas"]["User"];
                 };
             };
+        };
+    };
+    listBrowserProfiles: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Browser profiles in the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        browser_profiles: components["schemas"]["BrowserProfile"][];
+                    };
+                };
+            };
+            503: components["responses"]["Problem"];
+        };
+    };
+    createBrowserProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    browser: components["schemas"]["BrowserKind"];
+                    /** @description Absent launches the browser as itself. */
+                    identity?: components["schemas"]["BrowserIdentity"] | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Profile created. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfile"];
+                };
+            };
+        };
+    };
+    getBrowserProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                browser_profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Browser profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfile"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    deleteBrowserProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                browser_profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profile deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateBrowserProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                browser_profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    /** @description Null strips the identity; omitted leaves it alone. */
+                    identity?: components["schemas"]["BrowserIdentity"] | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Profile updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfile"];
+                };
+            };
+        };
+    };
+    getBrowserProfileState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                browser_profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profile state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfileState"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    saveBrowserProfileState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                browser_profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserProfileState"];
+            };
+        };
+        responses: {
+            /** @description State stored; the profile is returned as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfile"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
     listAPIKeys: {
