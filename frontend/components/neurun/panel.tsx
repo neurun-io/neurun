@@ -57,12 +57,3 @@ export function Panel({
     </Component>
   );
 }
-
-/** A metadata separator, matching the system's `·` convention. */
-export function Dot() {
-  return (
-    <span aria-hidden className="text-fg-faint">
-      ·
-    </span>
-  );
-}

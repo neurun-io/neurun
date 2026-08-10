@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CopyButton } from "./copy-id";
-import { redactSecrets, toRedactedJson } from "@/lib/view/redaction";
+import { redactSecrets } from "@/lib/view/redaction";
 import { formatBytes } from "@/lib/view/units";
 
 /**
@@ -194,9 +194,4 @@ function Scalar({ value }: { value: unknown }) {
     default:
       return <span className="text-code-comment">{String(value)}</span>;
   }
-}
-
-/** Copy an immutable request with client-side redaction already applied. */
-export function CopyRedactedJson({ value, label }: { value: unknown; label: string }) {
-  return <CopyButton value={toRedactedJson(value)} label={label} />;
 }

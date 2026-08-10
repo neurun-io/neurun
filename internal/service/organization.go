@@ -95,13 +95,6 @@ func (service *OrganizationService) Membership(
 	return service.organizations.Member(ctx, organizationID, userID)
 }
 
-func (service *OrganizationService) FirstMembership(
-	ctx context.Context,
-	userID string,
-) (organization.Member, error) {
-	return service.organizations.FirstForUser(ctx, userID)
-}
-
 func (service *OrganizationService) ListMembers(
 	ctx context.Context,
 	organizationID string,

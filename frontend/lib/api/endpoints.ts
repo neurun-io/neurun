@@ -97,15 +97,6 @@ export function getVersion(signal?: AbortSignal) {
   return request<Version>({ path: "/version", signal }, versionSchema as never);
 }
 
-export async function getReadiness(signal?: AbortSignal): Promise<boolean> {
-  try {
-    await request({ path: "/readyz", signal });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /* -------------------------------------------------------------------------- */
 /* Organization                                                                */
 /* -------------------------------------------------------------------------- */

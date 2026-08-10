@@ -75,27 +75,6 @@ func (repository *UserRepository) GetByID(
 	return record, nil
 }
 
-func (repository *UserRepository) GetByEmail(
-	ctx context.Context,
-	email string,
-) (account.User, error) {
-	rows, err := repository.pool.Query(
-		ctx, `SELECT `+userColumns+` FROM users WHERE email = $1`,
-		account.NormalizeEmail(email),
-	)
-	if err != nil {
-		return account.User{}, fmt.Errorf("read user: %w", err)
-	}
-	record, err := pgx.CollectExactlyOneRow(rows, scanUser)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return account.User{}, account.ErrNotFound
-	}
-	if err != nil {
-		return account.User{}, fmt.Errorf("read user: %w", err)
-	}
-	return record, nil
-}
-
 // List returns the members of one organization, not every user on the install.
 func (repository *UserRepository) List(
 	ctx context.Context,

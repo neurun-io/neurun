@@ -48,10 +48,3 @@ export const TERMINAL_EXECUTION_STATUSES = ["succeeded", "failed"] as const;
 export function isTerminalExecutionStatus(status: string): boolean {
   return (TERMINAL_EXECUTION_STATUSES as readonly string[]).includes(status);
 }
-
-/** Build and deployment states from which no further transition occurs. */
-export const TERMINAL_BUILD_STATUSES = ["ready", "failed"] as const;
-
-export function isTerminalBuildStatus(status: string): boolean {
-  return (TERMINAL_BUILD_STATUSES as readonly string[]).includes(status);
-}

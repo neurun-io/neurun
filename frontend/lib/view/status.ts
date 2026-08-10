@@ -194,8 +194,3 @@ export function describeStatus(value: string | undefined | null): StatusDescript
 export function isKnownStatus(value: string): boolean {
   return Object.hasOwn(LEGEND, value);
 }
-
-/** Every status this build recognises. Used by the status-legend surface. */
-export function knownStatuses(): string[] {
-  return Object.keys(LEGEND);
-}

@@ -73,27 +73,8 @@ export function formatBytesExact(bytes: number): string {
   return `${formatBytes(bytes)} (${bytes.toLocaleString("en-US")} bytes)`;
 }
 
-export function formatCount(value: number): string {
-  return value.toLocaleString("en-US");
-}
-
-/** CPU seconds, a cumulative counter rather than a rate. */
-export function formatCpuSeconds(seconds: number): string {
-  if (!Number.isFinite(seconds)) return "—";
-  if (seconds < 1) return `${(seconds * 1000).toFixed(0)}ms CPU`;
-  return `${seconds.toFixed(2)}s CPU`;
-}
-
 /**
  * The em dash is the system's "no value". A missing metric is never rendered
  * as zero — an absent number and a measured zero are different facts.
  */
 export const NO_VALUE = "—";
-
-export function orNoValue(
-  value: number | string | undefined | null,
-  format: (value: never) => string = String as never,
-): string {
-  if (value === undefined || value === null) return NO_VALUE;
-  return format(value as never);
-}

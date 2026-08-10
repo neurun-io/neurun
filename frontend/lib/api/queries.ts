@@ -266,18 +266,6 @@ export function useDeleteAppMutation() {
   });
 }
 
-export function useUpdateAppMutation(id: string) {
-  const scope = useScope();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ name }: { name: string }) => (await resources.updateApp(id, name)).data,
-    onSuccess: (app) => {
-      queryClient.setQueryData(queryKeys.app(scope, id), app);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.apps(scope) });
-    },
-  });
-}
-
 export function useCreateDeploymentMutation() {
   const scope = useScope();
   const queryClient = useQueryClient();

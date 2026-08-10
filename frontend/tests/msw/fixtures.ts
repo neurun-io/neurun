@@ -103,11 +103,3 @@ export const signInUnavailable = {
 export const unauthorized = {
   error: { code: "unauthorized", message: "your session expired; sign in again" },
 };
-
-export const invalidRequest = {
-  error: {
-    code: "invalid_request",
-    // Human-readable path inside the message, as the current server emits.
-    message: "$.input.message: must be a string",
-  },
-};

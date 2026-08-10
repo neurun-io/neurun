@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 
 export interface Crumb {
   label: string;
@@ -63,38 +61,5 @@ export function PageHeader({
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
       </div>
     </header>
-  );
-}
-
-/** Previous/next controls for an opaque-cursor list. */
-export function CursorControls({
-  pageIndex,
-  canGoBack,
-  nextCursor,
-  onBack,
-  onNext,
-  isFetching,
-}: {
-  pageIndex: number;
-  canGoBack: boolean;
-  /** Empty string means there is no next page. */
-  nextCursor: string | undefined;
-  onBack: () => void;
-  onNext: () => void;
-  isFetching?: boolean;
-}) {
-  const hasNext = Boolean(nextCursor);
-
-  return (
-    <div className="flex items-center gap-2">
-      <span className="font-mono text-micro text-fg-muted">page {pageIndex + 1}</span>
-      <Button variant="ghost" size="sm" onClick={onBack} disabled={!canGoBack || isFetching}>
-        Previous
-      </Button>
-      <Button variant="ghost" size="sm" onClick={onNext} disabled={!hasNext || isFetching}>
-        Next
-        <ChevronRight aria-hidden className="size-3" strokeWidth={1.5} />
-      </Button>
-    </div>
   );
 }

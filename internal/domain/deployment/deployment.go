@@ -149,13 +149,6 @@ func New(
 	return record, nil
 }
 
-func (record Deployment) LatestBuild() (Build, bool) {
-	if len(record.Builds) == 0 {
-		return Build{}, false
-	}
-	return CloneBuild(record.Builds[len(record.Builds)-1]), true
-}
-
 func (record Deployment) ReadyBuild() (Build, bool) {
 	for index := len(record.Builds) - 1; index >= 0; index-- {
 		if record.Builds[index].Status == StatusReady {

@@ -173,18 +173,6 @@ export function useSession(): SessionContextValue {
 }
 
 /**
- * The session, asserted present. Use inside routes that already sit behind the
- * session gate.
- */
-export function useRequiredSession(): Session {
-  const { session } = useSession();
-  if (!session) {
-    throw new Error("This route requires a signed-in user.");
-  }
-  return session;
-}
-
-/**
  * Cache partition for the signed-in user. Query keys carry this so one
  * user's evidence can never be read from another's cached data — the
  * session is also cleared outright on sign-out, so this is defence in depth.
@@ -192,10 +180,4 @@ export function useRequiredSession(): Session {
 export function sessionScope(session: Session | null): string {
   if (!session) return "anonymous";
   return `${session.organization_id}#${session.user_id}`;
-}
-
-/** True when the user's role grants the scope. */
-export function hasScope(session: Session | null, scope: string): boolean {
-  if (!session) return false;
-  return session.scopes.some((granted) => granted === "*" || granted === scope);
 }

@@ -136,10 +136,6 @@ func NewKey(
 	return record, nil
 }
 
-func (record Key) Revoked() bool {
-	return record.RevokedAt != nil
-}
-
 func (record Key) Validate() error {
 	if record.OrganizationID == "" {
 		return fmt.Errorf("%w: key requires an organization", ErrInvalid)

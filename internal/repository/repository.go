@@ -111,13 +111,6 @@ const appsInOrganization = ` app_id IN (
 	WHERE p.organization_id = %s
 )`
 
-const deploymentsInOrganization = ` deployment_id IN (
-	SELECT d.id FROM deployments d
-	JOIN apps a ON a.id = d.app_id
-	JOIN projects p ON p.id = a.project_id
-	WHERE p.organization_id = %s
-)`
-
 const buildsInOrganization = ` b.deployment_id IN (
 	SELECT d.id FROM deployments d
 	JOIN apps a ON a.id = d.app_id

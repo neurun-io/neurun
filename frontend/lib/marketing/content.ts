@@ -16,33 +16,6 @@ export interface Capability {
   state: CapabilityState;
 }
 
-/** The four objects the whole product is made of. */
-export const MODEL = [
-  {
-    id: "app",
-    name: "app",
-    body: "A named thing you deploy to, owned by one project. It must exist before a deploy — nothing auto-creates one, because a typo that silently makes a second app is a typo you find in production.",
-    meta: ["app_7QK2M0X4", "1 project"],
-  },
-  {
-    id: "deployment",
-    name: "deployment",
-    body: "One upload of source against an app. You send a runtime, an entrypoint and an archive; the server records the source digest and starts building. The app decides the project, so the caller never supplies one.",
-    meta: ["dep_01HXQ8F2K9", "main.py:handler"],
-  },
-  {
-    id: "build",
-    name: "build",
-    body: "One attempt at turning that source into runnable artifacts. Builds are numbered, immutable and either ready or failed. A failed build carries a structured failure, not a wall of log text.",
-    meta: ["bld_9F3AC41", "build 4 · ready"],
-  },
-  {
-    id: "execution",
-    name: "execution",
-    body: "One invocation of a built handler, pinned to the build that was ready when it was created. Ten rebuilds later it still names the code that ran — which is the only reason a rerun means anything.",
-    meta: ["exe_01HXQ8F2M4", "queued → succeeded"],
-  },
-] as const;
 
 /**
  * The whole truth about 0.1.0. `partial` means the capability exists but is

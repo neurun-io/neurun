@@ -2,7 +2,6 @@ export type PythonRuntime = "python";
 export type BuildStatus = "building" | "ready" | "failed";
 export type DeploymentStatus = "uploaded" | BuildStatus;
 export type ExecutionStatus = "queued" | "running" | "succeeded" | "failed";
-export type UserRole = "admin" | "operator" | "viewer";
 
 export interface Project {
   id: string;

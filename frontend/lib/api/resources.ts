@@ -157,13 +157,6 @@ export function deleteApp(id: string) {
   return request<void>({ method: "DELETE", path: `/v1/apps/${segment(id)}` });
 }
 
-export function updateApp(id: string, name: string) {
-  return request<NeurunApp>(
-    { method: "PATCH", path: `/v1/apps/${segment(id)}`, body: { name } },
-    appSchema as never,
-  );
-}
-
 export function listDeployments(appId?: string, signal?: AbortSignal) {
   return request<{ deployments: Deployment[] }>(
     { path: "/v1/deployments", query: { app_id: appId, limit: 200 }, signal },

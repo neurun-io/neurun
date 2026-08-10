@@ -139,12 +139,3 @@ export async function request<T>(
   const data = schema ? validateResponse(schema, path, body) : (body as T);
   return { data, meta };
 }
-
-/** Convenience wrapper for callers that do not need response metadata. */
-export async function requestData<T>(
-  options: RequestOptions,
-  schema?: z.ZodType<T>,
-): Promise<T> {
-  const { data } = await request(options, schema);
-  return data;
-}

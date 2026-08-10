@@ -243,26 +243,6 @@ func (repository *OrganizationRepository) ListMembers(
 	return records, nil
 }
 
-func (repository *OrganizationRepository) AddMember(
-	ctx context.Context,
-	record organization.Member,
-) error {
-	if err := record.Validate(); err != nil {
-		return err
-	}
-	_, err := repository.pool.Exec(
-		ctx,
-		`INSERT INTO organization_members
-		 (organization_id, user_id, role, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $4)`,
-		record.OrganizationID, record.UserID, string(record.Role), record.CreatedAt,
-	)
-	if err != nil {
-		return classifyOrganizationError("add member", err)
-	}
-	return nil
-}
-
 // SetMemberRole refuses to move the owner: the owner is the one membership that
 // cannot be demoted, so an organization always has somebody who can administer
 // it.

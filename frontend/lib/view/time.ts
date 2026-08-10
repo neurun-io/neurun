@@ -81,11 +81,3 @@ export function formatAbsolute(date: Date, mode: TimeZoneMode = "utc"): string {
 export function formatIso(date: Date): string {
   return date.toISOString();
 }
-
-/**
- * Elapsed time between two instants, or from `start` to now when `end` is
- * absent — the case for an attempt that has not reported back yet.
- */
-export function elapsedMs(start: Date, end: Date | null, now: Date = new Date()): number {
-  return (end ?? now).getTime() - start.getTime();
-}
