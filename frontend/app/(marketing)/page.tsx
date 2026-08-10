@@ -151,7 +151,7 @@ export default function Home() {
             </h2>
             <p className="text-[17px] leading-[1.6] text-fg-secondary">
               An axon is one automation, deployed and run. A GB-hour is a gigabyte of memory held
-              for an hour — you pay for what your axon holds while it works, and nothing while it
+              for an hour — you pay for what your app holds while it works, and nothing while it
               waits.
             </p>
 
@@ -188,7 +188,7 @@ export default function Home() {
           <span className="nr-label">overage</span>
           <span>$0.06 per additional {UNIT}</span>
           <span aria-hidden className="h-3.5 w-px bg-line" />
-          <span className="nr-label"></span>
+          <span className="nr-label">Charges per minute</span>
         </div>
       </Section>
 
