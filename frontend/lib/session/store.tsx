@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/lib/api/endpoints";
 import { NeurunApiError } from "@/lib/api/errors";
@@ -40,6 +41,7 @@ async function fetchSession(signal?: AbortSignal): Promise<Session | null> {
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   // Fetched once, for who the user is rather than whether they are signed in.
   // An expiry is discovered by the next request returning 401, which
@@ -93,8 +95,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // user's cached evidence rather than leaving it on screen.
       queryClient.clear();
       queryClient.setQueryData(SESSION_QUERY_KEY, null);
+      router.replace("/login");
     }
-  }, [queryClient]);
+  }, [queryClient, router]);
 
   const value = useMemo<SessionContextValue>(
     () => ({

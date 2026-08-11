@@ -5,20 +5,18 @@ import { Loader2 } from "lucide-react";
 
 import { TopNav } from "./top-nav";
 import { SideNav } from "./side-nav";
-import { Banner } from "@/components/neurun/feedback";
 import { ErrorPanel } from "@/components/neurun/error-panel";
 import { LoginScreen } from "@/components/auth/login-screen";
 import { OrganizationSetup } from "@/components/auth/organization-setup";
 import { useSession } from "@/lib/session/store";
-import { useCapability } from "@/lib/session/capability";
 
 /**
  * The dashboard shell, and the sign-in gate in front of it.
  *
  * Gating happens here rather than through a redirect so that a deep link —
- * `/jobs/job_01HXQ…` pasted into a chat — survives signing in. The user
- * lands on the login screen and, once authenticated, is already looking at the
- * job they were sent.
+ * `/executions/exe_01HXQ…` pasted into a chat — survives signing in. The user
+ * lands on the login screen and, once signed in, is already looking at the
+ * execution they were sent.
  */
 export function DashboardShell({ children }: { children: ReactNode }) {
   const { isLoading, error, session } = useSession();
@@ -51,7 +49,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
       <TopNav />
-      <DurabilityBanner />
       <div className="flex min-h-0 flex-1">
         <SideNav className="hidden md:block" />
         <main id="main" className="min-w-0 flex-1 overflow-x-hidden">
@@ -62,32 +59,3 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * The process-local warning.
- *
- * Shown for the whole session once the server has reported `process_local` on an
- * accepted job, because the Job schema does not repeat durability on list or
- * detail responses — there is no per-job guarantee to render, only a property of
- * the backend this dashboard is talking to.
- */
-function DurabilityBanner() {
-  const { isProcessLocal, asyncAvailability } = useCapability();
-
-  if (asyncAvailability === "unavailable") {
-    return (
-      <Banner>
-        Asynchronous jobs are disabled on this control plane — no durable backend is configured.
-        Synchronous invocation still works.
-      </Banner>
-    );
-  }
-
-  if (!isProcessLocal) return null;
-
-  return (
-    <Banner>
-      <strong className="font-medium text-fg">process_local</strong> — async work runs in the server
-      process. Queued jobs disappear on restart. This is a development mode, not a durable backend.
-    </Banner>
-  );
-}

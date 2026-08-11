@@ -22,7 +22,6 @@ export const ROADMAP = {
       "Fleet-wide rates, usage and cost need a server-side aggregation. Deriving them in the browser would mean downloading unbounded job lists and computing numbers the server never agreed to.",
     requires: [
       "GET /v1/dashboard/overview?window=&project_id=",
-      "capability discovery through GET /version, including async_jobs_enabled and job_durability",
       "browser-image and compatibility versions in GET /version",
     ],
   },
@@ -51,7 +50,6 @@ export const ROADMAP = {
       "import by path, with the server verifying the executable is a browser it can drive before accepting it",
       "enable / disable, a per-project default, and a request record for an absent browser",
       "session create / list / detail / keepalive / screenshot / save-profile / usage / history / close",
-      "an authenticated session event stream (SSE) with Last-Event-ID resume",
     ],
   },
   aiAutomationBuilder: {

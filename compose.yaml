@@ -53,11 +53,13 @@ services:
   dashboard:
     build:
       context: ./frontend
+      args:
+        # Read by the browser, so it must be an address the browser can reach,
+        # not the internal service name.
+        NEXT_PUBLIC_NEURUN_API_URL: http://localhost:${NEURUN_HTTP_PORT:-1267}
     depends_on:
       neurun:
         condition: service_healthy
-    environment:
-      NEURUN_API_BASE_URL: http://neurun:1267
     ports:
       - "${NEURUN_DASHBOARD_PORT:-3001}:3001"
     init: true

@@ -9,7 +9,6 @@ import { StatusBadge } from "@/components/neurun/status-badge";
 import { ErrorPanel } from "@/components/neurun/error-panel";
 import { RoadmapRoute } from "@/components/neurun/feedback";
 import { NeurunApiError } from "@/lib/api/errors";
-import { useCapability } from "@/lib/session/capability";
 import { useCursorPages } from "@/lib/view/use-cursor-pages";
 import { ROADMAP } from "@/lib/roadmap";
 import { Providers } from "./utils";
@@ -107,38 +106,6 @@ describe("useCursorPages", () => {
 
     act(() => result.current.next(""));
     expect(result.current.pageIndex).toBe(0);
-  });
-});
-
-describe("capability tracking", () => {
-  it("records process_local durability without ever calling it durable", () => {
-    const { result } = renderHook(() => useCapability(), { wrapper: Providers });
-
-    expect(result.current.isProcessLocal).toBe(false);
-    act(() => result.current.recordDurability("process_local"));
-
-    expect(result.current.durability).toBe("process_local");
-    expect(result.current.isProcessLocal).toBe(true);
-    expect(result.current.isDurable).toBe(false);
-    // An accepted async mutation also proves async is enabled here.
-    expect(result.current.asyncAvailability).toBe("available");
-  });
-
-  it("gates async after durable_backend_unavailable", () => {
-    const { result } = renderHook(() => useCapability(), { wrapper: Providers });
-
-    expect(result.current.asyncAvailability).toBe("unknown");
-    act(() => result.current.recordAsyncUnavailable());
-    expect(result.current.asyncAvailability).toBe("unavailable");
-  });
-
-  it("treats an unknown durability value as not durable", () => {
-    const { result } = renderHook(() => useCapability(), { wrapper: Providers });
-
-    act(() => result.current.recordDurability("replicated"));
-    expect(result.current.durability).toBe("replicated");
-    expect(result.current.isDurable).toBe(false);
-    expect(result.current.isProcessLocal).toBe(false);
   });
 });
 

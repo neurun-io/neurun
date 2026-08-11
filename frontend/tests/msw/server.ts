@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import * as fixtures from "./fixtures";
 
 /**
- * The proxy path the client actually calls on this origin.
+ * The control-plane origin the client actually calls.
  *
  * Authentication is an `HttpOnly` cookie the browser attaches, so the client
  * sends no credential these handlers can meaningfully inspect. Tests that care
@@ -12,7 +12,7 @@ import * as fixtures from "./fixtures";
  * cookies by design. The real cookie round-trip — flags included — is covered by
  * the Go tests in `internal/api/sessionauth_test.go`.
  */
-export const proxy = (path: string) => `http://localhost:3000/api/proxy${path}`;
+export const apiUrl = (path: string) => `http://localhost:1267${path}`;
 
 export const SESSION_PASSWORD = "correct horse battery staple";
 
@@ -34,7 +34,7 @@ export const SESSION = {
 export const handlers = [
   /* ---------------------------------- auth ---------------------------------- */
 
-  http.post(proxy("/v1/auth/login"), async ({ request }) => {
+  http.post(apiUrl("/v1/auth/login"), async ({ request }) => {
     const body = (await request.json()) as { email?: string; password?: string };
     if (body.email !== SESSION.email || body.password !== SESSION_PASSWORD) {
       return HttpResponse.json(fixtures.invalidCredentials, { status: 401 });
@@ -51,13 +51,13 @@ export const handlers = [
     );
   }),
 
-  http.post(proxy("/v1/auth/logout"), () => new HttpResponse(null, { status: 204 })),
+  http.post(apiUrl("/v1/auth/logout"), () => new HttpResponse(null, { status: 204 })),
 
-  http.get(proxy("/v1/auth/session"), () => HttpResponse.json({ session: SESSION })),
+  http.get(apiUrl("/v1/auth/session"), () => HttpResponse.json({ session: SESSION })),
 
   /* --------------------------------- health --------------------------------- */
 
-  http.get(proxy("/version"), () =>
+  http.get(apiUrl("/version"), () =>
     HttpResponse.json({
       version: "0.1.0",
       commit: "abc1234",
@@ -72,21 +72,21 @@ export const handlers = [
 
   /* -------------------------------- resources ------------------------------- */
 
-  http.get(proxy("/v1/projects"), () =>
+  http.get(apiUrl("/v1/projects"), () =>
     HttpResponse.json({ projects: [fixtures.project] }),
   ),
 
-  http.get(proxy("/v1/apps"), () => HttpResponse.json({ apps: [fixtures.app] })),
+  http.get(apiUrl("/v1/apps"), () => HttpResponse.json({ apps: [fixtures.app] })),
 
-  http.get(proxy("/v1/deployments"), () =>
+  http.get(apiUrl("/v1/deployments"), () =>
     HttpResponse.json({ deployments: [fixtures.readyDeployment] }),
   ),
 
-  http.get(proxy("/v1/builds"), () =>
+  http.get(apiUrl("/v1/builds"), () =>
     HttpResponse.json({ builds: [fixtures.readyBuild] }),
   ),
 
-  http.get(proxy("/v1/executions"), () =>
+  http.get(apiUrl("/v1/executions"), () =>
     HttpResponse.json({
       executions: [fixtures.succeededExecution, fixtures.unknownStateExecution],
     }),

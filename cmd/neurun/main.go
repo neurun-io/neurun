@@ -248,13 +248,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	controlAPI, err := api.NewServer(api.ServerOptions{
-		Deployments:   deploymentService,
-		Executions:    executionService,
-		Accounts:      accountService,
-		Sessions:      sessionService,
-		Organizations: organizationService,
-		GitHub:        gitHubService,
-		Browsers:      browserService,
+		Deployments:    deploymentService,
+		Executions:     executionService,
+		Accounts:       accountService,
+		Sessions:       sessionService,
+		Organizations:  organizationService,
+		GitHub:         gitHubService,
+		Browsers:       browserService,
+		AllowedOrigins: cfg.AllowedOrigins,
 		Ready: func(readyCtx context.Context) error {
 			return errors.Join(
 				pool.Ping(readyCtx), blobStore.Check(readyCtx),

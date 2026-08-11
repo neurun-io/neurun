@@ -4,10 +4,9 @@
  * Every network call in the dashboard goes through here. Two consequences that
  * are load-bearing rather than stylistic:
  *
- * - **Same-origin only.** The control plane ships no CORS or `OPTIONS`
- *   middleware, so the browser never talks to it directly. Requests go to this
- *   app's own `/api/proxy/*` route handler, which forwards them. See
- *   `app/api/proxy/[...path]/route.ts`.
+ * - **Cross-origin with credentials.** Requests go straight to the control
+ *   plane, which names this origin in its CORS allowlist. The session cookie
+ *   rides along because `credentials: "include"` asks for it.
  * - **The browser holds no credential it can read.** Authentication is an
  *   `HttpOnly` session cookie issued by `POST /v1/auth/login`. There is
  *   no API key in any client module, no bearer header assembled here, and
@@ -18,8 +17,9 @@ import { NeurunApiError, NeurunTransportError, parseErrorEnvelope } from "./erro
 import { validateResponse } from "./runtime";
 import type { z } from "zod";
 
-/** Where the proxy route lives on this origin. */
-export const PROXY_PREFIX = "/api/proxy";
+export const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_NEURUN_API_URL ?? "http://localhost:1267"
+).replace(/\/+$/, "");
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
@@ -87,7 +87,7 @@ export async function request<T>(
 ): Promise<ApiResult<T>> {
   const method = options.method ?? "GET";
   const path = options.path;
-  const url = `${PROXY_PREFIX}${path}${buildQuery(options.query)}`;
+  const url = `${API_BASE_URL}${path}${buildQuery(options.query)}`;
 
   const headers = new Headers({ Accept: "application/json" });
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
@@ -109,7 +109,7 @@ export async function request<T>(
       // Never let a browser or intermediary cache a user's evidence.
       cache: "no-store",
       // Sends the HttpOnly session cookie; this is the whole authentication.
-      credentials: "same-origin",
+      credentials: "include",
     });
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === "AbortError") throw cause;

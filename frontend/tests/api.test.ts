@@ -7,7 +7,7 @@ import * as resources from "@/lib/api/resources";
 import { NeurunApiError, NeurunContractError } from "@/lib/api/errors";
 import { shouldRetry } from "@/lib/api/query-client";
 import { sessionEnvelopeSchema, validateResponse } from "@/lib/api/runtime";
-import { SESSION, SESSION_PASSWORD, proxy, server } from "./msw/server";
+import { SESSION, SESSION_PASSWORD, apiUrl, server } from "./msw/server";
 import * as fixtures from "./msw/fixtures";
 
 describe("authentication", () => {
@@ -37,7 +37,7 @@ describe("authentication", () => {
 describe("registration", () => {
   it("starts an organization and lands signed in", async () => {
     server.use(
-      http.post(proxy("/v1/auth/register"), () =>
+      http.post(apiUrl("/v1/auth/register"), () =>
         HttpResponse.json(
           {
             user: { id: "usr_01HXQ8F2NEW", email: "ada@example.com" },
@@ -60,7 +60,7 @@ describe("registration", () => {
 
   it("returns null when the account was made but sign-in did not follow", async () => {
     server.use(
-      http.post(proxy("/v1/auth/register"), () =>
+      http.post(apiUrl("/v1/auth/register"), () =>
         HttpResponse.json(
           {
             user: { id: "usr_01HXQ8F2NEW", email: "ada@example.com" },
@@ -83,7 +83,7 @@ describe("registration", () => {
 
   it("refuses an invitation issued to another address", async () => {
     server.use(
-      http.post(proxy("/v1/auth/register"), () =>
+      http.post(apiUrl("/v1/auth/register"), () =>
         HttpResponse.json(
           {
             error: {
@@ -110,7 +110,7 @@ describe("registration", () => {
 
   it("names the organization an invitation would join, without spending it", async () => {
     server.use(
-      http.get(proxy("/v1/invites/lookup"), ({ request: incoming }) => {
+      http.get(apiUrl("/v1/invites/lookup"), ({ request: incoming }) => {
         expect(new URL(incoming.url).searchParams.get("token")).toBe("a-token");
         return HttpResponse.json({
           organization: { id: "org_01HXQ8F2ACME", name: "Acme Data" },
@@ -129,7 +129,7 @@ describe("registration", () => {
 describe("error envelope", () => {
   it("surfaces the code and status the server sent", async () => {
     server.use(
-      http.get(proxy("/v1/projects"), () =>
+      http.get(apiUrl("/v1/projects"), () =>
         HttpResponse.json(fixtures.unauthorized, { status: 401 }),
       ),
     );
@@ -157,11 +157,13 @@ describe("retry policy", () => {
 });
 
 describe("client", () => {
-  it("reaches the proxy rather than the control plane directly", async () => {
-    let sawPath: string | undefined;
+  it("calls the control plane directly, with credentials", async () => {
+    let sawUrl: string | undefined;
+    let sawCredentials: RequestCredentials | undefined;
     server.use(
-      http.get(proxy("/version"), ({ request: incoming }) => {
-        sawPath = new URL(incoming.url).pathname;
+      http.get(apiUrl("/version"), ({ request: incoming }) => {
+        sawUrl = incoming.url;
+        sawCredentials = incoming.credentials;
         return HttpResponse.json({
           version: "0.1.0",
           commit: "9f3a41c",
@@ -173,6 +175,7 @@ describe("client", () => {
     );
 
     await request({ path: "/version" });
-    expect(sawPath).toContain("/version");
+    expect(sawUrl).toBe("http://localhost:1267/version");
+    expect(sawCredentials).toBe("include");
   });
 });

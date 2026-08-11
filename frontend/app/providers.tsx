@@ -7,7 +7,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { createQueryClient } from "@/lib/api/query-client";
 import { SessionProvider } from "@/lib/session/store";
-import { CapabilityProvider } from "@/lib/session/capability";
 import { PreferencesProvider } from "@/lib/preferences/store";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -27,14 +26,12 @@ export function Providers({ children }: { children: ReactNode }) {
     >
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
-          <CapabilityProvider>
             <PreferencesProvider>
               <TooltipProvider delayDuration={200}>
                 {children}
                 <Toaster position="bottom-right" />
               </TooltipProvider>
             </PreferencesProvider>
-          </CapabilityProvider>
         </SessionProvider>
       </QueryClientProvider>
     </ThemeProvider>

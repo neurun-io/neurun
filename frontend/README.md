@@ -4,9 +4,8 @@ The client for the Neurun control plane. Built against the public `/v1`
 API and the published OpenAPI document only — it imports no server package and
 infers no internal database state.
 
-Implements `FRONTEND_SPEC.md`. Where the current `0.1.0` contract cannot support
-a page, the route says so and names the endpoints still required rather than
-rendering mock data.
+Where the current `0.1.0` contract cannot support a page, the route says so and
+names the endpoints still required rather than rendering mock data.
 
 ## Stack
 
@@ -83,17 +82,6 @@ components/
                       KeyValue, JsonView, Timestamp
   shell/              top nav, side nav, durability banner, sign-in gate
 ```
-
-### Why the proxy exists
-
-The control plane ships no CORS or `OPTIONS` middleware and serves no frontend
-assets, so a browser cannot call `/v1` cross-origin. Every request goes to
-`/api/proxy/*` on this origin, which forwards it, including the session cookie in
-both directions.
-
-The upstream target comes only from `NEURUN_API_BASE_URL` on the server. The
-browser cannot choose it, which is what stops the handler being an open relay for
-arbitrary outbound requests.
 
 ### Design system
 

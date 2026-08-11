@@ -56,38 +56,6 @@ export function Callout({
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* Banner                                                                      */
-/* -------------------------------------------------------------------------- */
-
-/**
- * A persistent system-level statement — a standing property of the connection,
- * not a transient message. Used for the process-local durability warning, which
- * must stay visible for the whole session rather than being dismissed once.
- */
-export function Banner({
-  children,
-  icon: Icon = AlertTriangle,
-  className,
-}: {
-  children: ReactNode;
-  icon?: typeof AlertTriangle;
-  className?: string;
-}) {
-  return (
-    <div
-      role="status"
-      className={cn(
-        "relative flex items-center gap-2.5 overflow-hidden border-b border-line-strong bg-surface-panel px-4 py-2",
-        className,
-      )}
-    >
-      <span aria-hidden className="nr-hatch absolute inset-y-0 left-0 w-1" />
-      <Icon aria-hidden className="size-3.5 shrink-0 text-fg" strokeWidth={1.5} />
-      <p className="min-w-0 text-caption text-fg-secondary">{children}</p>
-    </div>
-  );
-}
 
 /* -------------------------------------------------------------------------- */
 /* Empty state                                                                 */

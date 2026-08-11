@@ -67,6 +67,7 @@ type Config struct {
 	SessionCookieSecure         bool
 	GitHubAppID                 int64
 	GitHubPrivateKey            []byte
+	AllowedOrigins              []string
 }
 
 func Load() (Config, error) {
@@ -100,6 +101,7 @@ func Load() (Config, error) {
 		DatabaseConnMaxIdleTime:     defaultDatabaseConnMaxIdleTime,
 		SessionTTL:                  defaultSessionTTL,
 		SessionCookieSecure:         false,
+		AllowedOrigins:              splitList(value("NEURUN_ALLOWED_ORIGINS", "http://localhost:3001")),
 	}
 
 	var err error
@@ -328,6 +330,16 @@ func value(key, fallback string) string {
 		return raw
 	}
 	return fallback
+}
+
+func splitList(raw string) []string {
+	items := make([]string, 0, 1)
+	for item := range strings.SplitSeq(raw, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	return items
 }
 
 func durationValue(key string, fallback time.Duration) (time.Duration, error) {

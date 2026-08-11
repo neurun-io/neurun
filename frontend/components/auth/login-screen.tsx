@@ -148,6 +148,7 @@ function RegisterForm() {
           ? { organization_name: organizationName.trim() }
           : {}),
       });
+    } catch {
     } finally {
       setPassword("");
     }
@@ -256,6 +257,7 @@ function LoginForm() {
     event.preventDefault();
     try {
       await login(email.trim(), password);
+    } catch {
     } finally {
       // Drop the password from component state whether or not sign-in
       // succeeded, so a failed attempt does not leave it sitting in memory.

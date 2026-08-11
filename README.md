@@ -93,9 +93,10 @@ make dev
 ```
 
 This builds and starts the control plane on `:1267`, waits for `/healthz`, then
-starts the dashboard on `:3001`. Ctrl-C stops both. The dashboard proxies
-same-origin to the control plane, because the server ships no CORS middleware —
-see `frontend/README.md`.
+starts the dashboard on `:3001`. Ctrl-C stops both. The dashboard calls the
+control plane directly; the server names the dashboard's origin in
+`NEURUN_ALLOWED_ORIGINS` and the browser is told where to look with
+`NEXT_PUBLIC_NEURUN_API_URL`.
 
 To run only the development binary, export
 `NEURUN_TRUSTED_CODE_EXECUTION=true` before `go run ./cmd/neurun`.

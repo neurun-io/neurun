@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
 	"github.com/neurun-io/neurun/internal/buildinfo"
@@ -54,6 +56,7 @@ type ServerOptions struct {
 	Organizations          *service.OrganizationService
 	GitHub                 *service.GitHubService
 	Browsers               *service.BrowserService
+	AllowedOrigins         []string
 	Ready                  ReadyCheck
 	MaximumBodyBytes       int64
 	MaximumDeploymentBytes int64
@@ -68,6 +71,7 @@ type Server struct {
 	organizations          *service.OrganizationService
 	gitHub                 *service.GitHubService
 	browsers               *service.BrowserService
+	allowedOrigins         []string
 	ready                  ReadyCheck
 	maximumBodyBytes       int64
 	maximumDeploymentBytes int64
@@ -106,6 +110,7 @@ func NewServer(options ServerOptions) (*Server, error) {
 		organizations:          options.Organizations,
 		gitHub:                 options.GitHub,
 		browsers:               options.Browsers,
+		allowedOrigins:         options.AllowedOrigins,
 		ready:                  options.Ready,
 		maximumBodyBytes:       options.MaximumBodyBytes,
 		maximumDeploymentBytes: options.MaximumDeploymentBytes,
@@ -123,6 +128,16 @@ func (server *Server) routes() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(securityHeaders(), gin.Logger(), recovery())
+	if len(server.allowedOrigins) > 0 {
+		engine.Use(cors.New(cors.Config{
+			AllowOrigins:     server.allowedOrigins,
+			AllowMethods:     []string{"GET", "POST", "PATCH", "PUT", "DELETE"},
+			AllowHeaders:     []string{"Content-Type"},
+			ExposeHeaders:    []string{"Retry-After"},
+			AllowCredentials: true,
+			MaxAge:           10 * time.Minute,
+		}))
+	}
 	engine.NoRoute(func(ctx *gin.Context) {
 		notFound(ctx, "resource")
 	})

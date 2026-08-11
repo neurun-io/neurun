@@ -8,6 +8,10 @@ RUN npm ci
 FROM node:22-alpine AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+# Inlined into the client bundle by `next build`, so it has to be a build arg:
+# a runtime environment variable never reaches the browser.
+ARG NEXT_PUBLIC_NEURUN_API_URL=http://localhost:1267
+ENV NEXT_PUBLIC_NEURUN_API_URL=$NEXT_PUBLIC_NEURUN_API_URL
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
