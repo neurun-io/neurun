@@ -66,13 +66,6 @@ func sessionToken(ctx *gin.Context) string {
 }
 
 func (server *Server) login(ctx *gin.Context) {
-	if server.sessions == nil {
-		writeProblem(ctx, http.StatusServiceUnavailable, dto.Problem{
-			Code:    "signin_unavailable",
-			Message: "sign-in is not configured on this server",
-		})
-		return
-	}
 	var body dto.LoginRequest
 	if !server.bindJSON(ctx, &body) {
 		return
@@ -118,13 +111,6 @@ func (server *Server) logout(ctx *gin.Context) {
 }
 
 func (server *Server) currentSession(ctx *gin.Context) {
-	if server.sessions == nil {
-		writeProblem(ctx, http.StatusServiceUnavailable, dto.Problem{
-			Code:    "signin_unavailable",
-			Message: "no accounts are configured",
-		})
-		return
-	}
 	token := sessionToken(ctx)
 	session, err := server.sessions.Session(ctx.Request.Context(), token)
 	if err != nil {

@@ -21,11 +21,17 @@ export function Logo({
   );
 }
 
-export function Wordmark({ className }: { className?: string }) {
+export function Wordmark({
+  className,
+  logoClassName = "size-10",
+}: {
+  className?: string;
+  logoClassName?: string;
+}) {
   return (
-    <span className={cn("inline-flex items-center gap-2", className)}>
-      <Logo />
-      <span className="text-lg font-medium tracking-title text-fg">neurun</span>
+    <span className={cn("inline-flex items-center gap-2 text-lg", className)}>
+      <Logo className={logoClassName} />
+      <span className="font-medium tracking-title text-fg">neurun</span>
     </span>
   );
 }

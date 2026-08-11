@@ -93,13 +93,6 @@ export const invalidCredentials = {
   error: { code: "invalid_credentials", message: "invalid email or password" },
 };
 
-export const signInUnavailable = {
-  error: {
-    code: "signin_unavailable",
-    message: "sign-in is not configured on this server",
-  },
-};
-
 export const unauthorized = {
   error: { code: "unauthorized", message: "your session expired; sign in again" },
 };

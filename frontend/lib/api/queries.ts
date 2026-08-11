@@ -63,12 +63,12 @@ export const queryKeys = {
 
 export function useVersionQuery(options?: { enabled?: boolean }) {
   const scope = useScope();
-  const { status } = useSession();
+  const { session } = useSession();
 
   return useQuery({
     queryKey: queryKeys.version(scope),
     queryFn: async ({ signal }) => (await api.getVersion(signal)).data,
-    enabled: status === "authenticated" && (options?.enabled ?? true),
+    enabled: session !== null && (options?.enabled ?? true),
     staleTime: 60_000,
     refetchInterval: 60_000,
   });

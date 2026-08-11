@@ -1,37 +1,18 @@
 "use client";
 
-/**
- * Session state.
- *
- * There is no credential in this module, and deliberately no storage of any
- * kind. Authentication lives in an `HttpOnly` cookie the browser attaches and
- * script cannot read, so the client's only job is to ask the server who it is
- * and react when the answer changes.
- *
- * That is the whole reason the previous API-key screen is gone: a key held in
- * JavaScript is readable by any script on the page and survives in memory for
- * the life of the tab. This design removes the client's ability to leak it.
- */
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/lib/api/endpoints";
 import { NeurunApiError } from "@/lib/api/errors";
 import type { Session } from "@/lib/api/types";
 
-/** Why the dashboard is not showing evidence. */
-export type SessionStatus =
-  | "loading"
-  | "authenticated"
-  | "anonymous"
-  /** The server has no dashboard accounts configured. */
-  | "unavailable";
-
 export const SESSION_QUERY_KEY = ["neurun", "session"] as const;
 
 interface SessionContextValue {
   session: Session | null;
-  status: SessionStatus;
-  /** Set when the session probe itself failed for an unexpected reason. */
+  /** The first request has not answered yet, so signed-in is not yet known. */
+  isLoading: boolean;
+  /** Set when the session request itself failed for an unexpected reason. */
   error: unknown;
   login: (username: string, password: string) => Promise<Session>;
   register: (request: api.RegisterRequest) => Promise<Session | null>;
@@ -44,23 +25,15 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-type Probe =
-  | { kind: "session"; session: Session }
-  | { kind: "anonymous" }
-  | { kind: "unavailable" };
-
 /**
- * A 401 is the expected answer for "not signed in", so it resolves rather than
- * rejects — an unauthenticated visitor is not an error condition.
+ * A 401 is the expected answer for "not signed in", so it resolves to null
+ * rather than rejecting — a signed-out visitor is not an error condition.
  */
-async function probeSession(signal?: AbortSignal): Promise<Probe> {
+async function fetchSession(signal?: AbortSignal): Promise<Session | null> {
   try {
-    return { kind: "session", session: await api.getSession(signal) };
+    return await api.getSession(signal);
   } catch (error) {
-    if (error instanceof NeurunApiError) {
-      if (error.status === 401) return { kind: "anonymous" };
-      if (error.status === 503) return { kind: "unavailable" };
-    }
+    if (error instanceof NeurunApiError && error.status === 401) return null;
     throw error;
   }
 }
@@ -68,14 +41,15 @@ async function probeSession(signal?: AbortSignal): Promise<Probe> {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
-  const probe = useQuery({
+  // Fetched once, for who the user is rather than whether they are signed in.
+  // An expiry is discovered by the next request returning 401, which
+  // `signOutOnUnauthorized` turns into a sign-out — so there is nothing to poll
+  // for and no interval here.
+  const sessionQuery = useQuery({
     queryKey: SESSION_QUERY_KEY,
-    queryFn: ({ signal }) => probeSession(signal),
-    // Sessions expire on an absolute deadline, so re-check periodically and
-    // whenever the user returns to the tab.
-    staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
-    refetchOnWindowFocus: true,
+    queryFn: ({ signal }) => fetchSession(signal),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
     retry: false,
   });
 
@@ -83,7 +57,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     mutationFn: ({ username, password }: { username: string; password: string }) =>
       api.login(username, password),
     onSuccess: (session) => {
-      queryClient.setQueryData(SESSION_QUERY_KEY, { kind: "session", session } satisfies Probe);
+      queryClient.setQueryData(SESSION_QUERY_KEY, session);
     },
   });
 
@@ -98,10 +72,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     mutationFn: (request: api.RegisterRequest) => api.register(request),
     onSuccess: (session) => {
       // The server signs a new account in as part of registering, so seed the
-      // probe rather than making the first paint wait on a round trip. When it
+      // cache rather than making the first paint wait on a round trip. When it
       // could not, leave the cache alone and let the sign-in form take over.
       if (session) {
-        queryClient.setQueryData(SESSION_QUERY_KEY, { kind: "session", session } satisfies Probe);
+        queryClient.setQueryData(SESSION_QUERY_KEY, session);
       }
     },
   });
@@ -118,27 +92,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Clear regardless of the response: a failed sign-out must still drop this
       // user's cached evidence rather than leaving it on screen.
       queryClient.clear();
-      queryClient.setQueryData(SESSION_QUERY_KEY, { kind: "anonymous" } satisfies Probe);
+      queryClient.setQueryData(SESSION_QUERY_KEY, null);
     }
   }, [queryClient]);
 
-  const status: SessionStatus = useMemo(() => {
-    if (probe.isPending) return "loading";
-    switch (probe.data?.kind) {
-      case "session":
-        return "authenticated";
-      case "unavailable":
-        return "unavailable";
-      default:
-        return "anonymous";
-    }
-  }, [probe.isPending, probe.data]);
-
   const value = useMemo<SessionContextValue>(
     () => ({
-      session: probe.data?.kind === "session" ? probe.data.session : null,
-      status,
-      error: probe.error,
+      session: sessionQuery.data ?? null,
+      isLoading: sessionQuery.isPending,
+      error: sessionQuery.error,
       login,
       register,
       logout,
@@ -148,9 +110,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       registerError: registerMutation.error,
     }),
     [
-      probe.data,
-      probe.error,
-      status,
+      sessionQuery.data,
+      sessionQuery.isPending,
+      sessionQuery.error,
       login,
       register,
       logout,

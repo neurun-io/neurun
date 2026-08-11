@@ -21,9 +21,9 @@ import { useCapability } from "@/lib/session/capability";
  * job they were sent.
  */
 export function DashboardShell({ children }: { children: ReactNode }) {
-  const { status, error, session } = useSession();
+  const { isLoading, error, session } = useSession();
 
-  if (status === "loading") {
+  if (isLoading) {
     return (
       <div className="flex min-h-dvh items-center justify-center" role="status">
         <Loader2 aria-hidden className="size-4 animate-spin text-fg-muted" strokeWidth={1.5} />
@@ -34,7 +34,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   // The session probe itself failed — usually the control plane being
   // unreachable. Say so rather than showing a login form that cannot work.
-  if (status === "anonymous" && error) {
+  if (!session && error) {
     return (
       <main id="main" className="mx-auto w-full max-w-2xl px-6 py-10">
         <ErrorPanel error={error} title="Could not reach the control plane" />
@@ -42,11 +42,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (status !== "authenticated") return <LoginScreen />;
+  if (!session) return <LoginScreen />;
 
   // Signed in, but belonging nowhere. Nothing below an organization exists yet,
   // so this is the whole surface until there is one.
-  if (!session?.organization_id) return <OrganizationSetup />;
+  if (!session.organization_id) return <OrganizationSetup />;
 
   return (
     <div className="flex min-h-dvh flex-col">

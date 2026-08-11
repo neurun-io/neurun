@@ -14,12 +14,12 @@ import { useSession } from "@/lib/session/store";
  * mind, and sends them to the dashboard once the cookie is set.
  */
 export default function LoginPage() {
-  const { status } = useSession();
+  const { session } = useSession();
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/overview");
-  }, [status, router]);
+    if (session) router.replace("/overview");
+  }, [session, router]);
 
   return <LoginScreen />;
 }

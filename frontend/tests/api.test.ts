@@ -32,21 +32,6 @@ describe("authentication", () => {
     expect((error as NeurunApiError).status).toBe(401);
     expect((error as NeurunApiError).code).toBe("invalid_credentials");
   });
-
-  it("reports when sign-in is unavailable on this control plane", async () => {
-    server.use(
-      http.post(proxy("/v1/auth/login"), () =>
-        HttpResponse.json(fixtures.signInUnavailable, { status: 503 }),
-      ),
-    );
-
-    const error = await api
-      .login("alice@example.com", SESSION_PASSWORD)
-      .catch((cause: unknown) => cause);
-
-    expect(error).toBeInstanceOf(NeurunApiError);
-    expect((error as NeurunApiError).status).toBe(503);
-  });
 });
 
 describe("registration", () => {

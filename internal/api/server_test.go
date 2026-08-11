@@ -18,6 +18,7 @@ func newTestServer(t *testing.T) *Server {
 		Deployments:   &service.DeploymentService{},
 		Executions:    &service.ExecutionService{},
 		Accounts:      &service.AccountService{},
+		Sessions:      &service.SessionService{},
 		Organizations: &service.OrganizationService{},
 	})
 	if err != nil {
@@ -110,13 +111,15 @@ func TestSignInRoutesAreReachableWithoutCredentials(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	// Sessions are unset here, so these report the feature as unavailable —
-	// what matters is that neither answers 401.
-	if code := do(t, server, http.MethodPost, "/v1/auth/login").Code; code == http.StatusUnauthorized {
-		t.Fatal("login sits behind authentication")
+	// Reaching the handler rather than the authentication gate: only the handler
+	// can decide that an empty body is a bad request.
+	if code := do(t, server, http.MethodPost, "/v1/auth/login").Code; code != http.StatusBadRequest {
+		t.Fatalf("login = %d, want 400 from the handler", code)
 	}
-	if code := do(t, server, http.MethodGet, "/v1/auth/session").Code; code == http.StatusUnauthorized {
-		t.Fatalf("session lookup returned 401 rather than reporting unavailability")
+	// 401 is the signed-out answer, and the only one the dashboard needs:
+	// authenticated-but-unscoped is a 403, so a 401 always means sign out.
+	if code := do(t, server, http.MethodGet, "/v1/auth/session").Code; code != http.StatusUnauthorized {
+		t.Fatalf("session lookup = %d, want 401 when signed out", code)
 	}
 	// Logout is unconditional: it always clears the cookie and answers 204.
 	response := do(t, server, http.MethodPost, "/v1/auth/logout")

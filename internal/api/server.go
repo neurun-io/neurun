@@ -83,6 +83,8 @@ func NewServer(options ServerOptions) (*Server, error) {
 		return nil, errors.New("execution service is required")
 	case options.Accounts == nil:
 		return nil, errors.New("account service is required")
+	case options.Sessions == nil:
+		return nil, errors.New("session service is required")
 	case options.Organizations == nil:
 		return nil, errors.New("organization service is required")
 	case options.MaximumBodyBytes < 0:

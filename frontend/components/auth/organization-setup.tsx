@@ -65,7 +65,7 @@ export function OrganizationSetup() {
         </Button>
       </div>
 
-      <div className="mx-auto flex w-full max-w-[460px] flex-1 flex-col justify-center gap-6">
+      <div className="mx-auto flex w-full max-w-115 flex-1 flex-col justify-center gap-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl tracking-title">Pick an organization</h1>
           <p className="text-sm leading-[1.55] text-fg-secondary">

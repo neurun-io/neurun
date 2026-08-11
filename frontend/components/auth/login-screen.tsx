@@ -2,25 +2,25 @@
 
 import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
-import { ArrowRight, AtSign, Building2, KeyRound, Loader2, type LucideIcon } from "lucide-react";
+import {
+  ArrowRight,
+  AtSign,
+  Building2,
+  KeyRound,
+  Loader2,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Callout } from "@/components/neurun/feedback";
 import { InlineError } from "@/components/neurun/error-panel";
-import { Logo } from "@/components/neurun/logo";
+import { Wordmark } from "@/components/neurun/logo";
 import { ThemeToggle } from "@/components/neurun/theme-toggle";
 import { NeurunApiError } from "@/lib/api/errors";
 import { useSession } from "@/lib/session/store";
 import { cn } from "@/lib/utils";
-
-const PROOF = [
-  "Deployments pinned to an immutable build, resolved to a digest on every execution",
-  "Claims, failures and reruns decided and persisted by the server, never by your client",
-  "Input, output, logs and failure kept as fields that outlive the run that wrote them",
-];
 
 type Mode = "register" | "login";
 
@@ -33,100 +33,94 @@ type Mode = "register" | "login";
  * an account comes into being; there is no CLI to run on the host.
  */
 export function LoginScreen({ initialMode }: { initialMode?: Mode }) {
-  const { status } = useSession();
-  // An install with no accounts cannot be signed in to, so it opens on the form
-  // that can actually get somebody in.
-  const [mode, setMode] = useState<Mode>(
-    initialMode ?? (status === "unavailable" ? "register" : "login"),
-  );
+  const [mode, setMode] = useState<Mode>(initialMode ?? "login");
 
   return (
-    <div className="grid min-h-dvh lg:grid-cols-2">
-      <Editorial />
+    <div className="flex min-h-dvh flex-col px-6 pt-5 pb-12">
+      <div className="flex items-center gap-3">
+        <Link href="/" aria-label="Neurun home" className="flex items-center">
+          <Wordmark className="text-4xl" logoClassName="size-20" />
+        </Link>
+        <span aria-hidden className="flex-1" />
+        <Link
+          href="/docs"
+          className="text-caption text-fg-secondary transition-colors duration-120 ease-mech hover:text-fg"
+        >
+          Docs
+        </Link>
+        <Link
+          href="/#pricing"
+          className="text-caption text-fg-secondary transition-colors duration-120 ease-mech hover:text-fg"
+        >
+          Pricing
+        </Link>
+        <ThemeToggle />
+      </div>
 
-      <div className="flex flex-col px-6 pt-5 pb-12">
-        <div className="flex items-center justify-end gap-3">
-          <Link
-            href="/docs"
-            className="text-caption text-fg-secondary transition-colors duration-120 ease-mech hover:text-fg"
-          >
-            Docs
-          </Link>
-          <Link
-            href="/#pricing"
-            className="text-caption text-fg-secondary transition-colors duration-120 ease-mech hover:text-fg"
-          >
-            Pricing
-          </Link>
-          <ThemeToggle />
+      <main
+        id="main"
+        className="mx-auto flex w-full max-w-109 flex-1 flex-col gap-5.5"
+      >
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl tracking-title">
+            {mode === "register" ? "Create an account" : "Sign in"}
+          </h1>
+          {/* Two lines in both modes, so the switch never reflows what follows. */}
+          <p className="min-h-11 text-sm leading-[1.55] text-fg-secondary">
+            {mode === "register"
+              ? "Free credit to start. Two minutes, no card, no sales call."
+              : "Your role and scopes come from your membership. Nothing to pick, nothing to get wrong."}
+          </p>
         </div>
 
-        <main
-          id="main"
-          className="mx-auto flex w-full max-w-[436px] flex-1 flex-col gap-5.5 pt-10 pb-4 sm:pt-14"
-        >
-          <div className="flex flex-col gap-2">
-            <h1 className="text-3xl tracking-title">
-              {mode === "register" ? "Create an account" : "Sign in"}
-            </h1>
-            {/* Two lines in both modes, so the switch never reflows what follows. */}
-            <p className="min-h-11 text-sm leading-[1.55] text-fg-secondary">
-              {mode === "register"
-                ? "Free credit to start. Two minutes, no card, no sales call."
-                : "Your role and scopes come from your membership. Nothing to pick, nothing to get wrong."}
-            </p>
-          </div>
+        <Segmented mode={mode} onChange={setMode} />
 
-          <Segmented mode={mode} onChange={setMode} />
-
-          {status === "unavailable" && mode === "login" ? (
-            <Callout kind="warning" title="This control plane has no accounts yet">
-              Nothing can be signed in to until an account exists. Create the first one; you can
-              name an organization now or do it straight after.
-            </Callout>
-          ) : null}
-
-          {/* Both forms occupy one grid cell, so the column is always as tall
+        {/* Both forms occupy one grid cell, so the column is always as tall
               as the taller of the two and switching moves nothing. */}
-          <div className="grid">
-            <div
-              className={cn("col-start-1 row-start-1", mode !== "register" && "invisible")}
-              inert={mode !== "register"}
-            >
-              <RegisterForm />
-            </div>
-            <div
-              className={cn("col-start-1 row-start-1", mode !== "login" && "invisible")}
-              inert={mode !== "login"}
-            >
-              <LoginForm />
-            </div>
+        <div className="grid">
+          <div
+            className={cn(
+              "col-start-1 row-start-1",
+              mode !== "register" && "invisible",
+            )}
+            inert={mode !== "register"}
+          >
+            <RegisterForm />
           </div>
+          <div
+            className={cn(
+              "col-start-1 row-start-1",
+              mode !== "login" && "invisible",
+            )}
+            inert={mode !== "login"}
+          >
+            <LoginForm />
+          </div>
+        </div>
 
-          <Federated />
-
-          <Callout kind="note" title="New accounts start with free credit">
-            It is spent against the same control plane production uses, and metered the same way.
-            When it runs out you pick a plan; nothing is deleted for thirty days.{" "}
-            <Link href="/#plans">See the plans</Link>.
-          </Callout>
-        </main>
-      </div>
+        <Federated />
+      </main>
     </div>
   );
 }
 
-function Segmented({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => void }) {
+function Segmented({
+  mode,
+  onChange,
+}: {
+  mode: Mode;
+  onChange: (mode: Mode) => void;
+}) {
   return (
     <div
       role="tablist"
       aria-label="Account"
-      className="inline-flex h-7.5 items-center gap-0.5 rounded-md border border-line-default bg-surface-inset p-0.5"
+      className="inline-flex h-7.5 items-center gap-0.5 rounded-md border border-gray-500 p-0.5"
     >
       {(
         [
-          { id: "register", label: "Create account" },
-          { id: "login", label: "Sign in" },
+          { id: "register", label: "create account" },
+          { id: "login", label: "sign in" },
         ] as const
       ).map((option) => (
         <button
@@ -136,7 +130,7 @@ function Segmented({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => v
           aria-selected={mode === option.id}
           onClick={() => onChange(option.id)}
           className={cn(
-            "h-6.5 flex-1 rounded-xs px-2.5 font-mono text-micro transition-colors duration-120 ease-mech",
+            "h-6.5 flex-1 rounded-xs px-2.5 font-mono text-sm transition-colors duration-120 ease-mech",
             mode === option.id
               ? "bg-surface-inverse font-medium text-fg-inverse"
               : "text-fg-secondary hover:text-fg",
@@ -162,7 +156,9 @@ function RegisterForm() {
       await register({
         email: email.trim(),
         password,
-        ...(organizationName.trim() ? { organization_name: organizationName.trim() } : {}),
+        ...(organizationName.trim()
+          ? { organization_name: organizationName.trim() }
+          : {}),
       });
     } finally {
       setPassword("");
@@ -191,11 +187,7 @@ function RegisterForm() {
         />
       </Field>
 
-      <Field
-        label="Password"
-        htmlFor="password"
-        hint="6 characters minimum."
-      >
+      <Field label="Password" htmlFor="password" hint="6 characters minimum.">
         <IconInput
           icon={KeyRound}
           id="password"
@@ -235,19 +227,30 @@ function RegisterForm() {
           required
         />
         <span className="flex flex-col gap-0.5">
-          <span className="text-caption text-fg">I accept the terms of service</span>
+          <span className="text-caption text-fg">
+            I accept the terms of service
+          </span>
           <span className="text-micro text-fg-muted">
-            Commercial licence. Compute is metered per organization and billed per GB-hour.
+            Commercial licence. Compute is metered per organization and billed
+            per GB-hour.
           </span>
         </span>
       </label>
 
       {registerError ? <InlineError error={registerError} /> : null}
 
-      <Button type="submit" disabled={isRegistering || !accepted} className="w-full">
+      <Button
+        type="submit"
+        disabled={isRegistering || !accepted}
+        className="w-full"
+      >
         {isRegistering ? (
           <>
-            <Loader2 aria-hidden className="size-3.5 animate-spin" strokeWidth={1.5} />
+            <Loader2
+              aria-hidden
+              className="size-3.5 animate-spin"
+              strokeWidth={1.5}
+            />
             Creating account
           </>
         ) : (
@@ -320,13 +323,19 @@ function LoginForm() {
 
       {loginError ? <InlineError error={loginError} /> : null}
       {retryAfter ? (
-        <p className="text-micro text-fg-muted">Too many attempts. Retry in {retryAfter} seconds.</p>
+        <p className="text-micro text-fg-muted">
+          Too many attempts. Retry in {retryAfter} seconds.
+        </p>
       ) : null}
 
       <Button type="submit" disabled={isLoggingIn} className="w-full">
         {isLoggingIn ? (
           <>
-            <Loader2 aria-hidden className="size-3.5 animate-spin" strokeWidth={1.5} />
+            <Loader2
+              aria-hidden
+              className="size-3.5 animate-spin"
+              strokeWidth={1.5}
+            />
             Signing in
           </>
         ) : (
@@ -354,69 +363,10 @@ function IconInput({
         className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-muted"
         strokeWidth={1.5}
       />
-      <Input className={cn("pl-8", mono && "font-mono text-caption", className)} {...props} />
-    </div>
-  );
-}
-
-function Editorial() {
-  return (
-    <div className="relative flex flex-col justify-between gap-11 overflow-hidden border-line bg-surface-sunken px-11 py-9 max-lg:hidden lg:border-r">
-      <div
-        aria-hidden
-        className="nr-grid-field absolute inset-0"
-        style={{
-          maskImage: "radial-gradient(100% 80% at 20% 10%, #000 8%, transparent 74%)",
-          WebkitMaskImage: "radial-gradient(100% 80% at 20% 10%, #000 8%, transparent 74%)",
-        }}
+      <Input
+        className={cn("pl-8", mono && "font-mono text-caption", className)}
+        {...props}
       />
-
-      <Link href="/" className="relative flex w-fit items-center gap-3">
-        <Logo />
-        <span className="nr-label border-l border-line-default pl-3">dashboard access</span>
-      </Link>
-
-      <div className="relative flex max-w-[460px] flex-col gap-6.5">
-        <h2 className="text-[clamp(30px,3.4vw,44px)] leading-[1.04] tracking-display">
-          Run the web.
-          <br />
-          Without worring about infra.
-        </h2>
-        <p className="text-base leading-[1.55] text-fg-secondary">
-          Your account holds the projects, the scoped keys and the record of every execution.
-          New accounts start with free credit, no card, and it is spent against the same control
-          plane production runs on.
-        </p>
-
-        <ol className="flex flex-col">
-          {PROOF.map((item, index) => (
-            <li
-              key={item}
-              className="grid grid-cols-[22px_1fr] items-baseline gap-3.5 border-t border-line py-3.5 last:border-b"
-            >
-              <span className="font-mono text-meta text-fg-faint">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <span className="text-sm leading-[1.5] text-fg-secondary">{item}</span>
-            </li>
-          ))}
-        </ol>
-
-        <p className="flex items-center gap-2.5 overflow-hidden rounded-md border border-line bg-surface-panel px-3 py-2.5 font-mono text-meta text-fg-secondary">
-          <span className="text-fg-muted">$</span>
-          <span className="truncate">curl -sS $NEURUN_URL/readyz</span>
-        </p>
-      </div>
-
-      <div className="nr-label relative flex flex-wrap items-center gap-4.5">
-        <span>0.1.0</span>
-        <span>api v1</span>
-        <span>free credit</span>
-        <span className="flex-1" />
-        <Link href="/#pricing" className="text-fg-secondary hover:text-fg">
-          Pricing →
-        </Link>
-      </div>
     </div>
   );
 }
@@ -468,10 +418,6 @@ function Federated() {
           Google
         </Button>
       </div>
-      <p className="text-micro leading-[1.5] text-fg-muted">
-        Federated sign-in needs an identity-provider contract this release does not have. Until it
-        ships these are disabled rather than pretending to work.
-      </p>
     </div>
   );
 }

@@ -22,16 +22,17 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
 
 /**
  * A 401 anywhere means the session is gone — expired, revoked, or the account
- * disabled. Drop the cache and mark the session anonymous so the shell shows
- * sign-in immediately, rather than leaving a dead dashboard on screen.
+ * disabled. Being authenticated but not permitted is a 403, so this is never
+ * ambiguous, and it is why nothing polls to ask whether the session still
+ * holds: the next request the user makes says so.
  *
- * The session probe itself resolves on 401 rather than rejecting, so this never
- * fires for a visitor who is simply not signed in.
+ * The session request itself resolves on 401 rather than rejecting, so this
+ * never fires for a visitor who is simply not signed in.
  */
 function signOutOnUnauthorized(client: QueryClient, error: unknown) {
   if (!(error instanceof NeurunApiError) || error.status !== 401) return;
   client.clear();
-  client.setQueryData(SESSION_QUERY_KEY, { kind: "anonymous" });
+  client.setQueryData(SESSION_QUERY_KEY, null);
 }
 
 export function createQueryClient(): QueryClient {

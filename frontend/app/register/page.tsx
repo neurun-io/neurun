@@ -8,12 +8,12 @@ import { useSession } from "@/lib/session/store";
 
 /** Where the site's sign-up CTAs land: the same surface, opened on sign-up. */
 export default function RegisterPage() {
-  const { status } = useSession();
+  const { session } = useSession();
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/overview");
-  }, [status, router]);
+    if (session) router.replace("/overview");
+  }, [session, router]);
 
   return <LoginScreen initialMode="register" />;
 }
