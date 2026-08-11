@@ -59,43 +59,31 @@ export function LoginScreen({ initialMode }: { initialMode?: Mode }) {
 
       <main
         id="main"
-        className="mx-auto flex w-full max-w-109 flex-1 flex-col gap-5.5"
+        className="mx-auto flex w-full max-w-109 flex-col gap-5.5 mt-20"
       >
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl tracking-title">
             {mode === "register" ? "Create an account" : "Sign in"}
           </h1>
-          {/* Two lines in both modes, so the switch never reflows what follows. */}
-          <p className="min-h-11 text-sm leading-[1.55] text-fg-secondary">
-            {mode === "register"
-              ? "Free credit to start. Two minutes, no card, no sales call."
-              : "Your role and scopes come from your membership. Nothing to pick, nothing to get wrong."}
-          </p>
         </div>
 
         <Segmented mode={mode} onChange={setMode} />
 
-        {/* Both forms occupy one grid cell, so the column is always as tall
-              as the taller of the two and switching moves nothing. */}
-        <div className="grid">
-          <div
-            className={cn(
-              "col-start-1 row-start-1",
-              mode !== "register" && "invisible",
-            )}
-            inert={mode !== "register"}
-          >
-            <RegisterForm />
-          </div>
-          <div
-            className={cn(
-              "col-start-1 row-start-1",
-              mode !== "login" && "invisible",
-            )}
-            inert={mode !== "login"}
-          >
-            <LoginForm />
-          </div>
+        <div
+          className={cn(
+            mode !== "register" && "hidden",
+          )}
+          inert={mode !== "register"}
+        >
+          <RegisterForm />
+        </div>
+        <div
+          className={cn(
+            mode !== "login" && "hidden",
+          )}
+          inert={mode !== "login"}
+        >
+          <LoginForm />
         </div>
 
         <Federated />
@@ -170,7 +158,6 @@ function RegisterForm() {
       <Field
         label="Work email"
         htmlFor="email"
-        hint="Used for billing and incident notices. Nothing else."
       >
         <IconInput
           icon={AtSign}
@@ -187,7 +174,7 @@ function RegisterForm() {
         />
       </Field>
 
-      <Field label="Password" htmlFor="password" hint="6 characters minimum.">
+      <Field label="Password" htmlFor="password">
         <IconInput
           icon={KeyRound}
           id="password"
@@ -206,7 +193,7 @@ function RegisterForm() {
         label="Organization name"
         htmlFor="organization-name"
         optional
-        hint="Leave it blank and you will be asked to start one, or to accept an invitation, straight after. You may own one and join any number."
+        hint="Leave it blank if you want to join an existing one."
       >
         <IconInput
           icon={Building2}
@@ -229,10 +216,6 @@ function RegisterForm() {
         <span className="flex flex-col gap-0.5">
           <span className="text-caption text-fg">
             I accept the terms of service
-          </span>
-          <span className="text-micro text-fg-muted">
-            Commercial licence. Compute is metered per organization and billed
-            per GB-hour.
           </span>
         </span>
       </label>
@@ -306,7 +289,6 @@ function LoginForm() {
       <Field
         label="Password"
         htmlFor="login-password"
-        hint="Verified server-side. Nothing is stored in this browser."
       >
         <IconInput
           icon={KeyRound}
@@ -328,7 +310,11 @@ function LoginForm() {
         </p>
       ) : null}
 
-      <Button type="submit" disabled={isLoggingIn} className="w-full">
+      <Button
+        type="submit"
+        disabled={isLoggingIn || !email.trim() || !password}
+        className="w-full"
+      >
         {isLoggingIn ? (
           <>
             <Loader2
