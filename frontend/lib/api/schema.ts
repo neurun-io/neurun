@@ -596,7 +596,6 @@ export interface components {
             organization_id: string;
             role: components["schemas"]["Role"];
             scopes: string[];
-            session_id: string;
             /** Format: date-time */
             expires_at: string;
         };

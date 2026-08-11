@@ -149,6 +149,7 @@ function RegisterForm() {
           : {}),
       });
     } catch {
+      // Rendered from `registerError`; see the note in LoginForm.
     } finally {
       setPassword("");
     }

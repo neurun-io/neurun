@@ -941,7 +941,7 @@ components:
   schemas:
     Session:
       type: object
-      required: [user_id, email, organization_id, role, scopes, session_id, expires_at]
+      required: [user_id, email, organization_id, role, scopes, expires_at]
       properties:
         user_id: {type: string}
         email: {type: string, format: email}
@@ -950,7 +950,6 @@ components:
         scopes:
           type: array
           items: {type: string}
-        session_id: {type: string}
         expires_at: {type: string, format: date-time}
     SessionEnvelope:
       type: object

@@ -46,7 +46,7 @@ export const PLANS: Plan[] = [
       "Community support",
     ],
     cta: "Start free",
-    href: "/register",
+    href: "/auth",
   },
   {
     id: "team",
@@ -63,7 +63,7 @@ export const PLANS: Plan[] = [
       "Priority support, next business day",
     ],
     cta: "Start free",
-    href: "/register",
+    href: "/auth",
     featured: true,
   },
   {

@@ -11,7 +11,6 @@ import (
 
 	"github.com/neurun-io/neurun/internal/domain/organization"
 	sessiondomain "github.com/neurun-io/neurun/internal/domain/session"
-	"github.com/neurun-io/neurun/internal/ids"
 )
 
 const sessionKeyPrefix = "session:"
@@ -56,12 +55,7 @@ func (repository *SessionRepository) Create(
 	if strings.TrimSpace(token) == "" {
 		return sessiondomain.Session{}, errors.New("session token is required")
 	}
-	sessionID, err := ids.New("oses")
-	if err != nil {
-		return sessiondomain.Session{}, fmt.Errorf("allocate session ID: %w", err)
-	}
 	session := sessiondomain.Session{
-		ID:             sessionID,
 		AccountID:      account.ID,
 		Email:          account.Email,
 		OrganizationID: membership.OrganizationID,

@@ -63,7 +63,7 @@ export default function Home() {
 
               <div className="flex flex-wrap gap-3">
                 <Button asChild size="lg">
-                  <Link href="/register">
+                  <Link href="/auth">
                     Start free
                     <ArrowRight aria-hidden strokeWidth={1.5} />
                   </Link>
@@ -157,7 +157,7 @@ export default function Home() {
 
             <div className="mt-2 flex flex-wrap gap-2.5">
               <Button asChild>
-                <Link href="/register">
+                <Link href="/auth">
                   Start free
                   <ArrowRight aria-hidden strokeWidth={1.5} />
                 </Link>

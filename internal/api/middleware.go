@@ -15,6 +15,18 @@ import (
 	"github.com/neurun-io/neurun/internal/dto"
 )
 
+func sessionOnly() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		if principalOf(ctx).Kind == auth.KindAPIKey {
+			writeProblem(ctx, http.StatusForbidden, dto.Problem{
+				Code: "session_required", Message: "sign in to do this",
+			})
+			return
+		}
+		ctx.Next()
+	}
+}
+
 func securityHeaders() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		ctx.Header("X-Content-Type-Options", "nosniff")
@@ -41,7 +53,7 @@ func recovery() gin.HandlerFunc {
 	})
 }
 
-// authenticate accepts either a bearer API key or an session cookie.
+// authenticate accepts either a bearer API key or a session cookie.
 //
 // The bearer header wins when both are present: an Authorization header is a
 // deliberate act by a caller, whereas a cookie rides along automatically.
@@ -59,11 +71,7 @@ func (server *Server) authenticate() gin.HandlerFunc {
 
 		token := sessionToken(ctx)
 		if token == "" {
-			unauthenticated(ctx, "sign in, or supply a bearer API key")
-			return
-		}
-		if server.sessions == nil {
-			unauthenticated(ctx, "sign-in is not configured on this server")
+			unauthenticated(ctx, "not signed in")
 			return
 		}
 		session, err := server.sessions.Session(ctx.Request.Context(), token)

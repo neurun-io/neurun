@@ -56,14 +56,14 @@ export function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-3 lg:ml-0">
           <Link
-            href="/login"
+            href="/auth"
             className="hidden text-sm text-fg-secondary transition-colors duration-120 ease-mech hover:text-fg sm:inline"
           >
             Sign in
           </Link>
           <ThemeToggle />
           <Button asChild size="sm">
-            <Link href="/register" className="text-white dark:text-black">
+            <Link href="/auth" className="text-white dark:text-black">
               Start free
               <ArrowRight aria-hidden strokeWidth={1.5} />
             </Link>
@@ -102,7 +102,7 @@ const FOOTER_COLUMNS = [
   {
     label: "Company",
     links: [
-      { href: "/login", label: "Sign in" },
+      { href: "/auth", label: "Sign in" },
       { href: "/docs/runners", label: "Runners" },
       { href: "mailto:sales@neurun.dev", label: "Talk to engineering" },
       { href: "mailto:security@neurun.dev", label: "Security" },

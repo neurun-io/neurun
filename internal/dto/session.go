@@ -44,7 +44,6 @@ type SessionResponse struct {
 	OrganizationID string    `json:"organization_id"`
 	Role           string    `json:"role"`
 	Scopes         []string  `json:"scopes"`
-	SessionID      string    `json:"session_id"`
 	ExpiresAt      time.Time `json:"expires_at"`
 }
 
@@ -55,7 +54,6 @@ func NewSessionResponse(session session.Session) SessionResponse {
 		OrganizationID: session.OrganizationID,
 		Role:           string(session.Role),
 		Scopes:         session.Role.Scopes(),
-		SessionID:      session.ID,
 		ExpiresAt:      session.ExpiresAt.UTC(),
 	}
 }

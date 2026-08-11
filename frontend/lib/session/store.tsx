@@ -73,9 +73,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const registerMutation = useMutation({
     mutationFn: (request: api.RegisterRequest) => api.register(request),
     onSuccess: (session) => {
-      // The server signs a new account in as part of registering, so seed the
-      // cache rather than making the first paint wait on a round trip. When it
-      // could not, leave the cache alone and let the sign-in form take over.
       if (session) {
         queryClient.setQueryData(SESSION_QUERY_KEY, session);
       }
@@ -91,11 +88,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       await api.logout();
     } finally {
-      // Clear regardless of the response: a failed sign-out must still drop this
-      // user's cached evidence rather than leaving it on screen.
-      queryClient.clear();
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[1] !== "session" });
       queryClient.setQueryData(SESSION_QUERY_KEY, null);
-      router.replace("/login");
+      router.replace("/auth");
     }
   }, [queryClient, router]);
 

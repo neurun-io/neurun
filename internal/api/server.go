@@ -195,10 +195,10 @@ func (server *Server) routes() *gin.Engine {
 	v1.GET("/builds", server.scoped(ScopeBuildsRead), server.listBuilds)
 	v1.GET("/builds/:build_id", server.scoped(ScopeBuildsRead), server.getBuild)
 
-	v1.GET("/organizations", server.listOrganizations)
+	v1.GET("/organizations", sessionOnly(), server.listOrganizations)
 	// Deliberately unscoped: an account with no organization holds no scopes,
 	// and creating one is the only thing it may do.
-	v1.POST("/organizations", server.createOrganization)
+	v1.POST("/organizations", sessionOnly(), server.createOrganization)
 	v1.GET("/organization", server.scoped(ScopeProjectsRead), server.getOrganization)
 	v1.PATCH("/organization", server.scoped(ScopeUsersWrite), server.updateOrganization)
 
@@ -209,7 +209,7 @@ func (server *Server) routes() *gin.Engine {
 	v1.GET("/invites", server.scoped(ScopeUsersRead), server.listInvites)
 	v1.POST("/invites", server.scoped(ScopeUsersWrite), server.createInvite)
 	v1.DELETE("/invites/:invite_id", server.scoped(ScopeUsersWrite), server.revokeInvite)
-	v1.POST("/invites/accept", server.acceptInvite)
+	v1.POST("/invites/accept", sessionOnly(), server.acceptInvite)
 
 	v1.GET("/users", server.scoped(ScopeUsersRead), server.listUsers)
 	v1.GET("/users/:user_id", server.scoped(ScopeUsersRead), server.getUser)

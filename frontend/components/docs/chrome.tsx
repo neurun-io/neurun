@@ -79,7 +79,7 @@ export function DocsHeader() {
 
       <ThemeToggle />
       <Button asChild variant="ghost" size="sm" className="max-sm:hidden">
-        <Link href="/login">
+        <Link href="/auth">
           Sign in
           <ExternalLink aria-hidden strokeWidth={1.5} />
         </Link>

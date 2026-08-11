@@ -31,7 +31,7 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
  */
 function signOutOnUnauthorized(client: QueryClient, error: unknown) {
   if (!(error instanceof NeurunApiError) || error.status !== 401) return;
-  client.clear();
+  client.removeQueries({ predicate: (query) => query.queryKey[1] !== "session" });
   client.setQueryData(SESSION_QUERY_KEY, null);
 }
 

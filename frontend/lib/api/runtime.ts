@@ -23,7 +23,6 @@ export const sessionSchema = z.looseObject({
   organization_id: z.string(),
   role: z.string(),
   scopes: z.array(z.string()),
-  session_id: z.string(),
   expires_at: timestamp,
 });
 

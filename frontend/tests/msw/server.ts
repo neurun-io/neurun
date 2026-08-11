@@ -22,7 +22,6 @@ export const SESSION = {
   organization_id: "org_01HXQ8F2ACME",
   role: "admin",
   scopes: ["*"],
-  session_id: "oses_01HXQ8F2",
   expires_at: "2026-07-30T23:00:00Z",
 };
 

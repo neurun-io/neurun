@@ -55,7 +55,6 @@ func (account Account) Authenticate(password string) (bool, error) {
 // re-read on every request, so removing somebody takes effect on their next
 // call rather than when their cookie happens to expire.
 type Session struct {
-	ID             string            `json:"id"`
 	AccountID      string            `json:"account_id"`
 	Email          string            `json:"email"`
 	OrganizationID string            `json:"organization_id"`
