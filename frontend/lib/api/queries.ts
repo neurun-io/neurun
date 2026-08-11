@@ -52,8 +52,11 @@ export const queryKeys = {
 
   browserProfiles: (scope: string) =>
     [...queryKeys.scope(scope), "browser-profiles"] as const,
+  browserProfile: (scope: string, id: string) =>
+    [...queryKeys.scope(scope), "browser-profile", id] as const,
   browserProfileState: (scope: string, id: string) =>
     [...queryKeys.browserProfiles(scope), id, "state"] as const,
+  identityCatalog: (scope: string) => [...queryKeys.scope(scope), "identity-catalog"] as const,
 
 } as const;
 
@@ -367,6 +370,28 @@ export function useBrowserProfilesQuery() {
 }
 
 /**
+ * The identity catalogue. Static reference data, so it is fetched once and never
+ * refetched — nothing about it changes while a form is open.
+ */
+export function useIdentityCatalogQuery() {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.identityCatalog(scope),
+    queryFn: async ({ signal }) => (await resources.getIdentityCatalog(signal)).data,
+    staleTime: Infinity,
+  });
+}
+
+export function useBrowserProfileQuery(id: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.browserProfile(scope, id),
+    queryFn: async ({ signal }) => (await resources.getBrowserProfile(id, signal)).data,
+    enabled: Boolean(id),
+  });
+}
+
+/**
  * Fetches a profile's cookie values and storage contents.
  *
  * Disabled by default: this is the one response that carries credentials, so it
@@ -403,8 +428,10 @@ export function useUpdateBrowserProfileMutation() {
       ...body
     }: { id: string } & Parameters<typeof resources.updateBrowserProfile>[1]) =>
       (await resources.updateBrowserProfile(id, body)).data,
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: queryKeys.browserProfiles(scope) }),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(queryKeys.browserProfile(scope, profile.id), profile);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.browserProfiles(scope) });
+    },
   });
 }
 
@@ -414,9 +441,12 @@ export function useDeleteBrowserProfileMutation() {
   return useMutation({
     mutationFn: async (id: string) => {
       await resources.deleteBrowserProfile(id);
+      return id;
     },
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: queryKeys.browserProfiles(scope) }),
+    onSuccess: (id) => {
+      queryClient.removeQueries({ queryKey: queryKeys.browserProfile(scope, id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.browserProfiles(scope) });
+    },
   });
 }
 

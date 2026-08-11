@@ -139,11 +139,8 @@ schema-generated forms.
 `lib/roadmap.ts` is the checklist, and it is also what the roadmap routes
 render. Delete an entry when its contract ships.
 
-Not yet available: dashboard aggregation, capability discovery
-(`async_jobs_enabled`, `job_durability`), job/attempt→invocation correlation,
-manual job retry, sessions and their event stream, proxies, agents, artifacts,
-projects, API keys, identities, profiles, webhooks, audit, and cross-resource
-search.
+Not yet available: fleet aggregation, AI stealth coherence, the AI automation
+builder, runners, proxies, data health, webhooks, and the activity log.
 
 ## Authentication
 

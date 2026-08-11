@@ -41,17 +41,6 @@ export const ROADMAP = {
       "a preflight verdict that refuses the run, and a break recorded as an event on the execution with the offending layer and its last coherent version",
     ],
   },
-  browsers: {
-    title: "Browsers",
-    summary:
-      "The browsers available to run against, and the live sessions running on them. Uses what is already installed on the host rather than shipping its own: the server reports what it found, a user can import one by pointing at an executable, enable or disable it, mark a default, and request one be added when the browser they need is not present. A session is one running instance of a registered browser, with resource pressure and signed CDP access — which is why the two are one page: a session list with nothing registered to launch is an empty page explaining another empty page.",
-    requires: [
-      "a discovery pass that reports installed browsers with their executable path, version and channel",
-      "import by path, with the server verifying the executable is a browser it can drive before accepting it",
-      "enable / disable, a per-project default, and a request record for an absent browser",
-      "session create / list / detail / keepalive / screenshot / save-profile / usage / history / close",
-    ],
-  },
   aiAutomationBuilder: {
     title: "AI automation builder",
     summary:

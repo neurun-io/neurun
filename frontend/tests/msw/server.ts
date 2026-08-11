@@ -90,6 +90,8 @@ export const handlers = [
       executions: [fixtures.succeededExecution, fixtures.unknownStateExecution],
     }),
   ),
+
+  http.get(apiUrl("/v1/identity-catalog"), () => HttpResponse.json(fixtures.identityCatalog)),
 ];
 
 export const server = setupServer(...handlers);

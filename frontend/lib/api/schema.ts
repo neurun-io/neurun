@@ -359,6 +359,23 @@ export interface paths {
         patch: operations["updateUser"];
         trace?: never;
     };
+    "/v1/identity-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The values a browser identity is assembled from. Static reference data, not organization state. Most of these fields are only coherent in combination, so entries carry the platform they belong to: a Direct3D renderer on a Mac, or a Windows release nobody shipped, is the contradiction a detector looks for. */
+        get: operations["getIdentityCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/browser-profiles": {
         parameters: {
             query?: never;
@@ -685,6 +702,90 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        /** @description Selectable values for a BrowserIdentity. Several are binding: an operating system fixes navigator.platform, bitness and architecture, limits which releases and brands exist under it, and each release carries its own UA-CH platform versions — Windows 11 reports 15.0.0, and Windows 7 and 8 both report 0.0.0. */
+        IdentityCatalog: {
+            operating_systems: components["schemas"]["CatalogOS"][];
+            /** @description Handsets. The binding unit on mobile. */
+            devices: components["schemas"]["CatalogDevice"][];
+            browsers: components["schemas"]["CatalogBrowser"][];
+            screens: components["schemas"]["CatalogScreen"][];
+            /** @description Pairs with a screen to give the physical resolution. */
+            density_pixel_ratios: number[];
+            gpus: components["schemas"]["CatalogGPU"][];
+            hardware_concurrency: number[];
+            /** @description deviceMemory in GiB. The browser caps what it reports at 8. */
+            memory: number[];
+            geos: components["schemas"]["CatalogGeo"][];
+        };
+        CatalogOS: {
+            /** @enum {string} */
+            os: "Windows" | "Macintosh" | "Linux" | "Android" | "Ios";
+            /**
+             * @description A mobile system carries no platform or releases of its own — the handset does, so a device is chosen first and fixes them.
+             * @enum {string}
+             */
+            form_factor: "desktop" | "mobile";
+            navigator_platform: string;
+            bitness: string;
+            architecture: string;
+            /** @description What runs on the platform. There is no Safari on Windows. */
+            brands: ("chrome" | "safari" | "edge")[];
+            versions: components["schemas"]["CatalogOSVersion"][];
+        };
+        /** @description One release and the UA-CH platform versions that belong to it, newest first. The release a user names and the value that ships in the record are different strings. */
+        CatalogOSVersion: {
+            os_version: string;
+            platform_versions: string[];
+        };
+        /** @description A handset, and the binding unit on mobile: one model fixes the screen, the ratio, the GPU, the cores and the memory together, because they shipped in one box. Only the release and which card answered are choices. */
+        CatalogDevice: {
+            name: string;
+            /** @enum {string} */
+            os: "Windows" | "Macintosh" | "Linux" | "Android" | "Ios";
+            brands: ("chrome" | "safari" | "edge")[];
+            /** @description What Sec-CH-UA-Model reports; several codes share one handset. */
+            models: string[];
+            versions: components["schemas"]["CatalogOSVersion"][];
+            navigator_platforms: string[];
+            screen: {
+                logical_width: number;
+                logical_height: number;
+                original_width: number;
+                original_height: number;
+                density_pixel_ratio: number;
+            };
+            hardware_concurrency: number[];
+            memory: number[];
+            gpus: components["schemas"]["CatalogGPU"][];
+        };
+        CatalogBrowser: {
+            /** @enum {string} */
+            brand: "chrome" | "safari" | "edge";
+            /** @description Released versions, newest first. */
+            versions: string[];
+        };
+        /** @description A logical resolution and the share of desktops reporting it. */
+        CatalogScreen: {
+            width: number;
+            height: number;
+            share: number;
+        };
+        /** @description Bound to the platform that can report it. ANGLE over Direct3D exists only on Windows, "… OpenGL Engine" only on a Mac, and Safari reports one Apple pair whatever card is underneath. */
+        CatalogGPU: {
+            /** @enum {string} */
+            os: "Windows" | "Macintosh" | "Linux" | "Android" | "Ios";
+            brands: ("chrome" | "safari" | "edge")[];
+            vendor: string;
+            webgl_renderer: string;
+            webgl_vendor: string;
+        };
+        /** @description What a country implies about language and clock. Exit geography that disagrees with either is a known tell. */
+        CatalogGeo: {
+            /** @enum {string} */
+            code: "US" | "UK" | "JP" | "DE" | "FR" | "CA" | "AU" | "IN" | "BR" | "KR" | "IT" | "ES" | "NL" | "PL" | "SE" | "MX" | "SG" | "ZA";
+            languages: string[];
+            timezone: string;
         };
         /** @description Mirrors the rustenium-identity record the browser server applies. */
         BrowserIdentity: {
@@ -1623,6 +1724,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["User"];
+                };
+            };
+        };
+    };
+    getIdentityCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Identity catalogue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityCatalog"];
                 };
             };
         };

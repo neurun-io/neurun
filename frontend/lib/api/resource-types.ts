@@ -157,6 +157,76 @@ export interface RedactedCookie {
   value_size: number;
 }
 
+/**
+ * The values an identity is assembled from.
+ *
+ * Several are binding rather than independent: an OS fixes navigator.platform,
+ * bitness and architecture, limits which brands and releases exist under it, and
+ * each release carries its own UA-CH platform versions — Windows 11 reports
+ * 15.0.0, and 7 and 8 both report 0.0.0.
+ */
+export interface IdentityCatalog {
+  operating_systems: CatalogOS[];
+  devices: CatalogDevice[];
+  browsers: { brand: BrowserBrand; versions: string[] }[];
+  screens: { width: number; height: number; share: number }[];
+  density_pixel_ratios: number[];
+  gpus: CatalogGPU[];
+  hardware_concurrency: number[];
+  memory: number[];
+  geos: CatalogGeo[];
+}
+
+export interface CatalogOSVersion {
+  os_version: string;
+  platform_versions: string[];
+}
+
+export interface CatalogOS {
+  os: BrowserIdentity["os"];
+  /** Mobile carries no platform or releases: the handset does. */
+  form_factor: "desktop" | "mobile";
+  navigator_platform: string;
+  bitness: string;
+  architecture: string;
+  /** What runs on the platform. There is no Safari on Windows. */
+  brands: BrowserBrand[];
+  versions: CatalogOSVersion[];
+}
+
+/**
+ * A handset, and the binding unit on mobile: one model fixes the screen, the
+ * ratio, the GPU, the cores and the memory together, because they shipped in one
+ * box.
+ */
+export interface CatalogDevice {
+  name: string;
+  os: BrowserIdentity["os"];
+  brands: BrowserBrand[];
+  models: string[];
+  versions: CatalogOSVersion[];
+  navigator_platforms: string[];
+  screen: BrowserIdentity["screen"];
+  hardware_concurrency: number[];
+  memory: number[];
+  gpus: CatalogGPU[];
+}
+
+/** Bound to the platform that reports it — Direct3D is Windows, and only there. */
+export interface CatalogGPU {
+  os: BrowserIdentity["os"];
+  brands: BrowserBrand[];
+  vendor: string;
+  webgl_renderer: string;
+  webgl_vendor: string;
+}
+
+export interface CatalogGeo {
+  code: string;
+  languages: string[];
+  timezone: string;
+}
+
 export interface BrowserProfile {
   id: string;
   name: string;

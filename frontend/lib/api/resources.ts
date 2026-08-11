@@ -11,6 +11,7 @@ import type {
   CreatedApiKey,
   Deployment,
   Execution,
+  IdentityCatalog,
   NeurunApp,
   Project,
   User,
@@ -314,10 +315,89 @@ export function revokeAPIKey(id: string) {
   );
 }
 
+/**
+ * Static reference data, so the shape is asserted only where the form binds on
+ * it — everything else rides through as the server sent it.
+ */
+export function getIdentityCatalog(signal?: AbortSignal) {
+  return request<IdentityCatalog>(
+    { path: "/v1/identity-catalog", signal },
+    z.looseObject({
+      operating_systems: z.array(
+        z.looseObject({
+          os: z.string(),
+          form_factor: z.string(),
+          navigator_platform: z.string(),
+          brands: z.array(z.string()),
+          versions: z.array(
+            z.looseObject({ os_version: z.string(), platform_versions: z.array(z.string()) }),
+          ),
+        }),
+      ),
+      devices: z.array(
+        z.looseObject({
+          name: z.string(),
+          os: z.string(),
+          brands: z.array(z.string()),
+          models: z.array(z.string()),
+          versions: z.array(
+            z.looseObject({ os_version: z.string(), platform_versions: z.array(z.string()) }),
+          ),
+          navigator_platforms: z.array(z.string()),
+          screen: z.looseObject({
+            logical_width: z.number(),
+            logical_height: z.number(),
+            original_width: z.number(),
+            original_height: z.number(),
+            density_pixel_ratio: z.number(),
+          }),
+          hardware_concurrency: z.array(z.number()),
+          memory: z.array(z.number()),
+          gpus: z.array(
+            z.looseObject({
+              vendor: z.string(),
+              webgl_renderer: z.string(),
+              webgl_vendor: z.string(),
+            }),
+          ),
+        }),
+      ),
+      browsers: z.array(z.looseObject({ brand: z.string(), versions: z.array(z.string()) })),
+      screens: z.array(z.looseObject({ width: z.number(), height: z.number() })),
+      density_pixel_ratios: z.array(z.number()),
+      gpus: z.array(
+        z.looseObject({
+          os: z.string(),
+          brands: z.array(z.string()),
+          vendor: z.string(),
+          webgl_renderer: z.string(),
+          webgl_vendor: z.string(),
+        }),
+      ),
+      hardware_concurrency: z.array(z.number()),
+      memory: z.array(z.number()),
+      geos: z.array(
+        z.looseObject({
+          code: z.string(),
+          languages: z.array(z.string()),
+          timezone: z.string(),
+        }),
+      ),
+    }) as never,
+  );
+}
+
 export function listBrowserProfiles(signal?: AbortSignal) {
   return request<{ browser_profiles: BrowserProfile[] }>(
     { path: "/v1/browser-profiles", query: { limit: 200 }, signal },
     z.looseObject({ browser_profiles: z.array(browserProfileSchema) }) as never,
+  );
+}
+
+export function getBrowserProfile(id: string, signal?: AbortSignal) {
+  return request<BrowserProfile>(
+    { path: `/v1/browser-profiles/${segment(id)}`, signal },
+    browserProfileSchema as never,
   );
 }
 

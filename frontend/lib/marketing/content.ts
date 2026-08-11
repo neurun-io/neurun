@@ -80,11 +80,6 @@ export const CAPABILITIES: Capability[] = [
     state: "roadmap",
   },
   {
-    name: "Browsers and sessions",
-    detail: "Discovery of installed browsers, import by path, and one running session per registered browser.",
-    state: "roadmap",
-  },
-  {
     name: "Proxies",
     detail: "Pool health, quarantine and per-target latency. Proxy secrets are write-only and never returned.",
     state: "roadmap",

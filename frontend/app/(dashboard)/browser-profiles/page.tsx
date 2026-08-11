@@ -1,27 +1,18 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 
+import { ProfileForm, type ProfileValues } from "@/components/browser-profiles/profile-form";
 import { ConfirmDeleteDialog } from "@/components/neurun/confirm-delete-dialog";
 import { ErrorPanel, InlineError } from "@/components/neurun/error-panel";
 import { Callout, EmptyState } from "@/components/neurun/feedback";
-import { JsonView } from "@/components/neurun/json-view";
-import { KeyValue } from "@/components/neurun/key-value";
 import { PageHeader } from "@/components/neurun/page-header";
 import { Panel } from "@/components/neurun/panel";
 import { Timestamp } from "@/components/neurun/timestamp";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -31,29 +22,29 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  useBrowserProfileStateQuery,
   useBrowserProfilesQuery,
   useCreateBrowserProfileMutation,
   useDeleteBrowserProfileMutation,
 } from "@/lib/api/queries";
-import type { BrowserKind, BrowserProfile } from "@/lib/api/resource-types";
+import type { BrowserProfile } from "@/lib/api/resource-types";
 
 export default function BrowserProfilesPage() {
   const query = useBrowserProfilesQuery();
   const create = useCreateBrowserProfileMutation();
   const remove = useDeleteBrowserProfileMutation();
 
-  const [name, setName] = useState("");
-  const [browser, setBrowser] = useState<BrowserKind>("chrome");
+  // Bumped on a successful create, which remounts the form rather than reaching
+  // into it to clear twenty-odd fields one at a time.
+  const [createdCount, setCreatedCount] = useState(0);
   const [doomed, setDoomed] = useState<BrowserProfile | null>(null);
-  const [revealing, setRevealing] = useState<string | null>(null);
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    // No identity: a profile starts as a plain browser and is given a persona
-    // afterwards. Asking for twenty fingerprint fields up front would make the
-    // common case the hard one.
-    create.mutate({ name, browser }, { onSuccess: () => setName("") });
+  function submitNew(values: ProfileValues) {
+    create.mutate(values, {
+      onSuccess: () => {
+        setCreatedCount((count) => count + 1);
+        toast.success("Browser profile created");
+      },
+    });
   }
 
   return (
@@ -70,38 +61,13 @@ export default function BrowserProfilesPage() {
         </Callout>
 
         <Panel label="New profile">
-          <form onSubmit={submit} className="grid gap-3 md:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="browser-profile-name">Name</Label>
-              <Input
-                id="browser-profile-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="browser-profile-browser">Browser</Label>
-              <Select
-                value={browser}
-                onValueChange={(value) => setBrowser(value as BrowserKind)}
-              >
-                <SelectTrigger id="browser-profile-browser">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="chrome">Chrome</SelectItem>
-                  <SelectItem value="firefox">Firefox</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="md:col-span-3">
-              {create.isError ? <InlineError error={create.error} /> : null}
-              <Button className="mt-2" disabled={create.isPending}>
-                Create profile
-              </Button>
-            </div>
-          </form>
+          <ProfileForm
+            key={createdCount}
+            submitLabel="Create profile"
+            pending={create.isPending}
+            error={create.isError ? <InlineError error={create.error} /> : null}
+            onSubmit={submitNew}
+          />
         </Panel>
 
         {query.isError ? (
@@ -124,21 +90,30 @@ export default function BrowserProfilesPage() {
                     <TableHead>Identity</TableHead>
                     <TableHead>Remembers</TableHead>
                     <TableHead>Updated</TableHead>
-                    <TableHead />
+                    <TableHead className="w-0 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {query.data.browser_profiles.map((profile) => (
                     <TableRow key={profile.id}>
-                      <TableCell>{profile.name}</TableCell>
+                      <TableCell>
+                        <Link className="underline" href={`/browser-profiles/${profile.id}`}>
+                          {profile.name}
+                        </Link>
+                      </TableCell>
                       <TableCell className="font-mono text-micro">
                         {profile.browser}
                       </TableCell>
                       <TableCell>
                         {profile.identity ? (
-                          <Badge>
-                            {profile.identity.brand} on {profile.identity.os}
-                          </Badge>
+                          <span className="flex flex-wrap items-center gap-1">
+                            <Badge>
+                              {profile.identity.brand} on {profile.identity.os}
+                            </Badge>
+                            {profile.identity.proxy_set ? (
+                              <Badge variant="outline">proxy</Badge>
+                            ) : null}
+                          </span>
                         ) : (
                           <span className="text-fg-muted">Plain browser</span>
                         )}
@@ -152,18 +127,14 @@ export default function BrowserProfilesPage() {
                       <TableCell>
                         <Timestamp value={profile.updated_at} />
                       </TableCell>
-                      <TableCell className="space-x-2 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setRevealing(profile.id)}
-                        >
-                          State
-                        </Button>
+                      <TableCell className="text-right">
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => setDoomed(profile)}
+                          onClick={() => {
+                            remove.reset();
+                            setDoomed(profile);
+                          }}
                         >
                           Delete
                         </Button>
@@ -175,10 +146,6 @@ export default function BrowserProfilesPage() {
             )}
           </Panel>
         )}
-
-        {revealing ? (
-          <ProfileState id={revealing} onClose={() => setRevealing(null)} />
-        ) : null}
       </div>
 
       <ConfirmDeleteDialog
@@ -200,54 +167,5 @@ export default function BrowserProfilesPage() {
         }}
       />
     </div>
-  );
-}
-
-/**
- * The profile's cookies and storage, in the clear.
- *
- * Fetched only when asked for, and never cached: this is the one response that
- * carries live credentials, so it should not sit in the query cache waiting for
- * somebody to open devtools.
- */
-function ProfileState({ id, onClose }: { id: string; onClose: () => void }) {
-  const query = useBrowserProfileStateQuery(id);
-
-  return (
-    <Panel
-      label="Profile state"
-      actions={
-        <Button size="sm" variant="ghost" onClick={onClose}>
-          Hide
-        </Button>
-      }
-    >
-      <Callout kind="warning" title="These are live credentials">
-        Session cookies here are as good as being signed in. Copying them out is
-        exporting the account.
-      </Callout>
-      {query.isError ? (
-        <InlineError error={query.error} />
-      ) : query.isPending ? (
-        <p className="text-fg-muted">Loading…</p>
-      ) : (
-        <div className="mt-3 space-y-4">
-          <KeyValue
-            rows={[
-              { label: "Cookies", value: query.data.cookies.length },
-              {
-                label: "Local storage origins",
-                value: Object.keys(query.data.local_storage).length,
-              },
-              {
-                label: "Session storage origins",
-                value: Object.keys(query.data.session_storage).length,
-              },
-            ]}
-          />
-          <JsonView value={query.data} preRedacted />
-        </div>
-      )}
-    </Panel>
   );
 }

@@ -216,6 +216,7 @@ func (server *Server) routes() *gin.Engine {
 	v1.PATCH("/users/:user_id", server.scoped(ScopeUsersWrite), server.updateUser)
 	v1.DELETE("/users/:user_id", server.scoped(ScopeUsersWrite), server.deleteUser)
 
+	v1.GET("/identity-catalog", server.scoped(ScopeBrowserProfilesRead), server.identityCatalog)
 	v1.GET("/browser-profiles", server.scoped(ScopeBrowserProfilesRead), server.listBrowserProfiles)
 	v1.POST("/browser-profiles", server.scoped(ScopeBrowserProfilesWrite), server.createBrowserProfile)
 	v1.GET("/browser-profiles/:browser_profile_id", server.scoped(ScopeBrowserProfilesRead), server.getBrowserProfile)

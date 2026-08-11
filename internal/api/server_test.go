@@ -94,6 +94,9 @@ func TestProtectedRoutesRejectAnonymousCallers(t *testing.T) {
 		"/v1/users",
 		"/v1/users/usr_one",
 		"/v1/api-keys",
+		"/v1/browser-profiles",
+		"/v1/browser-profiles/bpr_one",
+		"/v1/identity-catalog",
 	} {
 		response := do(t, server, http.MethodGet, target)
 		if response.Code != http.StatusUnauthorized {

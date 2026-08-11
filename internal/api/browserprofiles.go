@@ -31,6 +31,23 @@ func (server *Server) listBrowserProfiles(ctx *gin.Context) {
 	})
 }
 
+// identityCatalog serves the values an identity is assembled from — operating
+// systems and their releases, browser versions, screens, GPUs, and what a
+// country implies about language and clock.
+//
+// It is static reference data rather than anything this organization owns, and
+// it exists so a caller selects instead of inventing: most of these fields are
+// only coherent in combination, and a Direct3D renderer on a Mac or a Windows
+// release nobody shipped is the contradiction a detector is looking for.
+func (server *Server) identityCatalog(ctx *gin.Context) {
+	catalog, err := browser.IdentityCatalog()
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, catalog)
+}
+
 func (server *Server) createBrowserProfile(ctx *gin.Context) {
 	if !server.browsersConfigured(ctx) {
 		return

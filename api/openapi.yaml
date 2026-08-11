@@ -531,6 +531,21 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/User"}
+  /v1/identity-catalog:
+    get:
+      operationId: getIdentityCatalog
+      description: >-
+        The values a browser identity is assembled from. Static reference data,
+        not organization state. Most of these fields are only coherent in
+        combination, so entries carry the platform they belong to: a Direct3D
+        renderer on a Mac, or a Windows release nobody shipped, is the
+        contradiction a detector looks for.
+      responses:
+        "200":
+          description: Identity catalogue.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/IdentityCatalog"}
   /v1/browser-profiles:
     get:
       operationId: listBrowserProfiles
@@ -1052,6 +1067,173 @@ components:
           items: {type: string}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    IdentityCatalog:
+      type: object
+      description: >-
+        Selectable values for a BrowserIdentity. Several are binding: an
+        operating system fixes navigator.platform, bitness and architecture,
+        limits which releases and brands exist under it, and each release
+        carries its own UA-CH platform versions — Windows 11 reports 15.0.0,
+        and Windows 7 and 8 both report 0.0.0.
+      required:
+        [operating_systems, devices, browsers, screens, density_pixel_ratios,
+         gpus, hardware_concurrency, memory, geos]
+      properties:
+        operating_systems:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogOS"}
+        devices:
+          type: array
+          description: Handsets. The binding unit on mobile.
+          items: {$ref: "#/components/schemas/CatalogDevice"}
+        browsers:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogBrowser"}
+        screens:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogScreen"}
+        density_pixel_ratios:
+          type: array
+          description: Pairs with a screen to give the physical resolution.
+          items: {type: number}
+        gpus:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogGPU"}
+        hardware_concurrency:
+          type: array
+          items: {type: integer}
+        memory:
+          type: array
+          description: deviceMemory in GiB. The browser caps what it reports at 8.
+          items: {type: integer}
+        geos:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogGeo"}
+    CatalogOS:
+      type: object
+      required:
+        [os, form_factor, navigator_platform, bitness, architecture, brands, versions]
+      properties:
+        os: {type: string, enum: [Windows, Macintosh, Linux, Android, Ios]}
+        form_factor:
+          type: string
+          enum: [desktop, mobile]
+          description: >-
+            A mobile system carries no platform or releases of its own — the
+            handset does, so a device is chosen first and fixes them.
+        navigator_platform: {type: string}
+        bitness: {type: string}
+        architecture: {type: string}
+        brands:
+          type: array
+          description: What runs on the platform. There is no Safari on Windows.
+          items: {type: string, enum: [chrome, safari, edge]}
+        versions:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogOSVersion"}
+    CatalogOSVersion:
+      type: object
+      description: >-
+        One release and the UA-CH platform versions that belong to it, newest
+        first. The release a user names and the value that ships in the record
+        are different strings.
+      required: [os_version, platform_versions]
+      properties:
+        os_version: {type: string}
+        platform_versions:
+          type: array
+          items: {type: string}
+    CatalogDevice:
+      type: object
+      description: >-
+        A handset, and the binding unit on mobile: one model fixes the screen,
+        the ratio, the GPU, the cores and the memory together, because they
+        shipped in one box. Only the release and which card answered are choices.
+      required:
+        [name, os, brands, models, versions, navigator_platforms, screen,
+         hardware_concurrency, memory, gpus]
+      properties:
+        name: {type: string}
+        os: {type: string, enum: [Windows, Macintosh, Linux, Android, Ios]}
+        brands:
+          type: array
+          items: {type: string, enum: [chrome, safari, edge]}
+        models:
+          type: array
+          description: What Sec-CH-UA-Model reports; several codes share one handset.
+          items: {type: string}
+        versions:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogOSVersion"}
+        navigator_platforms:
+          type: array
+          items: {type: string}
+        screen:
+          type: object
+          required:
+            [logical_width, logical_height, original_width, original_height,
+             density_pixel_ratio]
+          properties:
+            logical_width: {type: integer}
+            logical_height: {type: integer}
+            original_width: {type: integer}
+            original_height: {type: integer}
+            density_pixel_ratio: {type: number}
+        hardware_concurrency:
+          type: array
+          items: {type: integer}
+        memory:
+          type: array
+          items: {type: integer}
+        gpus:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogGPU"}
+    CatalogBrowser:
+      type: object
+      required: [brand, versions]
+      properties:
+        brand: {type: string, enum: [chrome, safari, edge]}
+        versions:
+          type: array
+          description: Released versions, newest first.
+          items: {type: string}
+    CatalogScreen:
+      type: object
+      description: A logical resolution and the share of desktops reporting it.
+      required: [width, height, share]
+      properties:
+        width: {type: integer}
+        height: {type: integer}
+        share: {type: number}
+    CatalogGPU:
+      type: object
+      description: >-
+        Bound to the platform that can report it. ANGLE over Direct3D exists
+        only on Windows, "… OpenGL Engine" only on a Mac, and Safari reports one
+        Apple pair whatever card is underneath.
+      required: [os, brands, vendor, webgl_renderer, webgl_vendor]
+      properties:
+        os: {type: string, enum: [Windows, Macintosh, Linux, Android, Ios]}
+        brands:
+          type: array
+          items: {type: string, enum: [chrome, safari, edge]}
+        vendor: {type: string}
+        webgl_renderer: {type: string}
+        webgl_vendor: {type: string}
+    CatalogGeo:
+      type: object
+      description: >-
+        What a country implies about language and clock. Exit geography that
+        disagrees with either is a known tell.
+      required: [code, languages, timezone]
+      properties:
+        code:
+          type: string
+          enum: [US, UK, JP, DE, FR, CA, AU, IN, BR, KR, IT, ES, NL, PL, SE, MX, SG, ZA]
+        languages:
+          type: array
+          items: {type: string}
+        timezone: {type: string}
     BrowserIdentity:
       type: object
       description: Mirrors the rustenium-identity record the browser server applies.

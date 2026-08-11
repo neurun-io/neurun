@@ -31,7 +31,6 @@ describe("focused navigation", () => {
       "/stealth",
       "/ai-builder",
       "/runners",
-      "/browsers",
       "/proxies",
       "/data-health",
       "/settings/webhooks",

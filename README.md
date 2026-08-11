@@ -40,10 +40,11 @@ launches Chrome or Firefox through `neurun-browser` (a Rust gRPC server on
 loopback beside it), drives the returned CDP or BiDi endpoint, and PUTs the
 captured state back. See [docs/browser-profile.md](docs/browser-profile.md).
 
-Registered-browser discovery, proxies, fleet aggregation, webhooks, an activity
-log and data health remain later milestones. The dashboard's roadmap routes name the
-contracts they still need rather than rendering placeholder data, and the public
-site's capability matrix marks the same rows rather than selling them.
+AI stealth coherence, an AI automation builder, proxies, fleet aggregation,
+webhooks, an activity log and data health remain later milestones. The
+dashboard's roadmap routes name the contracts they still need rather than
+rendering placeholder data, and the public site's capability matrix marks the
+same rows rather than selling them.
 
 ## Quick start with Docker
 

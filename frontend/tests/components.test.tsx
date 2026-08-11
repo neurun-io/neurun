@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { ThemeProvider } from "next-themes";
+
+import { ProfileForm, type ProfileValues } from "@/components/browser-profiles/profile-form";
 
 import { ThemeToggle } from "@/components/neurun/theme-toggle";
 import { LoginScreen } from "@/components/auth/login-screen";
@@ -75,13 +77,69 @@ describe("ErrorPanel", () => {
 
 describe("RoadmapRoute", () => {
   it("states that the capability is unavailable and names what is missing", () => {
-    render(<RoadmapRoute {...ROADMAP.browsers} />);
+    render(<RoadmapRoute {...ROADMAP.runners} />);
 
-    expect(screen.getByRole("heading", { name: "Browsers" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Runners" })).toBeInTheDocument();
     expect(screen.getByText("not in this release")).toBeInTheDocument();
     expect(
-      screen.getByText(/session create \/ list \/ detail \/ keepalive/),
+      screen.getByText(/runner create \/ list \/ detail \/ delete/),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ProfileForm", () => {
+  it("starts plain, and fills an identity from the catalogue when asked", async () => {
+    const submitted: ProfileValues[] = [];
+    render(
+      <Providers>
+        <ProfileForm
+          submitLabel="Create profile"
+          pending={false}
+          onSubmit={(values) => submitted.push(values)}
+        />
+      </Providers>,
+    );
+
+    // A profile is a plain browser until somebody says otherwise, so none of the
+    // persona fields are on screen yet.
+    expect(screen.getByText("Plain browser")).toBeInTheDocument();
+    expect(screen.queryByLabelText("WebGL vendor")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "shopper" } });
+
+    // The switch waits for the catalogue: there is nothing coherent to fill in
+    // until the server has said what exists.
+    const identity = screen.getByRole("switch");
+    await waitFor(() => expect(identity).toBeEnabled());
+    await act(async () => {
+      identity.click();
+    });
+
+    // Fixed by the operating system rather than typed, and derived rather than
+    // asked for: Win32 comes with Windows, and physical pixels with the ratio.
+    expect(screen.getByLabelText("navigator.platform")).toHaveValue("Win32");
+    expect(screen.getByLabelText("Physical pixels")).toHaveValue("1920×1080");
+    expect(screen.getByLabelText("WebGL vendor")).toHaveValue("Google Inc. (Intel)");
+    expect(screen.getByText(/Reported to UA-CH as 15\.0\.0/)).toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Create profile" }).click();
+    });
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].name).toBe("shopper");
+    // The fields are text while they are typed; the parse happens once, here.
+    expect(submitted[0].identity).toMatchObject({
+      os: "Windows",
+      os_version: "11",
+      platform: { navigator_platform: "Win32", version: "15.0.0" },
+      brand: "chrome",
+      browser_version: [139, 0, 6889, 109],
+      language: ["en-US", "en"],
+      timezone: "America/New_York",
+      screen: { logical_width: 1920, original_width: 1920, density_pixel_ratio: 1 },
+      gpu: { webgl_renderer: "ANGLE (Intel(R) HD Graphics 620 Direct3D11 vs_5_0 ps_5_0)" },
+    });
   });
 });
 
