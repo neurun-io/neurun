@@ -87,6 +87,34 @@ so the JS surface and the header surface answer identically.
    patched here; on a claimed platform where they differ, they still read the
    host.
 
+## The version can only move forwards
+
+A browser updates itself. Over a profile's life its version is expected to climb,
+and one that never moves is a weak signal on its own — a machine that has not
+restarted its browser in eight months.
+
+**Backwards is not a weak signal.** No install downgrades itself, so a profile
+whose version regressed between sessions is claiming an event that does not
+happen. Combined with continuity — same cookies, same fingerprint, older browser
+— it is a stronger tell than the version being stale in the first place.
+
+The dashboard enforces this asymmetry:
+
+- **Forward** saves straight through, with a note that says so. It is the normal
+  case and should not feel like a warning.
+- **Backward** is gated behind the same typed confirmation as a fingerprint
+  change (`frontend/components/browser-profiles/confirm-fingerprint-change.tsx`),
+  because the only honest reason to do it is that the persona was wrong from the
+  start.
+
+`versionMove` in `frontend/lib/view/browser-identity.ts` compares the version
+arrays part by part, so `139.0.6889.109 → 139.0.6889.200` is forward and
+`139.0.6889.109 → 139.0.6889.1` is backward.
+
+Two related rules that are not enforced anywhere yet: a version should not jump
+so far forward that the intervening releases never existed, and it should not
+outrun the real stable channel.
+
 ## Gaps in this implementation
 
 - Only `platform` is spoofed on navigator; `appVersion`, `oscpu`, `productSub`

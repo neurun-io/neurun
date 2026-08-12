@@ -13,7 +13,7 @@ import { formatAbsolute, formatRelative, parseInstant } from "@/lib/view/time";
 import { isSecretKey, redactSecrets, redactString, toRedactedJson } from "@/lib/view/redaction";
 import {
   catalogDraft,
-  changedRows,
+  identityChanged,
   fromDraft,
   gpusFor,
   withBrand,
@@ -21,6 +21,7 @@ import {
   withOS,
   withOSVersion,
   withRatio,
+  versionMove,
 } from "@/lib/view/browser-identity";
 import type { BrowserProfile, IdentityCatalog } from "@/lib/api/resource-types";
 
@@ -372,58 +373,67 @@ describe("identity bindings", () => {
   });
 });
 
-describe("changed rows", () => {
-  const base: BrowserProfile = {
-    id: "bpr_1",
-    name: "shopper",
-    browser: "chrome",
-    identity: null,
-    cookies: [],
-    storage_origins: [],
-    created_at: "2026-08-01T00:00:00Z",
-    updated_at: "2026-08-01T00:00:00Z",
+describe("fingerprint and version guards", () => {
+  const identity: NonNullable<BrowserProfile["identity"]> = {
+    os: "Windows",
+    os_version: "11",
+    platform: { navigator_platform: "Win32", version: "15.0.0" },
+    brand: "chrome",
+    browser_version: [139, 0, 6889, 109],
+    screen: {
+      logical_width: 1920,
+      logical_height: 1080,
+      original_width: 1920,
+      original_height: 1080,
+      density_pixel_ratio: 1,
+    },
+    hardware_concurrency: 8,
+    memory: 8,
+    gpu: {
+      vendor: "Intel Inc.",
+      webgl_renderer: "ANGLE (Intel)",
+      webgl_vendor: "Google Inc. (Intel)",
+    },
+    geo: "US",
+    language: ["en-US", "en"],
+    has_battery: false,
+    has_mouse: true,
+    has_touch: false,
+    proxy_set: false,
   };
 
-  it("names only what a save moved", () => {
-    expect(changedRows(base, { ...base, name: "shopper-uk" })).toEqual(["Name"]);
+  it("sees a dirty identity, whatever moved", () => {
+    expect(identityChanged(identity, identity)).toBe(false);
+    expect(identityChanged(identity, { ...identity, memory: 4 })).toBe(true);
+    expect(identityChanged(identity, { ...identity, geo: "DE" })).toBe(true);
+    expect(
+      identityChanged(identity, { ...identity, gpu: { ...identity.gpu, vendor: "Apple" } }),
+    ).toBe(true);
   });
 
-  it("says nothing when a save changed nothing", () => {
-    expect(changedRows(base, { ...base })).toEqual([]);
+  it("ignores the two fields that cannot be compared honestly", () => {
+    // The API never returns the proxy, and the version has its own rule.
+    expect(identityChanged(identity, { ...identity, proxy_set: true })).toBe(false);
+    expect(
+      identityChanged(identity, { ...identity, browser_version: [140, 0, 0, 0] }),
+    ).toBe(false);
   });
 
-  it("counts an identity arriving as a change to every row it brings", () => {
-    const withIdentity: BrowserProfile = {
-      ...base,
-      identity: {
-        os: "Windows",
-        os_version: "11",
-        platform: { navigator_platform: "Win32", version: "15.0.0" },
-        brand: "chrome",
-        browser_version: [139, 0],
-        screen: {
-          logical_width: 1920,
-          logical_height: 1080,
-          original_width: 1920,
-          original_height: 1080,
-          density_pixel_ratio: 1,
-        },
-        hardware_concurrency: 8,
-        memory: 8,
-        gpu: { vendor: "Intel", webgl_renderer: "ANGLE (Intel)", webgl_vendor: "Google Inc. (Intel)" },
-        geo: "US",
-        language: ["en-US", "en"],
-        has_battery: false,
-        has_mouse: true,
-        has_touch: false,
-        proxy_set: false,
-      },
-    };
+  it("treats gaining or losing an identity as a change", () => {
+    expect(identityChanged(null, identity)).toBe(true);
+    expect(identityChanged(identity, null)).toBe(true);
+    expect(identityChanged(null, null)).toBe(false);
+  });
 
-    const changed = changedRows(base, withIdentity);
+  it("tells a browser update apart from a downgrade", () => {
+    const at = (version: number[]) => ({ ...identity, browser_version: version });
 
-    expect(changed).toContain("Identity");
-    expect(changed).toContain("GPU");
-    expect(changed).not.toContain("Name");
+    expect(versionMove(identity, at([140, 0, 7339, 80]))).toBe("forward");
+    expect(versionMove(identity, at([139, 0, 6889, 200]))).toBe("forward");
+    expect(versionMove(identity, at([139, 0, 6889, 109]))).toBe("same");
+    // A machine does not downgrade its own browser.
+    expect(versionMove(identity, at([138, 0, 3402, 56]))).toBe("backward");
+    expect(versionMove(identity, at([139, 0, 6889, 1]))).toBe("backward");
+    expect(versionMove(identity, null)).toBe("none");
   });
 });

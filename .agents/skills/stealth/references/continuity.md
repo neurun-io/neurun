@@ -39,17 +39,23 @@ a session, so an arrival is not always direct.
 1. **Do not re-seed.** Anything that changes a seeded field mints a new persona.
    Editing the GPU, screen, cores, memory, OS or release of an existing profile
    *is* a new machine wearing an old cookie jar — which is a contradiction, not a
-   tweak.
-2. **Do not share a seed between personas that should be strangers.** Two
+   tweak. The dashboard gates this behind a typed confirmation whenever the
+   profile already remembers something; the gate exists because the cost is
+   invisible at save time and arrives a week later.
+2. **Let the browser version climb, never fall.** Updating is what a real install
+   does unprompted; downgrading is not something that happens. A regressed
+   version on an unchanged fingerprint is a stronger tell than a stale one. →
+   `user-agent.md`.
+3. **Do not share a seed between personas that should be strangers.** Two
    profiles built from the same handset with the same defaults hash identically.
    Vary at least one seeded field, or accept they are linkable.
-3. **Do not move a persona's country between sessions** while keeping its state.
+4. **Do not move a persona's country between sessions** while keeping its state.
    People do travel; fleets do not.
-4. **Do not let state and identity drift apart.** A cookie jar full of a German
+5. **Do not let state and identity drift apart.** A cookie jar full of a German
    site's sessions attached to a `en-US`/New York identity is a story that does
    not hold.
-5. **Do not start every session from a blank history and a direct arrival.**
-6. **Do not run two sessions from one profile concurrently.** Both capture, and
+6. **Do not start every session from a blank history and a direct arrival.**
+7. **Do not run two sessions from one profile concurrently.** Both capture, and
    the last `PUT` replaces wholesale — the account's own view of the "user"
    becomes two overlapping sessions from one machine.
 

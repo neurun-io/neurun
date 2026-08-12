@@ -414,8 +414,12 @@ export function useCreateBrowserProfileMutation() {
   return useMutation({
     mutationFn: async (body: Parameters<typeof resources.createBrowserProfile>[0]) =>
       (await resources.createBrowserProfile(body)).data,
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: queryKeys.browserProfiles(scope) }),
+    onSuccess: (profile) => {
+      // Seeded so routing straight to the new profile renders it rather than
+      // flashing a load of what the response already carried.
+      queryClient.setQueryData(queryKeys.browserProfile(scope, profile.id), profile);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.browserProfiles(scope) });
+    },
   });
 }
 

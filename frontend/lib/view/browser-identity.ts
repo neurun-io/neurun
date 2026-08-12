@@ -11,7 +11,6 @@
 import type {
   BrowserBrand,
   BrowserIdentity,
-  BrowserProfile,
   CatalogDevice,
   CatalogGPU,
   CatalogOS,
@@ -428,73 +427,65 @@ export function fromDraft(draft: IdentityDraft): BrowserIdentity {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Summary                                                                     */
+/* Guards                                                                      */
 /* -------------------------------------------------------------------------- */
 
-export interface SummaryRow {
-  label: string;
-  value: string;
+type SeedSource = BrowserIdentity | RedactedBrowserIdentity;
+
+/**
+ * A stable string for comparing two identities, skipping the three fields that
+ * cannot be compared honestly: the proxy is never returned by the API, and the
+ * browser version has its own directional rule below.
+ */
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  return `{${Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => key !== "proxy" && key !== "proxy_set" && key !== "browser_version")
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, entry]) => `${key}:${canonical(entry)}`)
+    .join(",")}}`;
 }
 
 /**
- * The profile as a reader scans it, and the basis for what a save changed. Every
- * value is a string so two versions of a profile can be compared by reading the
- * same rows a person reads, rather than by walking the payload.
+ * Whether a save moves the identity at all.
+ *
+ * Every field of it feeds what a site sees — and the OS, release, screen, GPU,
+ * cores, memory and platform feed the fingerprint seed itself, so the canvas,
+ * audio and WebGL hashes move with them. A profile that keeps its cookies
+ * through that presents one account from a computer replaced overnight.
  */
-export function profileSummary(profile: BrowserProfile): SummaryRow[] {
-  const identity = profile.identity;
-  const rows: SummaryRow[] = [
-    { label: "Name", value: profile.name },
-    { label: "Browser", value: profile.browser },
-    {
-      label: "Identity",
-      value: identity
-        ? `${identity.brand} on ${identity.os} ${identity.os_version ?? ""}`.trim()
-        : "Plain browser",
-    },
-  ];
-
-  if (identity) {
-    rows.push(
-      { label: "Device", value: identity.device_model?.trim() || "Desktop or laptop" },
-      {
-        label: "Platform",
-        value: [identity.platform?.navigator_platform, identity.platform?.version]
-          .filter(Boolean)
-          .join(" "),
-      },
-      { label: "Browser version", value: (identity.browser_version ?? []).join(".") },
-      {
-        label: "Screen",
-        value: `${text(identity.screen?.logical_width)}×${text(identity.screen?.logical_height)} @${text(identity.screen?.density_pixel_ratio)}`,
-      },
-      {
-        label: "Hardware",
-        value: `${text(identity.hardware_concurrency)} cores · ${text(identity.memory)} GiB`,
-      },
-      { label: "GPU", value: identity.gpu?.webgl_renderer ?? "" },
-      { label: "Locale", value: `${identity.geo} · ${(identity.language ?? []).join(", ")}` },
-      {
-        label: "Timezone",
-        value: identity.timezone?.trim() || "Resolved through the proxy",
-      },
-      { label: "Proxy", value: identity.proxy_set ? "Set" : "None" },
-    );
-  }
-
-  rows.push(
-    { label: "Cookies", value: String(profile.cookies.length) },
-    { label: "Storage origins", value: String(profile.storage_origins.length) },
-  );
-  return rows;
+export function identityChanged(
+  before: SeedSource | null | undefined,
+  after: SeedSource | null | undefined,
+): boolean {
+  if (!before && !after) return false;
+  if (!before || !after) return true;
+  return canonical(before) !== canonical(after);
 }
 
-/** Which summary rows a save actually moved. An empty list means nothing did. */
-export function changedRows(before: BrowserProfile, after: BrowserProfile): string[] {
-  const previous = new Map(profileSummary(before).map((row) => [row.label, row.value]));
-  return profileSummary(after)
-    .filter((row) => previous.get(row.label) !== row.value)
-    .map((row) => row.label);
+/**
+ * How the browser version moved.
+ *
+ * Forward is what a real install does on its own — browsers update themselves,
+ * and a version that never moves is its own weak signal. Backward is not: a
+ * machine does not downgrade its browser, so a profile whose version regressed
+ * is claiming something that does not happen.
+ */
+export function versionMove(
+  before: SeedSource | null | undefined,
+  after: SeedSource | null | undefined,
+): "none" | "same" | "forward" | "backward" {
+  const left = before?.browser_version;
+  const right = after?.browser_version;
+  if (!left?.length || !right?.length) return "none";
+
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const difference = (right[index] ?? 0) - (left[index] ?? 0);
+    if (difference > 0) return "forward";
+    if (difference < 0) return "backward";
+  }
+  return "same";
 }
 
 function text(value: number | null | undefined): string {
