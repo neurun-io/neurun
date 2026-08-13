@@ -207,11 +207,6 @@ func (service *BrowserSessionService) OpenDisplay(
 	ctx context.Context,
 	record browser.Session,
 ) (DisplayStream, func(), error) {
-	if !record.HasDisplay() {
-		return nil, nil, fmt.Errorf(
-			"%w: session has no display", browser.ErrInvalid,
-		)
-	}
 	// Insecure is correct precisely because this never leaves the host. It stops
 	// being correct the moment the browser service is on another one.
 	connection, err := grpc.NewClient(

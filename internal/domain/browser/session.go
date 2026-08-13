@@ -55,12 +55,6 @@ type Session struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// HasDisplay reports whether there is anything to stream. A headless session
-// with no framebuffer is legitimate and simply cannot be watched.
-func (record Session) HasDisplay() bool {
-	return strings.TrimSpace(record.DisplayAddress) != ""
-}
-
 func NewSession(
 	id, organizationID, appID string,
 	browser Kind,

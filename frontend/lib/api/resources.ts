@@ -94,7 +94,6 @@ const browserSessionSchema = z.looseObject({
   browser_profile_id: z.string().optional(),
   browser: z.enum(["chrome", "firefox"]),
   status: z.enum(["starting", "live", "failed"]),
-  has_display: z.boolean(),
   started_at: timestampSchema,
   updated_at: timestampSchema,
 });

@@ -95,8 +95,6 @@ message OpenRequest {
 
 message OpenResponse {
   string session_id = 1;
-  // Whether this session has a framebuffer to stream.
-  bool has_display = 2;
 }
 
 message RunRequest {

@@ -101,12 +101,7 @@ export default function BrowserSessionPage() {
         </Panel>
 
         <Panel label="Display" flush>
-          {!session.has_display ? (
-            <EmptyState
-              title="Headless session"
-              description="This browser has no framebuffer, so there is nothing to watch."
-            />
-          ) : watching ? (
+          {watching ? (
             <div className="p-3">
               <DisplayStream sessionId={session.id} />
             </div>

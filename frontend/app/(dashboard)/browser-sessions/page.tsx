@@ -7,7 +7,6 @@ import { EmptyState } from "@/components/neurun/feedback";
 import { PageHeader } from "@/components/neurun/page-header";
 import { StatusBadge } from "@/components/neurun/status-badge";
 import { Timestamp } from "@/components/neurun/timestamp";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -80,14 +79,7 @@ export default function BrowserSessionsPage() {
                       <span className="font-mono text-micro text-fg-muted">no profile</span>
                     )}
                   </TableCell>
-                  <TableCell className="font-mono">
-                    {session.browser}
-                    {session.has_display ? null : (
-                      <Badge className="ml-2" variant="outline">
-                        headless
-                      </Badge>
-                    )}
-                  </TableCell>
+                  <TableCell className="font-mono">{session.browser}</TableCell>
                   <TableCell>
                     <Timestamp value={session.started_at} />
                   </TableCell>

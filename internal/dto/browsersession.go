@@ -16,7 +16,6 @@ type BrowserSessionResponse struct {
 	ProfileID   string    `json:"browser_profile_id,omitempty"`
 	Browser     string    `json:"browser"`
 	Status      string    `json:"status"`
-	HasDisplay  bool      `json:"has_display"`
 	StartedAt   time.Time `json:"started_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -25,7 +24,7 @@ func NewBrowserSessionResponse(record browser.Session) BrowserSessionResponse {
 	return BrowserSessionResponse{
 		ID: record.ID, AppID: record.AppID, ExecutionID: record.ExecutionID,
 		ProfileID: record.ProfileID, Browser: string(record.Browser),
-		Status: string(record.Status), HasDisplay: record.HasDisplay(),
+		Status:    string(record.Status),
 		StartedAt: record.StartedAt, UpdatedAt: record.UpdatedAt,
 	}
 }

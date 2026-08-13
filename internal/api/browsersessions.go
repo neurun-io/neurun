@@ -70,14 +70,6 @@ func (server *Server) streamBrowserDisplay(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	if !record.HasDisplay() {
-		writeProblem(ctx, http.StatusConflict, dto.Problem{
-			Code:    "display_unavailable",
-			Message: "this session is headless and has no display to stream",
-		})
-		return
-	}
-
 	// Opened before the upgrade: once the connection is a WebSocket there is no
 	// way left to answer with a problem document.
 	stream, release, err := server.browserSessions.OpenDisplay(

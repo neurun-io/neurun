@@ -417,10 +417,8 @@ func (x *OpenRequest) GetExecutionId() string {
 }
 
 type OpenResponse struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	// Whether this session has a framebuffer to stream.
-	HasDisplay    bool `protobuf:"varint,2,opt,name=has_display,json=hasDisplay,proto3" json:"has_display,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -460,13 +458,6 @@ func (x *OpenResponse) GetSessionId() string {
 		return x.SessionId
 	}
 	return ""
-}
-
-func (x *OpenResponse) GetHasDisplay() bool {
-	if x != nil {
-		return x.HasDisplay
-	}
-	return false
 }
 
 type RunRequest struct {
@@ -720,12 +711,10 @@ const file_browser_proto_rawDesc = "" +
 	"\abrowser\x18\x01 \x01(\tR\abrowser\x12,\n" +
 	"\x12browser_profile_id\x18\x02 \x01(\tR\x10browserProfileId\x12\x15\n" +
 	"\x06app_id\x18\x03 \x01(\tR\x05appId\x12!\n" +
-	"\fexecution_id\x18\x04 \x01(\tR\vexecutionId\"N\n" +
+	"\fexecution_id\x18\x04 \x01(\tR\vexecutionId\"-\n" +
 	"\fOpenResponse\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1f\n" +
-	"\vhas_display\x18\x02 \x01(\bR\n" +
-	"hasDisplay\"E\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"E\n" +
 	"\n" +
 	"RunRequest\x12\x1d\n" +
 	"\n" +

@@ -45,7 +45,7 @@ export const NAV_SECTIONS: NavSection[] = [
       {
         href: "/browser-sessions",
         label: "Sessions",
-        icon: "screen-share",
+        icon: "monitor",
         availability: "current",
       },
     ],

@@ -35,8 +35,6 @@ export interface BrowserSession {
   browser_profile_id?: string;
   browser: BrowserKind;
   status: BrowserSessionStatus;
-  /** False for a headless session, which is legitimate and simply unwatchable. */
-  has_display: boolean;
   started_at: string;
   updated_at: string;
 }

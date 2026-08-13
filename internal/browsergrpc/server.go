@@ -103,7 +103,9 @@ func (server *Server) OpenSession(
 		ExecutionID:    identity.ExecutionID,
 		ProfileID:      request.GetBrowserProfileId(),
 		Browser:        kind,
-		DisplayAddress: displayAddress(opened, server.supervisor.Address()),
+		// Every session has a framebuffer, and it is reached through the browser
+		// service itself — it multiplexes them all behind one port.
+		DisplayAddress: server.supervisor.Address(),
 	})
 	if err != nil {
 		// The browser is already up; leaving it would strand a process nothing
@@ -200,15 +202,6 @@ func (server *Server) identify(ctx context.Context) (service.ExecutionIdentity, 
 		)
 	}
 	return identity, nil
-}
-
-// displayAddress is where the framebuffer is reached, which is the browser
-// service itself — it multiplexes every session behind one port.
-func displayAddress(opened *browserpb.OpenResponse, serviceAddress string) string {
-	if !opened.GetHasDisplay() {
-		return ""
-	}
-	return serviceAddress
 }
 
 func sessionMessage(record browser.Session) *browserpb.Session {
