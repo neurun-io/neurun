@@ -19,16 +19,29 @@ var (
 	ErrResultTooLarge = errors.New("worker: handler result is too large")
 )
 
-type PythonOptions struct{ Executable string }
+type PythonOptions struct {
+	Executable string
+	// BrowserService is where the image keeps the neurun-browser executable. A
+	// handler that drives a browser is told the path rather than searching for
+	// it, because the child environment is an allowlist and PATH alone would not
+	// settle which build it got.
+	BrowserService string
+}
 
-type PythonRunner struct{ executable string }
+type PythonRunner struct {
+	executable string
+	browser    string
+}
 
 func NewPythonRunner(options PythonOptions) (*PythonRunner, error) {
 	executable := strings.TrimSpace(options.Executable)
 	if executable == "" {
 		executable = "python"
 	}
-	return &PythonRunner{executable: executable}, nil
+	return &PythonRunner{
+		executable: executable,
+		browser:    strings.TrimSpace(options.BrowserService),
+	}, nil
 }
 
 func (runner *PythonRunner) Execute(ctx context.Context, request ExecuteRequest) (ExecuteResult, error) {
@@ -52,7 +65,7 @@ func (runner *PythonRunner) Execute(ctx context.Context, request ExecuteRequest)
 	command := exec.CommandContext(ctx, runner.executable, "-I", bootstrapPath, request.CodeDirectory, request.InstallDirectory, request.Entrypoint, inputPath, resultPath, strconv.FormatInt(request.MaxResultBytes, 10))
 	configureProcessTree(command)
 	command.Dir = work
-	command.Env = pythonEnvironment()
+	command.Env = append(pythonEnvironment(runner.browser), callbackEnvironment(request)...)
 	logs := &limitedBuffer{maximum: request.MaxLogBytes}
 	command.Stdout, command.Stderr = logs, logs
 	if err := command.Run(); err != nil {
@@ -77,15 +90,42 @@ func (runner *PythonRunner) Execute(ctx context.Context, request ExecuteRequest)
 	return ExecuteResult{Output: json.RawMessage(output), Logs: logs.String()}, nil
 }
 
-func pythonEnvironment() []string {
+// childEnvironment is the allowlist every runtime's handler runs under. It is a
+// list rather than a filter so a variable the host happens to carry — a cloud
+// credential, a proxy setting — cannot reach a tenant's code by accident.
+func childEnvironment(browser string, extra ...string) []string {
 	allowed := []string{"PATH", "PATHEXT", "SYSTEMDRIVE", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR"}
-	environment := []string{"PYTHONNOUSERSITE=1", "PYTHONDONTWRITEBYTECODE=1", "PYTHONUNBUFFERED=1", "PIP_DISABLE_PIP_VERSION_CHECK=1"}
+	environment := append([]string{}, extra...)
 	for _, name := range allowed {
 		if value, ok := os.LookupEnv(name); ok {
 			environment = append(environment, name+"="+value)
 		}
 	}
+	if browser != "" {
+		environment = append(environment, "NEURUN_BROWSER_SERVICE="+browser)
+	}
 	return environment
+}
+
+// callbackEnvironment is how a handler finds the control plane and proves who
+// it is. Both are per execution, so they travel with the request rather than
+// living on the runner.
+func callbackEnvironment(request ExecuteRequest) []string {
+	var environment []string
+	if request.CallbackAddress != "" {
+		environment = append(environment, "NEURUN_GRPC_ADDRESS="+request.CallbackAddress)
+	}
+	if request.ExecutionToken != "" {
+		environment = append(environment, "NEURUN_EXECUTION_TOKEN="+request.ExecutionToken)
+	}
+	return environment
+}
+
+func pythonEnvironment(browser string) []string {
+	return childEnvironment(browser,
+		"PYTHONNOUSERSITE=1", "PYTHONDONTWRITEBYTECODE=1",
+		"PYTHONUNBUFFERED=1", "PIP_DISABLE_PIP_VERSION_CHECK=1",
+	)
 }
 
 type limitedBuffer struct {

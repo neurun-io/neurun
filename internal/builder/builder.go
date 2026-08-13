@@ -11,7 +11,12 @@ type Request struct {
 	Runtime           deployment.Runtime
 	EntryPoint        string
 	SourceArchivePath string
-	WorkDirectory     string
+	// WorkDirectory is scratch for one build and is deleted after it.
+	WorkDirectory string
+	// CacheDirectory outlives the build. Toolchain caches belong here and
+	// nowhere else: a compiler cache under WorkDirectory is deleted before it is
+	// ever read again, which makes every build a cold one.
+	CacheDirectory string
 }
 
 // Output is one file a build produced, still on local disk. The service hashes

@@ -1013,8 +1013,8 @@ export interface components {
             number: number;
             /** @enum {string} */
             status: "building" | "ready" | "failed";
-            /** @constant */
-            runtime: "python";
+            /** @enum {string} */
+            runtime: "python" | "rust" | "go" | "ruby" | "node";
             entrypoint: string;
             source_sha256: string;
             artifacts: components["schemas"]["Artifact"][];
@@ -1028,8 +1028,8 @@ export interface components {
             id: string;
             project_id: string;
             app_id: string;
-            /** @constant */
-            runtime: "python";
+            /** @enum {string} */
+            runtime: "python" | "rust" | "go" | "ruby" | "node";
             entrypoint: string;
             /** @enum {string} */
             status: "uploaded" | "building" | "ready" | "failed";

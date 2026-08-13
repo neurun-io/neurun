@@ -10,7 +10,7 @@ CREATE TABLE deployments (
     created_at  timestamptz NOT NULL,
     updated_at  timestamptz NOT NULL,
     version     bigint NOT NULL DEFAULT 1 CHECK (version > 0),
-    CONSTRAINT deployments_runtime_python CHECK (runtime = 'python'),
+    CONSTRAINT deployments_runtime_known CHECK (runtime IN ('python', 'rust', 'go', 'ruby', 'node')),
     CONSTRAINT deployments_status_known CHECK (
         status IN ('uploaded', 'building', 'ready', 'failed')
     ),

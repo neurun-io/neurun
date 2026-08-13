@@ -91,7 +91,16 @@ func (builder *PythonBuilder) Build(ctx context.Context, request Request) (Resul
 		return Result{}, fmt.Errorf("builder: create install layer: %w", err)
 	}
 	pip := exec.CommandContext(ctx, builder.python, "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--target", installDir, "-r", requirements)
-	pip.Env = append(os.Environ(), "PIP_NO_INPUT=1")
+	cache := request.CacheDirectory
+	if cache == "" {
+		cache = request.WorkDirectory
+	}
+	// The wheel cache is the whole win here: without it every build re-downloads
+	// and, for anything without a wheel, recompiles.
+	pip.Env = append(os.Environ(),
+		"PIP_NO_INPUT=1",
+		"PIP_CACHE_DIR="+filepath.Join(cache, "pip"),
+	)
 	if output, err := pip.CombinedOutput(); err != nil {
 		return Result{}, commandError("install Python requirements", output, err)
 	}

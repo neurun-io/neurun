@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/neurun-io/neurun/internal/artifact"
 )
 
 const defaultEnvFile = ".env"
@@ -32,6 +34,7 @@ const (
 	defaultRunTimeout               = 5 * time.Minute
 	defaultWorkerPollInterval       = 250 * time.Millisecond
 	defaultDatabaseURL              = "postgres://neurun:neurun-local-change-me@localhost:5432/neurun?sslmode=disable"
+	defaultRedisURL                 = "redis://localhost:6379/0"
 	defaultSessionTTL               = 12 * time.Hour
 	defaultDatabaseSchema           = "neurun"
 	defaultDatabaseMaxConns         = 25
@@ -46,6 +49,24 @@ type Config struct {
 	DefaultProjectID            string
 	DataDirectory               string
 	PythonExecutable            string
+	BrowserService              string
+	GRPCAddress                 string
+	CargoExecutable             string
+	GoExecutable                string
+	RubyExecutable              string
+	BundleExecutable            string
+	NodeExecutable              string
+	NPMExecutable               string
+	BuildCacheDirectory         string
+	RedisURL                    string
+	ArtifactStore               string
+	ArtifactCacheBytes          int64
+	S3Bucket                    string
+	S3Endpoint                  string
+	S3Region                    string
+	S3AccessKeyID               string
+	S3SecretAccessKey           string
+	S3PathStyle                 bool
 	ShutdownTimeout             time.Duration
 	MaxRequestBodyBytes         int64
 	MaxDeploymentSourceBytes    int64
@@ -83,6 +104,23 @@ func Load() (Config, error) {
 		DefaultProjectID:            value("NEURUN_DEFAULT_PROJECT_ID", defaultProjectID),
 		DataDirectory:               value("NEURUN_DATA_DIRECTORY", defaultDataDirectory),
 		PythonExecutable:            strings.TrimSpace(os.Getenv("NEURUN_PYTHON_EXECUTABLE")),
+		BrowserService:              strings.TrimSpace(os.Getenv("NEURUN_BROWSER_SERVICE")),
+		GRPCAddress:                 value("NEURUN_GRPC_ADDRESS", "127.0.0.1:1268"),
+		CargoExecutable:             strings.TrimSpace(os.Getenv("NEURUN_CARGO_EXECUTABLE")),
+		GoExecutable:                strings.TrimSpace(os.Getenv("NEURUN_GO_EXECUTABLE")),
+		RubyExecutable:              strings.TrimSpace(os.Getenv("NEURUN_RUBY_EXECUTABLE")),
+		BundleExecutable:            strings.TrimSpace(os.Getenv("NEURUN_BUNDLE_EXECUTABLE")),
+		NodeExecutable:              strings.TrimSpace(os.Getenv("NEURUN_NODE_EXECUTABLE")),
+		NPMExecutable:               strings.TrimSpace(os.Getenv("NEURUN_NPM_EXECUTABLE")),
+		BuildCacheDirectory:         value("NEURUN_BUILD_CACHE_DIRECTORY", ""),
+		RedisURL:                    value("NEURUN_REDIS_URL", defaultRedisURL),
+		ArtifactStore:               value("NEURUN_ARTIFACT_STORE", "local"),
+		ArtifactCacheBytes:          artifact.DefaultCacheBytes,
+		S3Bucket:                    value("NEURUN_S3_BUCKET", ""),
+		S3Endpoint:                  value("NEURUN_S3_ENDPOINT", ""),
+		S3Region:                    value("NEURUN_S3_REGION", "auto"),
+		S3AccessKeyID:               value("NEURUN_S3_ACCESS_KEY_ID", ""),
+		S3SecretAccessKey:           value("NEURUN_S3_SECRET_ACCESS_KEY", ""),
 		ShutdownTimeout:             defaultShutdownTimeout,
 		MaxRequestBodyBytes:         defaultRequestBodyBytes,
 		MaxDeploymentSourceBytes:    defaultDeploymentSourceBytes,
@@ -117,6 +155,9 @@ func Load() (Config, error) {
 			)
 		}
 	}
+	if cfg.S3PathStyle, err = boolValue("NEURUN_S3_PATH_STYLE", false); err != nil {
+		return Config{}, err
+	}
 	// The webhook secret is the shared token GitHub signs deliveries with, not
 	// a key, so it is taken verbatim rather than decoded.
 	cfg.GitHubWebhookSecret = []byte(value("NEURUN_GITHUB_WEBHOOK_SECRET", ""))
@@ -140,20 +181,24 @@ func Load() (Config, error) {
 			return Config{}, err
 		}
 	}
-	byteFields := []struct {
+	// Limits are configured in kilobytes and held in bytes: an operator writing
+	// 32768 is easier to get right than 33554432, while everything downstream
+	// still counts the unit it actually enforces.
+	kilobyteFields := []struct {
 		name string
 		dst  *int64
 	}{
-		{"NEURUN_MAX_REQUEST_BODY_BYTES", &cfg.MaxRequestBodyBytes},
-		{"NEURUN_MAX_DEPLOYMENT_SOURCE_BYTES", &cfg.MaxDeploymentSourceBytes},
-		{"NEURUN_MAX_DEPLOYMENT_EXPANDED_BYTES", &cfg.MaxDeploymentExpandedBytes},
-		{"NEURUN_MAX_DEPLOYMENT_ARTIFACT_BYTES", &cfg.MaxDeploymentArtifactBytes},
-		{"NEURUN_MAX_EXECUTION_INPUT_BYTES", &cfg.MaxRunInputBytes},
-		{"NEURUN_MAX_EXECUTION_RESULT_BYTES", &cfg.MaxRunResultBytes},
-		{"NEURUN_MAX_EXECUTION_LOG_BYTES", &cfg.MaxRunLogBytes},
+		{"NEURUN_MAX_REQUEST_BODY_KBS", &cfg.MaxRequestBodyBytes},
+		{"NEURUN_MAX_DEPLOYMENT_SOURCE_KBS", &cfg.MaxDeploymentSourceBytes},
+		{"NEURUN_MAX_DEPLOYMENT_EXPANDED_KBS", &cfg.MaxDeploymentExpandedBytes},
+		{"NEURUN_MAX_DEPLOYMENT_ARTIFACT_KBS", &cfg.MaxDeploymentArtifactBytes},
+		{"NEURUN_MAX_EXECUTION_INPUT_KBS", &cfg.MaxRunInputBytes},
+		{"NEURUN_MAX_EXECUTION_RESULT_KBS", &cfg.MaxRunResultBytes},
+		{"NEURUN_MAX_EXECUTION_LOG_KBS", &cfg.MaxRunLogBytes},
+		{"NEURUN_ARTIFACT_CACHE_KBS", &cfg.ArtifactCacheBytes},
 	}
-	for _, field := range byteFields {
-		if *field.dst, err = int64Value(field.name, *field.dst); err != nil {
+	for _, field := range kilobyteFields {
+		if *field.dst, err = kilobyteValue(field.name, *field.dst); err != nil {
 			return Config{}, err
 		}
 	}
@@ -161,6 +206,18 @@ func Load() (Config, error) {
 		"NEURUN_MAX_DEPLOYMENT_ARCHIVE_ENTRIES", cfg.MaxDeploymentArchiveEntries,
 	); err != nil {
 		return Config{}, err
+	}
+	switch cfg.ArtifactStore {
+	case "local":
+	case "s3":
+		if cfg.S3Bucket == "" || cfg.S3AccessKeyID == "" || cfg.S3SecretAccessKey == "" {
+			return Config{}, errors.New(
+				"NEURUN_ARTIFACT_STORE=s3 needs NEURUN_S3_BUCKET, " +
+					"NEURUN_S3_ACCESS_KEY_ID and NEURUN_S3_SECRET_ACCESS_KEY",
+			)
+		}
+	default:
+		return Config{}, errors.New("NEURUN_ARTIFACT_STORE must be local or s3")
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -280,6 +337,12 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.DataDirectory) == "" {
 		problems = append(problems, errors.New("NEURUN_DATA_DIRECTORY is required"))
 	}
+	redisURL, redisErr := url.Parse(c.RedisURL)
+	if c.RedisURL == "" || redisErr != nil || redisURL.Host == "" ||
+		(redisURL.Scheme != "redis" && redisURL.Scheme != "rediss") {
+		problems = append(problems,
+			errors.New("NEURUN_REDIS_URL must be an absolute redis or rediss URL"))
+	}
 	databaseURL, databaseErr := url.Parse(c.DatabaseURL)
 	if databaseErr != nil || databaseURL.Host == "" ||
 		(databaseURL.Scheme != "postgres" && databaseURL.Scheme != "postgresql") {
@@ -305,13 +368,13 @@ func (c Config) Validate() error {
 		name  string
 		value int64
 	}{
-		{"NEURUN_MAX_REQUEST_BODY_BYTES", c.MaxRequestBodyBytes},
-		{"NEURUN_MAX_DEPLOYMENT_SOURCE_BYTES", c.MaxDeploymentSourceBytes},
-		{"NEURUN_MAX_DEPLOYMENT_EXPANDED_BYTES", c.MaxDeploymentExpandedBytes},
-		{"NEURUN_MAX_DEPLOYMENT_ARTIFACT_BYTES", c.MaxDeploymentArtifactBytes},
-		{"NEURUN_MAX_EXECUTION_INPUT_BYTES", c.MaxRunInputBytes},
-		{"NEURUN_MAX_EXECUTION_RESULT_BYTES", c.MaxRunResultBytes},
-		{"NEURUN_MAX_EXECUTION_LOG_BYTES", c.MaxRunLogBytes},
+		{"NEURUN_MAX_REQUEST_BODY_KBS", c.MaxRequestBodyBytes},
+		{"NEURUN_MAX_DEPLOYMENT_SOURCE_KBS", c.MaxDeploymentSourceBytes},
+		{"NEURUN_MAX_DEPLOYMENT_EXPANDED_KBS", c.MaxDeploymentExpandedBytes},
+		{"NEURUN_MAX_DEPLOYMENT_ARTIFACT_KBS", c.MaxDeploymentArtifactBytes},
+		{"NEURUN_MAX_EXECUTION_INPUT_KBS", c.MaxRunInputBytes},
+		{"NEURUN_MAX_EXECUTION_RESULT_KBS", c.MaxRunResultBytes},
+		{"NEURUN_MAX_EXECUTION_LOG_KBS", c.MaxRunLogBytes},
 	}
 	for _, field := range positiveSizes {
 		if field.value <= 0 {
@@ -320,7 +383,7 @@ func (c Config) Validate() error {
 	}
 	if c.MaxRunLogBytes > 256<<10 {
 		problems = append(problems,
-			errors.New("NEURUN_MAX_EXECUTION_LOG_BYTES cannot exceed 262144"))
+			errors.New("NEURUN_MAX_EXECUTION_LOG_KBS cannot exceed 256"))
 	}
 	if c.MaxDeploymentArchiveEntries <= 0 {
 		problems = append(problems,
@@ -368,6 +431,24 @@ func boolValue(key string, fallback bool) (bool, error) {
 		return false, fmt.Errorf("%s: %w", key, err)
 	}
 	return parsed, nil
+}
+
+// kilobyteValue reads a limit expressed in kilobytes and returns bytes. The
+// fallback arrives already in bytes, so an unset variable keeps the default the
+// code was written around.
+func kilobyteValue(key string, fallback int64) (int64, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	if parsed > (1<<63-1)/1024 {
+		return 0, fmt.Errorf("%s is outside the supported range", key)
+	}
+	return parsed * 1024, nil
 }
 
 func int64Value(key string, fallback int64) (int64, error) {

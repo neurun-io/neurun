@@ -1,9 +1,6 @@
 # Unit: Human Behaviour
 
-What a behavioural scorer reads. Unlike the identity vectors, these are **scored,
-not asserted** — no single movement fails you, and a run accumulates a
-probability. The goal is not to imitate a person perfectly; it is to avoid the
-handful of shapes that only machines produce.
+Human behaviour depict how human perform actions on the web and how it should translate / influence automation sub-commands. Which, if you mimick the sub-commands should get a result as a human performing said actions
 
 ## Pointer movement
 

@@ -36,6 +36,9 @@ const (
 	ScopeExecutionsWrite  = "executions:write"
 	ScopeAppsRead         = "apps:read"
 	ScopeAppsWrite        = "apps:write"
+	// A display is a signed-in browser rendered as pixels, which is more than
+	// the profile endpoints ever return.
+	ScopeBrowserSessionsRead = "browser_sessions:read"
 	// Reading a profile's state returns live cookies, so it takes the write
 	// scope rather than the read one.
 	ScopeBrowserProfilesRead  = "browser_profiles:read"
@@ -56,6 +59,7 @@ type ServerOptions struct {
 	Organizations       *service.OrganizationService
 	GitHub              *service.GitHubService
 	Browsers            *service.BrowserService
+	BrowserSessions     *service.BrowserSessionService
 	AllowedOrigins      []string
 	Ready               ReadyCheck
 	MaximumBodyBytes    int64
@@ -70,6 +74,7 @@ type Server struct {
 	organizations       *service.OrganizationService
 	gitHub              *service.GitHubService
 	browsers            *service.BrowserService
+	browserSessions     *service.BrowserSessionService
 	allowedOrigins      []string
 	ready               ReadyCheck
 	maximumBodyBytes    int64
@@ -103,6 +108,7 @@ func NewServer(options ServerOptions) (*Server, error) {
 		organizations:       options.Organizations,
 		gitHub:              options.GitHub,
 		browsers:            options.Browsers,
+		browserSessions:     options.BrowserSessions,
 		allowedOrigins:      options.AllowedOrigins,
 		ready:               options.Ready,
 		maximumBodyBytes:    options.MaximumBodyBytes,
@@ -189,6 +195,13 @@ func (server *Server) routes() *gin.Engine {
 	v1.GET("/github/branches", server.scoped(ScopeAppsRead), server.listBranches)
 	v1.PUT("/apps/:app_id/repository", server.scoped(ScopeAppsWrite), server.connectRepository)
 	v1.POST("/github/deployments", server.scoped(ScopeDeploymentsWrite), server.deployRef)
+
+	v1.GET("/browser-sessions", server.scoped(ScopeBrowserSessionsRead), server.listBrowserSessions)
+	v1.GET("/browser-sessions/:session_id", server.scoped(ScopeBrowserSessionsRead), server.getBrowserSession)
+	v1.DELETE("/browser-sessions/:session_id", server.scoped(ScopeBrowserSessionsRead), server.closeBrowserSession)
+	// The upgrade happens inside the authenticated group, so the credential is
+	// checked before a frame moves rather than after.
+	v1.GET("/browser-sessions/:session_id/display", server.scoped(ScopeBrowserSessionsRead), server.streamBrowserDisplay)
 
 	v1.GET("/builds", server.scoped(ScopeBuildsRead), server.listBuilds)
 	v1.GET("/builds/:build_id", server.scoped(ScopeBuildsRead), server.getBuild)
@@ -301,6 +314,9 @@ func writeError(ctx *gin.Context, err error) {
 		return
 	}
 	if writeBrowserError(ctx, err) {
+		return
+	}
+	if writeBrowserSessionError(ctx, err) {
 		return
 	}
 	switch {

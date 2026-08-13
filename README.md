@@ -33,12 +33,17 @@ so the meter is the compute an execution consumes between `started_at` and
 one app resident behind an endpoint, metered by resident time — are the next
 capability and are not built; see [docs/server.md](docs/server.md).
 
-**Browser profiles** are the newest capability: an optional stealth identity plus
-the cookies and storage a browser keeps between runs. The control plane stores
-them and nothing more — sessions belong to the SDK, which reads a profile,
-launches Chrome or Firefox through `neurun-browser` (a Rust gRPC server on
-loopback beside it), drives the returned CDP or BiDi endpoint, and PUTs the
-captured state back. See [docs/browser-profile.md](docs/browser-profile.md).
+**Browsers** are the newest capability, in two halves. A **profile** is an
+optional stealth identity plus the cookies and storage a browser keeps between
+runs. A **session** is a browser that is open now, wearing one or none.
+
+The control plane brokers both. It spawns `neurun-browser` — a Rust gRPC server,
+one per host on loopback — and serves the SDK itself on a loopback port, so a
+handler asks Neurun for a session and drives it by id without ever learning where
+a browser runs. That is what lets the dashboard list live sessions and stream a
+session's display over a WebSocket. See
+[docs/browser-profile.md](docs/browser-profile.md) and
+[docs/browser-session.md](docs/browser-session.md).
 
 AI stealth coherence, an AI automation builder, proxies, fleet aggregation,
 webhooks, an activity log and data health remain later milestones. The

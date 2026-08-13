@@ -17,31 +17,34 @@ Not project-scoped, unlike apps and deployments. The account that owns a
 logged-in state owns it everywhere, and splitting one Amazon login across four
 projects would mean four separate sign-ins to keep alive.
 
-## The control plane never opens a browser
+## The control plane brokers the browser
 
-`neurun-browser` is a separate Rust gRPC server that runs on **loopback beside
-the SDK**, not somewhere the control plane can reach. So the control plane holds
-no connection to it and has no session endpoints. It stores profiles; that is
-all.
+`neurun-browser` is a separate Rust gRPC server. Under Neurun it is **spawned
+and owned by the control plane**, one per host on loopback, and the SDK never
+reaches it: an SDK asks Neurun for a session and drives it by id. See
+[browser session](browser-session.md) for that half.
 
-The loop is the SDK's:
+A profile is what a session wears. This document is about the wardrobe, not the
+run.
 
-1. `GET /v1/browser-profiles/{id}/state` — read the cookies and storage.
-2. `OpenSession` over gRPC to `127.0.0.1`, carrying the identity and that state.
-   Back comes a CDP or BiDi endpoint, which the SDK drives.
-3. `CloseSession` — the browser server hands back what it captured.
-4. `PUT /v1/browser-profiles/{id}/state` — store it.
+The loop, with Neurun in the middle:
 
-Step 4 is what saves. A session abandoned rather than closed leaves the profile
-as it was.
+1. `OpenSession{browser, browser_profile_id}` — the profile's identity and
+   stored state are applied when the browser launches.
+2. `Execute` — commands, relayed.
+3. `CloseSession` — the browser hands back what it captured, and the profile's
+   state is written from it.
 
-`PUT .../state` **replaces**, it does not merge. The browser returns its whole
-cookie jar, so a cookie missing from the body was deleted — merging would
-resurrect a login the site had already ended.
+A session abandoned rather than closed leaves the profile exactly as it was,
+which is the safe failure and sometimes the one you want.
 
-Because the browser server only ever listens on loopback, its gRPC surface
-carries no authentication. Exposing it on a routable interface would be a
-mistake; the authenticated boundary is the Neurun API, not that port.
+State **replaces**, it does not merge. The browser returns its whole cookie jar,
+so a cookie missing from the capture was deleted — merging would resurrect a
+login the site had already ended.
+
+Neither the browser service's port nor a session's display is ever reachable
+from outside the host. The authenticated boundary is the Neurun API, and that
+has not changed: what changed is that Neurun is now on both sides of it.
 
 > **Later.** Once the central cache is integrated the SDK should upload captured
 > state to the cache instead, and the control plane read it from there — which

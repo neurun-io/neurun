@@ -12,6 +12,7 @@ the last.
 | [Artifact](artifact.md) | An immutable blob a build produced or a deploy uploaded. |
 | [Execution](execution.md) | One invocation of a built handler. The billable unit. |
 | [Browser profile](browser-profile.md) | Who a browser appears to be, and what it remembers. |
+| [Browser session](browser-session.md) | A browser that is open now, and who may watch it. |
 | [User](user.md) | A person who can sign in. Global to the install. |
 | [API key](api-key.md) | A credential for a program, carrying scopes. |
 

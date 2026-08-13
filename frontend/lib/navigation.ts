@@ -31,10 +31,21 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/deployments", label: "Deployments", icon: "rocket", availability: "current" },
       { href: "/builds", label: "Builds", icon: "list-checks", availability: "current" },
       { href: "/executions", label: "Executions", icon: "activity", availability: "current" },
+    ],
+  },
+  {
+    label: "Browser",
+    items: [
       {
         href: "/browser-profiles",
-        label: "Browser profiles",
+        label: "Profiles",
         icon: "fingerprint",
+        availability: "current",
+      },
+      {
+        href: "/browser-sessions",
+        label: "Sessions",
+        icon: "screen-share",
         availability: "current",
       },
     ],

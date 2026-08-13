@@ -15,6 +15,17 @@ services:
       timeout: 3s
       retries: 20
 
+  redis:
+    image: redis:8-alpine
+    # Sessions only. Losing the store signs everybody out and costs nothing
+    # else, so it is not persisted.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   neurun:
     build:
       context: .
@@ -25,12 +36,15 @@ services:
       NEURUN_DATA_DIRECTORY: /var/lib/neurun
       NEURUN_PYTHON_EXECUTABLE: python3
       NEURUN_DATABASE_URL: postgres://neurun:${POSTGRES_PASSWORD:-neurun-local-change-me}@postgres:5432/neurun?sslmode=disable
+      NEURUN_REDIS_URL: redis://redis:6379/0
       # Local subprocess execution is for trusted uploaded code only.
       NEURUN_TRUSTED_CODE_EXECUTION: "true"
-      NEURUN_OPERATOR_SESSION_TTL: ${NEURUN_OPERATOR_SESSION_TTL:-12h}
-      NEURUN_OPERATOR_COOKIE_SECURE: ${NEURUN_OPERATOR_COOKIE_SECURE:-false}
+      NEURUN_SESSION_TTL: ${NEURUN_SESSION_TTL:-12h}
+      NEURUN_SESSION_COOKIE_SECURE: ${NEURUN_SESSION_COOKIE_SECURE:-false}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "${NEURUN_HTTP_PORT:-1267}:1267"

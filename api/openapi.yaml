@@ -1542,7 +1542,7 @@ components:
         deployment_id: {type: string}
         number: {type: integer}
         status: {type: string, enum: [building, ready, failed]}
-        runtime: {type: string, const: python}
+        runtime: {type: string, enum: [python, rust, go, ruby, node]}
         entrypoint: {type: string}
         source_sha256: {type: string}
         artifacts:
@@ -1563,7 +1563,7 @@ components:
         id: {type: string}
         project_id: {type: string}
         app_id: {type: string}
-        runtime: {type: string, const: python}
+        runtime: {type: string, enum: [python, rust, go, ruby, node]}
         entrypoint: {type: string}
         status: {type: string, enum: [uploaded, building, ready, failed]}
         source: {$ref: "#/components/schemas/Artifact"}

@@ -13,7 +13,7 @@ CREATE TABLE builds (
     version        bigint NOT NULL DEFAULT 1 CHECK (version > 0),
     UNIQUE (deployment_id, number),
     UNIQUE (id, deployment_id),
-    CONSTRAINT builds_runtime_python CHECK (runtime = 'python'),
+    CONSTRAINT builds_runtime_known CHECK (runtime IN ('python', 'rust', 'go', 'ruby', 'node')),
     CONSTRAINT builds_status_known CHECK (
         status IN ('uploaded', 'building', 'ready', 'failed')
     ),

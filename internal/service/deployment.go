@@ -31,23 +31,27 @@ const (
 )
 
 type DeploymentOptions struct {
-	MaxSourceBytes   int64
-	MaxArtifactBytes int64
-	BuildTimeout     time.Duration
-	Now              func() time.Time
-	NewID            func(string) (string, error)
+	// BuildCacheDirectory outlives a build and holds the toolchain caches. Empty
+	// leaves every build cold.
+	BuildCacheDirectory string
+	MaxSourceBytes      int64
+	MaxArtifactBytes    int64
+	BuildTimeout        time.Duration
+	Now                 func() time.Time
+	NewID               func(string) (string, error)
 }
 
 type DeploymentService struct {
 	projects    *repository.ProjectRepository
 	apps        *repository.AppRepository
 	deployments *repository.DeploymentRepository
-	blobs       *artifact.LocalStore
-	builder     builder.Builder
+	blobs       artifact.BlobStore
+	builders    map[deployment.Runtime]builder.Builder
 
 	maxSourceBytes   int64
 	maxArtifactBytes int64
 	buildTimeout     time.Duration
+	buildCache       string
 	now              func() time.Time
 	newID            func(string) (string, error)
 	buildMu          sync.Mutex
@@ -57,8 +61,8 @@ func NewDeploymentService(
 	projects *repository.ProjectRepository,
 	apps *repository.AppRepository,
 	deployments *repository.DeploymentRepository,
-	blobs *artifact.LocalStore,
-	toolchain builder.Builder,
+	blobs artifact.BlobStore,
+	toolchains map[deployment.Runtime]builder.Builder,
 	options DeploymentOptions,
 ) (*DeploymentService, error) {
 	switch {
@@ -66,8 +70,8 @@ func NewDeploymentService(
 		return nil, errors.New("deployment service requires its repositories")
 	case blobs == nil:
 		return nil, errors.New("deployment service requires an artifact store")
-	case toolchain == nil:
-		return nil, errors.New("deployment service requires a builder")
+	case len(toolchains) == 0:
+		return nil, errors.New("deployment service requires at least one builder")
 	case options.MaxSourceBytes < 0 || options.MaxArtifactBytes < 0 ||
 		options.BuildTimeout < 0:
 		return nil, errors.New("deployment service limits cannot be negative")
@@ -89,10 +93,11 @@ func NewDeploymentService(
 	}
 	return &DeploymentService{
 		projects: projects, apps: apps, deployments: deployments,
-		blobs: blobs, builder: toolchain,
+		blobs: blobs, builders: toolchains,
 		maxSourceBytes:   options.MaxSourceBytes,
 		maxArtifactBytes: options.MaxArtifactBytes,
 		buildTimeout:     options.BuildTimeout,
+		buildCache:       options.BuildCacheDirectory,
 		now:              options.Now,
 		newID:            options.NewID,
 	}, nil
@@ -115,7 +120,7 @@ func (service *DeploymentService) Create(
 	}
 	if !request.Runtime.Valid() {
 		return deployment.Deployment{}, fmt.Errorf(
-			"%w: runtime must be python", deployment.ErrInvalid,
+			"%w: runtime must be python, rust, go or ruby", deployment.ErrInvalid,
 		)
 	}
 	if request.Source == nil {
@@ -442,9 +447,25 @@ func (service *DeploymentService) runBuild(
 	if err := service.materialize(buildCtx, record.Source, sourcePath); err != nil {
 		return service.failBuild(ctx, record, buildID, "source_unavailable", err)
 	}
-	result, buildErr := service.builder.Build(buildCtx, builder.Request{
+	toolchain, ok := service.builders[record.Runtime]
+	if !ok {
+		return service.failBuild(ctx, record, buildID, "runtime_unsupported",
+			fmt.Errorf("no builder for runtime %q", record.Runtime))
+	}
+	// Cached per runtime: a Go build cache and a cargo target directory have
+	// nothing to say to each other, and keeping them apart makes one runtime's
+	// cache safe to delete on its own.
+	cacheDirectory := ""
+	if service.buildCache != "" {
+		cacheDirectory = filepath.Join(service.buildCache, string(record.Runtime))
+		if err := os.MkdirAll(cacheDirectory, 0o700); err != nil {
+			return service.failBuild(ctx, record, buildID, "build_environment", err)
+		}
+	}
+	result, buildErr := toolchain.Build(buildCtx, builder.Request{
 		Runtime: record.Runtime, EntryPoint: record.EntryPoint,
 		SourceArchivePath: sourcePath, WorkDirectory: workDirectory,
+		CacheDirectory: cacheDirectory,
 	})
 	if buildErr != nil {
 		code := "build_failed"

@@ -135,6 +135,38 @@ func (repository *AppRepository) List(
 	return records, nil
 }
 
+// OrganizationOf resolves the organization behind an app, walking app to
+// project. A handler names its app; everything else about it is looked up here
+// rather than taken from the caller.
+func (repository *AppRepository) OrganizationOf(
+	ctx context.Context,
+	appID string,
+) (string, error) {
+	if err := deployment.ValidateIdentifier("app_id", appID); err != nil {
+		return "", err
+	}
+	rows, err := repository.pool.Query(
+		ctx,
+		`SELECT p.organization_id FROM apps a
+		 JOIN projects p ON p.id = a.project_id
+		 WHERE a.id = $1`,
+		appID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("read app organization: %w", err)
+	}
+	organizationID, err := pgx.CollectExactlyOneRow(
+		rows, pgx.RowTo[string],
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("%w: %s", deployment.ErrAppNotFound, appID)
+	}
+	if err != nil {
+		return "", fmt.Errorf("read app organization: %w", err)
+	}
+	return organizationID, nil
+}
+
 // ConnectedTo returns the apps in one organization pointed at a repository.
 // GitHub preserves the case of a repository name but does not distinguish it,
 // so neither does the match.

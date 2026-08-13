@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,9 +23,13 @@ type ExecuteRequest struct {
 	CodeDirectory    string
 	InstallDirectory string
 	Entrypoint       string
-	Input            json.RawMessage
-	MaxResultBytes   int64
-	MaxLogBytes      int64
+	// CallbackAddress is the control plane's loopback gRPC address, and
+	// ExecutionToken is what proves a call on it belongs to this execution.
+	CallbackAddress string
+	ExecutionToken  string
+	Input           json.RawMessage
+	MaxResultBytes  int64
+	MaxLogBytes     int64
 }
 
 type ExecuteResult struct {
@@ -47,21 +52,35 @@ type Options struct {
 	MaxArchiveEntries       int
 	MaxArchiveExpandedBytes int64
 	Now                     func() time.Time
+	// CallbackAddress is the control plane's loopback gRPC address. Empty leaves
+	// handlers with no way to open a browser, which is the correct state when
+	// nothing is serving it.
+	CallbackAddress string
+	// Tokens issues the per-execution credential. Nil has the same effect.
+	Tokens ExecutionTokens
+}
+
+// ExecutionTokens mints the credential a handler calls back with, and spends it
+// when the run ends. It is an interface so the worker never learns how identity
+// is stored.
+type ExecutionTokens interface {
+	Mint(ctx context.Context, executionID, appID string) (string, error)
+	Revoke(ctx context.Context, token string) error
 }
 
 type Worker struct {
 	executions  *repository.ExecutionRepository
 	deployments *repository.DeploymentRepository
-	blobs       *artifact.LocalStore
-	runner      Runner
+	blobs       artifact.BlobStore
+	runners     map[deployment.Runtime]Runner
 	options     Options
 }
 
 func New(
 	executions *repository.ExecutionRepository,
 	deployments *repository.DeploymentRepository,
-	blobs *artifact.LocalStore,
-	runner Runner,
+	blobs artifact.BlobStore,
+	runners map[deployment.Runtime]Runner,
 	options Options,
 ) (*Worker, error) {
 	switch {
@@ -71,8 +90,8 @@ func New(
 		return nil, errors.New("worker: deployment repository is required")
 	case blobs == nil:
 		return nil, errors.New("worker: artifact store is required")
-	case runner == nil:
-		return nil, errors.New("worker: runner is required")
+	case len(runners) == 0:
+		return nil, errors.New("worker: at least one runner is required")
 	}
 	if options.PollInterval < 0 || options.RunTimeout < 0 ||
 		options.MaxResultBytes < 0 || options.MaxLogBytes < 0 ||
@@ -106,7 +125,7 @@ func New(
 	}
 	return &Worker{
 		executions: executions, deployments: deployments,
-		blobs: blobs, runner: runner, options: options,
+		blobs: blobs, runners: runners, options: options,
 	}, nil
 }
 
@@ -251,11 +270,39 @@ func (worker *Worker) execute(
 
 	runCtx, cancel := context.WithTimeout(ctx, worker.options.RunTimeout)
 	defer cancel()
-	result, err := worker.runner.Execute(runCtx, ExecuteRequest{
+	runner, ok := worker.runners[build.Runtime]
+	if !ok {
+		return nil, "", newFailure("runtime_unsupported", fmt.Errorf(
+			"worker: no runner for runtime %q", build.Runtime,
+		))
+	}
+	// Minted for this run and spent when it ends, so a token that leaks cannot
+	// outlive the execution that held it. A failure to mint is not a failure to
+	// run: the handler simply has no browser support.
+	var token string
+	if worker.options.Tokens != nil && worker.options.CallbackAddress != "" {
+		token, err = worker.options.Tokens.Mint(ctx, record.ID, found.AppID)
+		if err != nil {
+			slog.Warn("execution token was not issued",
+				"execution", record.ID, "error", err)
+		} else {
+			defer func() {
+				if err := worker.options.Tokens.Revoke(
+					context.WithoutCancel(ctx), token,
+				); err != nil {
+					slog.Warn("execution token was not revoked",
+						"execution", record.ID, "error", err)
+				}
+			}()
+		}
+	}
+	result, err := runner.Execute(runCtx, ExecuteRequest{
 		CodeDirectory: codeDir, InstallDirectory: installDir,
 		Entrypoint: build.EntryPoint, Input: record.Input,
-		MaxResultBytes: worker.options.MaxResultBytes,
-		MaxLogBytes:    worker.options.MaxLogBytes,
+		CallbackAddress: worker.options.CallbackAddress,
+		ExecutionToken:  token,
+		MaxResultBytes:  worker.options.MaxResultBytes,
+		MaxLogBytes:     worker.options.MaxLogBytes,
 	})
 	if err != nil {
 		code := "handler_failed"

@@ -23,12 +23,12 @@ const sessionKeyPrefix = "session:"
 // so disabling or demoting a user takes effect on their next request rather
 // than when their cookie happens to expire.
 type SessionRepository struct {
-	cache *CacheRepository
+	cache Cache
 	users *UserRepository
 }
 
 func NewSessionRepository(
-	cache *CacheRepository,
+	cache Cache,
 	users *UserRepository,
 ) (*SessionRepository, error) {
 	if cache == nil {

@@ -1,4 +1,4 @@
-export type PythonRuntime = "python";
+export type Runtime = "python" | "rust" | "go" | "ruby" | "node";
 export type BuildStatus = "building" | "ready" | "failed";
 export type DeploymentStatus = "uploaded" | BuildStatus;
 export type ExecutionStatus = "queued" | "running" | "succeeded" | "failed";
@@ -19,6 +19,25 @@ export interface NeurunApp {
   /** The ref whose pushes deploy. Absent follows the default branch. */
   production_ref?: string;
   created_at: string;
+  updated_at: string;
+}
+
+export type BrowserSessionStatus = "starting" | "live" | "failed";
+
+/**
+ * One browser a handler has open. It is live state rather than a record: a
+ * session that ends stops being listed, and there is no closed one to read.
+ */
+export interface BrowserSession {
+  id: string;
+  app_id: string;
+  execution_id?: string;
+  browser_profile_id?: string;
+  browser: BrowserKind;
+  status: BrowserSessionStatus;
+  /** False for a headless session, which is legitimate and simply unwatchable. */
+  has_display: boolean;
+  started_at: string;
   updated_at: string;
 }
 
@@ -60,7 +79,7 @@ export interface Build {
   deployment_id: string;
   number: number;
   status: BuildStatus;
-  runtime: PythonRuntime;
+  runtime: Runtime;
   entrypoint: string;
   source_sha256: string;
   artifacts: Artifact[];
@@ -73,7 +92,7 @@ export interface Deployment {
   id: string;
   project_id: string;
   app_id: string;
-  runtime: PythonRuntime;
+  runtime: Runtime;
   entrypoint: string;
   status: DeploymentStatus;
   source: Artifact;

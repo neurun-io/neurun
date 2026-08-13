@@ -7,6 +7,7 @@ import type {
   BrowserKind,
   BrowserProfile,
   BrowserProfileState,
+  BrowserSession,
   Build,
   CreatedApiKey,
   Deployment,
@@ -36,7 +37,7 @@ const buildSchema = z.looseObject({
   deployment_id: z.string(),
   number: z.number(),
   status: z.enum(["building", "ready", "failed"]),
-  runtime: z.literal("python"),
+  runtime: z.enum(["python", "rust", "go", "ruby", "node"]),
   entrypoint: z.string(),
   source_sha256: z.string(),
   artifacts: z.array(artifactSchema),
@@ -48,7 +49,7 @@ const deploymentSchema = z.looseObject({
   id: z.string(),
   project_id: z.string(),
   app_id: z.string(),
-  runtime: z.literal("python"),
+  runtime: z.enum(["python", "rust", "go", "ruby", "node"]),
   entrypoint: z.string(),
   status: z.enum(["uploaded", "building", "ready", "failed"]),
   source: artifactSchema,
@@ -84,6 +85,17 @@ const appSchema = z.looseObject({
   repository: z.string().optional(),
   production_ref: z.string().optional(),
   created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+const browserSessionSchema = z.looseObject({
+  id: z.string(),
+  app_id: z.string(),
+  execution_id: z.string().optional(),
+  browser_profile_id: z.string().optional(),
+  browser: z.enum(["chrome", "firefox"]),
+  status: z.enum(["starting", "live", "failed"]),
+  has_display: z.boolean(),
+  started_at: timestampSchema,
   updated_at: timestampSchema,
 });
 const repositorySchema = z.looseObject({
@@ -238,6 +250,28 @@ export function connectRepository(id: string, repository: string, productionRef:
     },
     appSchema as never,
   );
+}
+
+export function listBrowserSessions(signal?: AbortSignal) {
+  return request<{ browser_sessions: BrowserSession[] }>(
+    { path: "/v1/browser-sessions", signal },
+    z.looseObject({ browser_sessions: z.array(browserSessionSchema) }) as never,
+  );
+}
+
+export function getBrowserSession(id: string, signal?: AbortSignal) {
+  return request<BrowserSession>(
+    { path: `/v1/browser-sessions/${segment(id)}`, signal },
+    browserSessionSchema as never,
+  );
+}
+
+/** Forgets the session here. The handler still owns stopping the browser. */
+export function closeBrowserSession(id: string) {
+  return request<void>({
+    method: "DELETE",
+    path: `/v1/browser-sessions/${segment(id)}`,
+  });
 }
 
 export function listRepositories(signal?: AbortSignal) {

@@ -50,6 +50,10 @@ export const queryKeys = {
     [...queryKeys.scope(scope), "execution", id] as const,
   users: (scope: string) => [...queryKeys.scope(scope), "users"] as const,
   apiKeys: (scope: string) => [...queryKeys.scope(scope), "api-keys"] as const,
+  browserSessions: (scope: string) =>
+    [...queryKeys.scope(scope), "browser-sessions"] as const,
+  browserSession: (scope: string, id: string) =>
+    [...queryKeys.browserSessions(scope), id] as const,
   installation: (scope: string) => [...queryKeys.scope(scope), "github-installation"] as const,
   repositories: (scope: string) => [...queryKeys.scope(scope), "github-repositories"] as const,
   branches: (scope: string, repository: string) =>
@@ -292,6 +296,41 @@ export function useInstallationQuery() {
         }
         throw error;
       }
+    },
+  });
+}
+
+/** Live sessions poll: a session that ended simply stops being listed. */
+export function useBrowserSessionsQuery() {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.browserSessions(scope),
+    queryFn: async ({ signal }) => (await resources.listBrowserSessions(signal)).data,
+    refetchInterval: LIVE_POLL_INTERVAL_MS,
+  });
+}
+
+export function useBrowserSessionQuery(id: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.browserSession(scope, id),
+    queryFn: async ({ signal }) => (await resources.getBrowserSession(id, signal)).data,
+    enabled: Boolean(id),
+    refetchInterval: LIVE_POLL_INTERVAL_MS,
+  });
+}
+
+export function useCloseBrowserSessionMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await resources.closeBrowserSession(id);
+      return id;
+    },
+    onSuccess: (id) => {
+      queryClient.removeQueries({ queryKey: queryKeys.browserSession(scope, id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.browserSessions(scope) });
     },
   });
 }
