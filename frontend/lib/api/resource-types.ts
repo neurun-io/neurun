@@ -14,6 +14,27 @@ export interface NeurunApp {
   id: string;
   project_id: string;
   name: string;
+  /** owner/name on GitHub. Absent until the app is connected. */
+  repository?: string;
+  /** The ref whose pushes deploy. Absent follows the default branch. */
+  production_ref?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A repository the installation grants access to. */
+export interface Repository {
+  full_name: string;
+  default_branch: string;
+  private: boolean;
+}
+
+/** One organization's GitHub App installation. */
+export interface Installation {
+  id: string;
+  organization_id: string;
+  installation_id: number;
+  account_login: string;
   created_at: string;
   updated_at: string;
 }

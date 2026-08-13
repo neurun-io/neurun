@@ -63,7 +63,7 @@ export function SiteHeader() {
           </Link>
           <ThemeToggle />
           <Button asChild size="sm">
-            <Link href="/auth" className="text-white dark:text-black">
+            <Link href="/auth">
               Start free
               <ArrowRight aria-hidden strokeWidth={1.5} />
             </Link>

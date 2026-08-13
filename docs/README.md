@@ -20,7 +20,7 @@ app creates a **deployment**, which produces **builds** made of **artifacts**;
 invoking a ready build creates an **execution**.
 
 An app is **executed, not hosted** — there is no resident process between calls,
-and the meter is the compute an execution consumes. [Runners](runner.md) invert
+and the meter is the compute an execution consumes. [Servers](server.md) invert
 that and are metered by resident time instead; they are not built.
 
 Authorization is separate from all of it. **Users** and **API keys** belong to

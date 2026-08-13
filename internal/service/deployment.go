@@ -344,10 +344,14 @@ func (service *DeploymentService) CreateApp(
 	if err != nil {
 		return deployment.App{}, err
 	}
-	record, err := deployment.NewApp(
-		id, request.ProjectID, request.Name, service.now().UTC().Round(0),
-	)
+	now := service.now().UTC().Round(0)
+	record, err := deployment.NewApp(id, request.ProjectID, request.Name, now)
 	if err != nil {
+		return deployment.App{}, err
+	}
+	// Connected before the insert rather than after: an app that exists without
+	// its repository is an app nothing can ever deploy to.
+	if err := record.Connect(request.Repository, request.ProductionRef, now); err != nil {
 		return deployment.App{}, err
 	}
 	return service.apps.Create(ctx, record)

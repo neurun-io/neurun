@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/neurun-io/neurun/internal/domain/deployment"
+	githubdomain "github.com/neurun-io/neurun/internal/domain/github"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/github"
 	"github.com/neurun-io/neurun/internal/ids"
@@ -53,26 +55,82 @@ func NewGitHubService(
 
 // Configured reports whether the server holds GitHub App credentials. Without
 // them every route here refuses rather than failing halfway through a deploy.
-func (service *GitHubService) Configured() bool { return service.client != nil }
+func (service *GitHubService) Configured() bool {
+	return service != nil && service.client != nil
+}
+
+// ParsePush verifies a webhook delivery and returns the push it carries.
+func (service *GitHubService) ParsePush(
+	request *http.Request,
+) (github.Push, bool, error) {
+	if !service.Configured() {
+		return github.Push{}, false, github.ErrNotConfigured
+	}
+	return service.client.ParsePush(request)
+}
+
+// Push builds the pushed commit for every app that follows the ref it names.
+//
+// The organization comes from the installation GitHub signed for, never from
+// the delivery body, so a push can only ever reach the apps of the account the
+// app is installed on. One app failing does not stop the rest.
+func (service *GitHubService) Push(
+	ctx context.Context,
+	push github.Push,
+) ([]deployment.Deployment, error) {
+	if !service.Configured() {
+		return nil, github.ErrNotConfigured
+	}
+	installation, err := service.installations.ByInstallationID(ctx, push.InstallationID)
+	if err != nil {
+		return nil, err
+	}
+	connected, err := service.apps.ConnectedTo(
+		ctx, installation.OrganizationID, push.Repository,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var deployed []deployment.Deployment
+	var problems []error
+	for _, app := range connected {
+		if !app.TracksRef(push.Ref, push.DefaultBranch) {
+			continue
+		}
+		// The commit is taken from the delivery rather than resolved again: a
+		// later push must not silently take this one's place.
+		record, err := service.build(
+			ctx, installation.OrganizationID, app, push.InstallationID,
+			push.Ref, push.Commit, deployment.RuntimePython, "",
+		)
+		if err != nil {
+			problems = append(problems, fmt.Errorf("deploy app %s: %w", app.ID, err))
+			continue
+		}
+		deployed = append(deployed, record)
+	}
+	return deployed, errors.Join(problems...)
+}
 
 func (service *GitHubService) Install(
 	ctx context.Context,
 	organizationID string,
 	installationID int64,
 	accountLogin string,
-) (deployment.Installation, error) {
+) (githubdomain.Installation, error) {
 	if !service.Configured() {
-		return deployment.Installation{}, github.ErrNotConfigured
+		return githubdomain.Installation{}, github.ErrNotConfigured
 	}
 	id, err := service.newID("ghi")
 	if err != nil {
-		return deployment.Installation{}, err
+		return githubdomain.Installation{}, err
 	}
-	record, err := deployment.NewInstallation(
+	record, err := githubdomain.NewInstallation(
 		id, organizationID, installationID, accountLogin, service.now(),
 	)
 	if err != nil {
-		return deployment.Installation{}, err
+		return githubdomain.Installation{}, err
 	}
 	return service.installations.Save(ctx, record)
 }
@@ -80,7 +138,7 @@ func (service *GitHubService) Install(
 func (service *GitHubService) Installation(
 	ctx context.Context,
 	organizationID string,
-) (deployment.Installation, error) {
+) (githubdomain.Installation, error) {
 	return service.installations.ByOrganization(ctx, organizationID)
 }
 
@@ -89,6 +147,79 @@ func (service *GitHubService) Uninstall(
 	organizationID string,
 ) error {
 	return service.installations.Delete(ctx, organizationID, service.now())
+}
+
+// Repositories lists what this organization's installation can read.
+func (service *GitHubService) Repositories(
+	ctx context.Context,
+	organizationID string,
+) ([]github.Repository, error) {
+	if !service.Configured() {
+		return nil, github.ErrNotConfigured
+	}
+	installation, err := service.installations.ByOrganization(ctx, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	return service.client.Repositories(ctx, installation.InstallationID)
+}
+
+// Branches lists a repository's branches, for choosing a production ref.
+func (service *GitHubService) Branches(
+	ctx context.Context,
+	organizationID string,
+	repository string,
+) ([]string, error) {
+	if !service.Configured() {
+		return nil, github.ErrNotConfigured
+	}
+	parsed, err := github.ParseRepo(repository)
+	if err != nil {
+		return nil, err
+	}
+	installation, err := service.installations.ByOrganization(ctx, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	return service.client.Branches(ctx, installation.InstallationID, parsed)
+}
+
+// CreateApp mints an app against a repository. An app has no other source of
+// code, so the repository is required and is proved readable before the app
+// exists — a name that deploys nothing is worse than a refusal.
+func (service *GitHubService) CreateApp(
+	ctx context.Context,
+	organizationID string,
+	request dto.CreateAppRequest,
+) (deployment.App, error) {
+	request.Repository = strings.TrimSpace(request.Repository)
+	request.ProductionRef = strings.TrimSpace(request.ProductionRef)
+	if request.Repository == "" {
+		return deployment.App{}, fmt.Errorf(
+			"%w: repository is required", githubdomain.ErrInvalid,
+		)
+	}
+	if !service.Configured() {
+		return deployment.App{}, github.ErrNotConfigured
+	}
+	installation, err := service.installations.ByOrganization(ctx, organizationID)
+	if err != nil {
+		return deployment.App{}, err
+	}
+	parsed, err := github.ParseRepo(request.Repository)
+	if err != nil {
+		return deployment.App{}, err
+	}
+	ref := request.ProductionRef
+	if ref == "" {
+		ref = "HEAD"
+	}
+	if _, err := service.client.ResolveRef(
+		ctx, installation.InstallationID, parsed, ref,
+	); err != nil {
+		return deployment.App{}, err
+	}
+	return service.deployments.CreateApp(ctx, organizationID, request)
 }
 
 // Connect points an app at a repository, verifying the installation can see it
@@ -154,7 +285,7 @@ func (service *GitHubService) Deploy(
 		return deployment.Deployment{}, err
 	}
 	if app.Repository == "" {
-		return deployment.Deployment{}, deployment.ErrNotConnected
+		return deployment.Deployment{}, githubdomain.ErrNotConnected
 	}
 	installation, err := service.installations.ByOrganization(ctx, organizationID)
 	if err != nil {
@@ -175,7 +306,28 @@ func (service *GitHubService) Deploy(
 	if err != nil {
 		return deployment.Deployment{}, err
 	}
+	return service.build(
+		ctx, organizationID, app, installation.InstallationID,
+		ref, commit, runtime, entryPoint,
+	)
+}
 
+// build downloads one commit and hands it to the deployment service exactly as
+// an upload would arrive, which is also what starts the build.
+func (service *GitHubService) build(
+	ctx context.Context,
+	organizationID string,
+	app deployment.App,
+	installationID int64,
+	ref string,
+	commit string,
+	runtime deployment.Runtime,
+	entryPoint string,
+) (deployment.Deployment, error) {
+	parsed, err := github.ParseRepo(app.Repository)
+	if err != nil {
+		return deployment.Deployment{}, err
+	}
 	directory, err := os.MkdirTemp("", "neurun-github-")
 	if err != nil {
 		return deployment.Deployment{}, fmt.Errorf("stage github source: %w", err)
@@ -184,7 +336,7 @@ func (service *GitHubService) Deploy(
 	archive := filepath.Join(directory, "source.zip")
 
 	if _, err := service.client.Source(
-		ctx, installation.InstallationID, parsed, commit, archive,
+		ctx, installationID, parsed, commit, archive,
 	); err != nil {
 		return deployment.Deployment{}, err
 	}

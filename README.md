@@ -19,7 +19,7 @@ in their own network; source code is not part of that.
 The deployable vertical slice is the deployment path, end to end:
 
 - projects and apps, with cascading deletes that require a typed confirmation;
-- source deployments taken as a ZIP, stored immutably, and built synchronously;
+- source deployments fetched from GitHub on a push, stored immutably, and built;
 - numbered, immutable builds producing code and install layers as artifacts;
 - executions pinned to the build that was ready when they were created, claimed
   with `FOR UPDATE SKIP LOCKED` and finalized by compare-and-set;
@@ -29,9 +29,9 @@ The deployable vertical slice is the deployment path, end to end:
 
 The commercial model follows the execution: an app is **executed, not hosted**,
 so the meter is the compute an execution consumes between `started_at` and
-`finished_at`. Queued time and builds are free. **Runners** — a server holding
+`finished_at`. Queued time and builds are free. **Servers** — a machine holding
 one app resident behind an endpoint, metered by resident time — are the next
-capability and are not built; see [docs/runner.md](docs/runner.md).
+capability and are not built; see [docs/server.md](docs/server.md).
 
 **Browser profiles** are the newest capability: an optional stealth identity plus
 the cookies and storage a browser keeps between runs. The control plane stores

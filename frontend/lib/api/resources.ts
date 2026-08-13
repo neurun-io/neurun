@@ -12,7 +12,9 @@ import type {
   Deployment,
   Execution,
   IdentityCatalog,
+  Installation,
   NeurunApp,
+  Repository,
   Project,
   User,
 } from "./resource-types";
@@ -79,6 +81,21 @@ const appSchema = z.looseObject({
   id: z.string(),
   project_id: z.string(),
   name: z.string(),
+  repository: z.string().optional(),
+  production_ref: z.string().optional(),
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+const repositorySchema = z.looseObject({
+  full_name: z.string(),
+  default_branch: z.string(),
+  private: z.boolean(),
+});
+const installationSchema = z.looseObject({
+  id: z.string(),
+  organization_id: z.string(),
+  installation_id: z.number(),
+  account_login: z.string(),
   created_at: timestampSchema,
   updated_at: timestampSchema,
 });
@@ -185,9 +202,23 @@ export function getApp(id: string, signal?: AbortSignal) {
   );
 }
 
-export function createApp(projectId: string, name: string) {
+export function createApp(
+  projectId: string,
+  name: string,
+  repository: string,
+  productionRef: string,
+) {
   return request<NeurunApp>(
-    { method: "POST", path: "/v1/apps", body: { project_id: projectId, name } },
+    {
+      method: "POST",
+      path: "/v1/apps",
+      body: {
+        project_id: projectId,
+        name,
+        repository,
+        production_ref: productionRef,
+      },
+    },
     appSchema as never,
   );
 }
@@ -195,6 +226,62 @@ export function createApp(projectId: string, name: string) {
 /** Cascades to the app's deployments, builds and executions. */
 export function deleteApp(id: string) {
   return request<void>({ method: "DELETE", path: `/v1/apps/${segment(id)}` });
+}
+
+/** An empty repository disconnects the app. */
+export function connectRepository(id: string, repository: string, productionRef: string) {
+  return request<NeurunApp>(
+    {
+      method: "PUT",
+      path: `/v1/apps/${segment(id)}/repository`,
+      body: { repository, production_ref: productionRef },
+    },
+    appSchema as never,
+  );
+}
+
+export function listRepositories(signal?: AbortSignal) {
+  return request<{ repositories: Repository[] }>(
+    { path: "/v1/github/repositories", signal },
+    z.looseObject({ repositories: z.array(repositorySchema) }) as never,
+  );
+}
+
+export function listBranches(repository: string, signal?: AbortSignal) {
+  return request<{ branches: string[] }>(
+    { path: "/v1/github/branches", query: { repository }, signal },
+    z.looseObject({ branches: z.array(z.string()) }) as never,
+  );
+}
+
+export function getInstallation(signal?: AbortSignal) {
+  return request<Installation>(
+    { path: "/v1/github/installation", signal },
+    installationSchema as never,
+  );
+}
+
+export function recordInstallation(installationId: string, accountLogin: string) {
+  return request<Installation>(
+    {
+      method: "POST",
+      path: "/v1/github/installation",
+      body: { installation_id: installationId, account_login: accountLogin },
+    },
+    installationSchema as never,
+  );
+}
+
+export function deleteInstallation() {
+  return request<void>({ method: "DELETE", path: "/v1/github/installation" });
+}
+
+/** Build a ref by hand. A push to the production ref does the same thing. */
+export function deployRef(appId: string, ref: string) {
+  return request<Deployment>(
+    { method: "POST", path: "/v1/github/deployments", body: { app_id: appId, ref } },
+    deploymentSchema as never,
+  );
 }
 
 export function listDeployments(appId?: string, signal?: AbortSignal) {
@@ -207,18 +294,6 @@ export function listDeployments(appId?: string, signal?: AbortSignal) {
 export function getDeployment(id: string, signal?: AbortSignal) {
   return request<Deployment>(
     { path: `/v1/deployments/${segment(id)}`, signal },
-    deploymentSchema as never,
-  );
-}
-
-export function createDeployment(appId: string, source: File, entrypoint: string) {
-  const body = new FormData();
-  body.set("app_id", appId);
-  body.set("runtime", "python");
-  body.set("entrypoint", entrypoint);
-  body.set("source", source);
-  return request<Deployment>(
-    { method: "POST", path: "/v1/deployments", body },
     deploymentSchema as never,
   );
 }

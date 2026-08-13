@@ -40,7 +40,7 @@ other execution.
 
 Nothing in this repository charges anybody; the meter is the wall time between
 `started_at` and `finished_at`, which is why both are recorded to the row rather
-than derived from logs. [Runners](runner.md) would be metered by resident time
+than derived from logs. [Servers](server.md) would be metered by resident time
 instead, and are unbuilt.
 
 ## Fields

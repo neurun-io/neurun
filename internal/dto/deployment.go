@@ -25,19 +25,13 @@ type CreateDeploymentRequest struct {
 	GitRef    string
 }
 
-type ConnectRepositoryRequest struct {
+// CreateAppRequest carries the repository because an app is only ever created
+// from one: there is no other way to get source into a deployment.
+type CreateAppRequest struct {
+	ProjectID     string `json:"project_id"`
+	Name          string `json:"name"`
 	Repository    string `json:"repository"`
 	ProductionRef string `json:"production_ref"`
-}
-
-type DeployRefRequest struct {
-	AppID string `json:"app_id"`
-	Ref   string `json:"ref"`
-}
-
-type CreateAppRequest struct {
-	ProjectID string `json:"project_id"`
-	Name      string `json:"name"`
 }
 
 type UpdateAppRequest struct {
@@ -178,23 +172,6 @@ func NewAppResponse(record deployment.App) AppResponse {
 	return AppResponse{
 		ID: record.ID, ProjectID: record.ProjectID, Name: record.Name,
 		Repository: record.Repository, ProductionRef: record.ProductionRef,
-		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
-	}
-}
-
-type InstallationResponse struct {
-	ID             string    `json:"id"`
-	OrganizationID string    `json:"organization_id"`
-	InstallationID int64     `json:"installation_id"`
-	AccountLogin   string    `json:"account_login"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-}
-
-func NewInstallationResponse(record deployment.Installation) InstallationResponse {
-	return InstallationResponse{
-		ID: record.ID, OrganizationID: record.OrganizationID,
-		InstallationID: record.InstallationID, AccountLogin: record.AccountLogin,
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }

@@ -40,7 +40,7 @@ export const DOCS_NAV = [
     label: "Execute",
     items: [
       { slug: "executions", label: "Executions", icon: "activity" },
-      { slug: "runners", label: "Runners", icon: "server-cog" },
+      { slug: "servers", label: "Servers", icon: "server-cog" },
     ],
   },
   {
@@ -57,7 +57,7 @@ export const DOCS_ORDER = [
   "apps",
   "builds",
   "executions",
-  "runners",
+  "servers",
   "authentication",
   "errors",
 ];
@@ -68,7 +68,7 @@ export const DOCS: Record<string, DocsPage> = {
     label: "Quickstart",
     group: "Start",
     title: "Quickstart",
-    lead: "Issue a key, create an app, deploy a ZIP of source, and run it. Ten minutes, and no infrastructure of your own.",
+    lead: "Issue a key, create an app, connect it to a repository, and run it. Ten minutes, and no infrastructure of your own.",
     tags: ["v1", "0.1.0", "free credit"],
     source: "content/collections/neurun/quickstart.mdx",
     toc: [
@@ -76,7 +76,7 @@ export const DOCS: Record<string, DocsPage> = {
       { id: "account", label: "Create an account" },
       { id: "key", label: "Issue a key" },
       { id: "app", label: "Create an app" },
-      { id: "deploy", label: "Deploy source to it" },
+      { id: "deploy", label: "Connect it to a repository" },
       { id: "run", label: "Run it" },
     ],
     body: (
@@ -127,8 +127,8 @@ export NEURUN_KEY=neu_live_a41f.•••   # shown once, never again`}</Snippet
         <H2 id="app">Create an app</H2>
         <P>
           An app is the thing you deploy to, and it must exist first. Nothing auto-creates one:{" "}
-          <C>POST /v1/deployments</C> looks up the <C>app_id</C> and fails with <C>app not found</C>{" "}
-          when it is missing. That is deliberate — auto-creation means a typo in a client silently
+          a deploy looks up the <C>app_id</C> and fails with <C>app not found</C> when it is
+          missing. That is deliberate — auto-creation means a typo in a client silently
           produces a second app that looks fine and receives none of your traffic.
         </P>
         <Snippet filename="shell">{`curl -sS -X POST $NEURUN_URL/v1/apps \\
@@ -138,19 +138,20 @@ export NEURUN_KEY=neu_live_a41f.•••   # shown once, never again`}</Snippet
 # {"id":"app_7QK2M0X4","project_id":"prj_4T1M0",
 #  "name":"pricing-crawler", ...}`}</Snippet>
 
-        <H2 id="deploy">Deploy source to it</H2>
+        <H2 id="deploy">Connect it to a repository</H2>
         <P>
-          Send the app id, the runtime, an optional entrypoint and a ZIP of your source as{" "}
-          <C>multipart/form-data</C>. The app decides the project, so you never supply one. Creation
-          is synchronous: the request builds the source and returns the finished deployment, ready or
-          failed.
+          Source is never uploaded. Point the app at a repository the GitHub App is installed on, and
+          every push to its production ref fetches that commit and builds it. Deploying a ref by hand
+          takes the same path, so a manual deploy and a pushed one produce the same kind of record.
         </P>
-        <Snippet filename="shell">{`curl -sS -X POST $NEURUN_URL/v1/deployments \\
+        <Snippet filename="shell">{`curl -sS -X PUT $NEURUN_URL/v1/apps/app_7QK2M0X4/repository \\
   -H "authorization: Bearer $NEURUN_KEY" \\
-  -F app_id=app_7QK2M0X4 \\
-  -F runtime=python \\
-  -F entrypoint=main.py:handler \\
-  -F source=@dist.zip
+  -d '{"repository":"acme/pricing-crawler","production_ref":"main"}'
+
+# then push to main — or deploy a ref yourself
+curl -sS -X POST $NEURUN_URL/v1/github/deployments \\
+  -H "authorization: Bearer $NEURUN_KEY" \\
+  -d '{"app_id":"app_7QK2M0X4","ref":"main"}'
 
 HTTP/1.1 201 Created
 # {"id":"dep_01HXQ8F2K9","status":"ready",
@@ -191,12 +192,12 @@ HTTP/1.1 201 Created
     label: "Apps and deployments",
     group: "Deploy",
     title: "Apps and deployments",
-    lead: "An app is a named thing you deploy to. A deployment is one upload of source against it, plus every build made from that upload.",
+    lead: "An app is a named thing you deploy to. A deployment is one commit of its repository, plus every build made from that commit.",
     tags: ["v1", "stable"],
     source: "content/collections/neurun/apps.mdx",
     toc: [
       { id: "app", label: "The app must exist first" },
-      { id: "upload", label: "One upload, many builds" },
+      { id: "source", label: "One commit, many builds" },
       { id: "entrypoint", label: "Runtime and entrypoint" },
       { id: "status", label: "Status mirrors the newest build" },
       { id: "delete", label: "Deleting cascades" },
@@ -206,7 +207,7 @@ HTTP/1.1 201 Created
         <H2 id="app">The app must exist first</H2>
         <P>
           An SDK cannot create an app by deploying to it. Create apps explicitly with{" "}
-          <C>POST /v1/apps</C>, then deploy to them. The app is also what decides a deployment&apos;s
+          <C>POST /v1/apps</C>, then connect each one to a repository. The app is also what decides a deployment&apos;s
           project — the caller never supplies a project when deploying.
         </P>
         <Rows
@@ -218,9 +219,9 @@ HTTP/1.1 201 Created
           ]}
         />
 
-        <H2 id="upload">One upload, many builds</H2>
+        <H2 id="source">One commit, many builds</H2>
         <P>
-          The upload never changes. Rebuilding produces a new build, never new source — so a
+          The fetched source never changes. Rebuilding produces a new build, never new source — so a
           deployment that failed on a missing dependency and then succeeded after the toolchain was
           fixed keeps both attempts under one record rather than becoming two unrelated ones.
         </P>
@@ -244,7 +245,7 @@ curl -sS "$NEURUN_URL/v1/deployments?app_id=app_7QK2M0X4&limit=20" \\
         </P>
         <Rows
           items={[
-            { term: "uploaded", body: "Source stored, no build started yet." },
+            { term: "uploaded", body: "Source fetched and stored, no build started yet." },
             { term: "building", body: "The newest build is running." },
             { term: "ready", body: "The newest build produced artifacts. Executions may pin to it." },
             { term: "failed", body: "The newest build carries a failure code and message." },
@@ -408,32 +409,32 @@ Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
           the moment it goes terminal. Queued time is not billed. Builds are not billed. A rerun costs
           whatever it consumes, like any other execution.
         </P>
-        <Callout kind="roadmap" title="Runners are metered differently">
-          A runner holds an app resident and is billed for the time it is up, not per execution. It is
-          unbuilt — see <Link href="/docs/runners">Runners</Link>.
+        <Callout kind="roadmap" title="Servers are metered differently">
+          A server holds an app resident and is billed for the time it is up, not per execution. It is
+          unbuilt — see <Link href="/docs/servers">Servers</Link>.
         </Callout>
       </>
     ),
   },
 
-  runners: {
-    slug: "runners",
-    label: "Runners",
+  servers: {
+    slug: "servers",
+    label: "Servers",
     group: "Execute",
-    title: "Runners",
-    lead: "A server that holds one app resident and exposes an endpoint, so callers reach the app directly instead of creating an execution per call.",
+    title: "Servers",
+    lead: "A machine that holds one app resident and exposes an endpoint, so callers reach the app directly instead of creating an execution per call.",
     tags: ["roadmap", "unbuilt"],
-    source: "content/collections/neurun/runners.mdx",
+    source: "content/collections/neurun/servers.mdx",
     toc: [
       { id: "shape", label: "The shape" },
-      { id: "why", label: "When a runner is the right answer" },
+      { id: "why", label: "When a server is the right answer" },
       { id: "billing", label: "A different meter" },
       { id: "status", label: "Status" },
     ],
     body: (
       <>
         <Callout kind="roadmap" title="Nothing on this page is available yet">
-          Runners are unbuilt. There is no <C>/v1/runners</C> endpoint, no runner in the dashboard,
+          Servers are unbuilt. There is no <C>/v1/servers</C> endpoint, no server in the dashboard,
           and no plan that includes one. This page describes the shape being designed so you can tell
           whether to wait for it.
         </Callout>
@@ -441,18 +442,18 @@ Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
         <H2 id="shape">The shape</H2>
         <P>
           An app is executed, not hosted: a deployment produces a build, an execution invokes it once,
-          and the process goes away. A runner inverts that. It pins one app to one ready build, keeps
-          it resident on a server, and exposes an endpoint you call directly — no execution record per
+          and the process goes away. A server inverts that. It pins one app to one ready build, keeps
+          it resident on a machine, and exposes an endpoint you call directly — no execution record per
           call, no cold start per call.
         </P>
         <Rows
           items={[
             { term: "execution", body: "One invocation, one record, one pinned build. Billed for the compute it consumed." },
-            { term: "runner", body: "One resident app behind an endpoint. Billed for the time it is up." },
+            { term: "server", body: "One resident app behind an endpoint. Billed for the time it is up." },
           ]}
         />
 
-        <H2 id="why">When a runner is the right answer</H2>
+        <H2 id="why">When a server is the right answer</H2>
         <P>
           When startup cost dwarfs the work: a crawler that holds a warm connection pool, a handler
           that loads a large model or ruleset once, anything fronting a latency budget an execution
@@ -463,14 +464,14 @@ Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
         <H2 id="billing">A different meter</H2>
         <P>
           Resident time and per-execution compute cannot share a meter without double-counting, so a
-          runner will be metered and invoiced as its own line. Nothing about the execution model
-          changes when runners ship, and no execution price moves because of them.
+          server will be metered and invoiced as its own line. Nothing about the execution model
+          changes when servers ship, and no execution price moves because of them.
         </P>
 
         <H2 id="status">Status</H2>
         <P>
-          The dashboard&apos;s <a href="/runners">Runners</a> route names the contracts still
-          required: a lifecycle the server owns, the exposed endpoint and its authentication,
+          The dashboard&apos;s <a href="/servers">Servers</a> route names the contracts still
+          required: a lifecycle the control plane owns, the exposed endpoint and its authentication,
           resident-time metering, and health and logs for a process that has no execution record to
           attach either to. When those ship, this page stops carrying a roadmap banner.
         </P>
@@ -615,7 +616,7 @@ Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
             { term: "401", body: "No credential, or one the server does not recognise." },
             { term: "403", body: "Authenticated, but the scope required is not held." },
             { term: "404", body: "The resource does not exist, or is outside the scopes held." },
-            { term: "413", body: "The uploaded source exceeded the accepted size." },
+            { term: "413", body: "The repository source exceeded the accepted size." },
             { term: "422", body: "The request was understood and refused. Read details." },
           ]}
         />

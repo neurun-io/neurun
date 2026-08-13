@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { useState } from "react";
 
 import { ConfirmDeleteDialog } from "@/components/neurun/confirm-delete-dialog";
-import { ErrorPanel } from "@/components/neurun/error-panel";
+import { InstallLink } from "@/components/github/install-link";
+import { ErrorPanel, InlineError } from "@/components/neurun/error-panel";
 import { EmptyState } from "@/components/neurun/feedback";
 import { PageHeader } from "@/components/neurun/page-header";
-import { Panel } from "@/components/neurun/panel";
 import { Timestamp } from "@/components/neurun/timestamp";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,9 +38,11 @@ import {
 } from "@/components/ui/table";
 import {
   useAppsQuery,
+  useBranchesQuery,
   useCreateAppMutation,
   useDeleteAppMutation,
   useProjectsQuery,
+  useRepositoriesQuery,
 } from "@/lib/api/queries";
 import type { NeurunApp } from "@/lib/api/resource-types";
 
@@ -52,66 +55,64 @@ export default function AppsPage() {
     <div>
       <PageHeader
         title="Apps"
-        description="What a deployment targets. An app must exist before you deploy to it — deploying never creates one, so a typo in a client fails loudly instead of quietly making a second app."
+        description="A deployable scraper or browser automation program."
       />
-      <div className="p-6">
+      <div className="space-y-4 p-6">
+        <CreateAppDialog />
+
         {query.isError ? (
           <ErrorPanel error={query.error} onRetry={() => query.refetch()} />
+        ) : query.isPending ? (
+          <p className="text-fg-muted">Loading…</p>
+        ) : query.data.apps.length === 0 ? (
+          <EmptyState
+            title="No apps"
+            description="Create one, then deploy to it."
+          />
         ) : (
-          <Panel label="Apps" actions={<CreateAppDialog />} flush>
-            {query.isPending ? (
-              <p className="p-4 text-fg-muted">Loading…</p>
-            ) : query.data.apps.length === 0 ? (
-              <EmptyState
-                title="No apps"
-                description="Create one, then deploy to it by its identifier."
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>App</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Updated</TableHead>
-                    <TableHead className="w-0 text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {query.data.apps.map((app) => (
-                    <TableRow key={app.id}>
-                      <TableCell>
-                        <Link className="font-mono underline" href={`/apps/${app.id}`}>
-                          {app.id}
-                        </Link>
-                      </TableCell>
-                      <TableCell>{app.name}</TableCell>
-                      <TableCell>
-                        <Link className="font-mono underline" href={`/projects/${app.project_id}`}>
-                          {app.project_id}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <Timestamp value={app.updated_at} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            remove.reset();
-                            setPendingDelete(app);
-                          }}
-                        >
-                          Delete
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </Panel>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>App</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Project</TableHead>
+                <TableHead>Updated</TableHead>
+                <TableHead className="w-0 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {query.data.apps.map((app) => (
+                <TableRow key={app.id}>
+                  <TableCell>
+                    <Link className="font-mono underline" href={`/apps/${app.id}`}>
+                      {app.id}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{app.name}</TableCell>
+                  <TableCell>
+                    <Link className="font-mono underline" href={`/projects/${app.project_id}`}>
+                      {app.project_id}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Timestamp value={app.updated_at} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        remove.reset();
+                        setPendingDelete(app);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </div>
 
@@ -143,13 +144,22 @@ function CreateAppDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [repository, setRepository] = useState("");
+  const [productionRef, setProductionRef] = useState("");
   const projects = useProjectsQuery();
+  const repositories = useRepositoriesQuery();
+  const branches = useBranchesQuery(repository);
   const create = useCreateAppMutation();
+  const granted = repositories.data?.repositories ?? [];
 
   const submit = () => {
     const trimmed = name.trim();
-    if (!trimmed || !projectId || create.isPending) return;
-    create.mutate({ projectId, name: trimmed }, { onSuccess: () => setOpen(false) });
+    const repo = repository.trim();
+    if (!trimmed || !projectId || !repo || create.isPending) return;
+    create.mutate(
+      { projectId, name: trimmed, repository: repo, productionRef: productionRef.trim() },
+      { onSuccess: () => setOpen(false) },
+    );
   };
 
   return (
@@ -160,13 +170,16 @@ function CreateAppDialog() {
         if (!next) {
           setName("");
           setProjectId("");
+          setRepository("");
+          setProductionRef("");
           create.reset();
         }
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="secondary">
-          New app
+        <Button>
+          <Plus aria-hidden />
+          Create app
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
@@ -218,6 +231,73 @@ function CreateAppDialog() {
             />
           </div>
 
+          <div className="grid gap-2">
+            <Label htmlFor="app-repository" className="text-caption text-fg-muted">
+              Repository
+            </Label>
+            <Select
+              value={repository}
+              onValueChange={(next) => {
+                setRepository(next);
+                // The default branch is what HEAD resolves to, so it is the ref
+                // to offer until somebody picks another.
+                setProductionRef(
+                  granted.find((record) => record.full_name === next)?.default_branch ?? "",
+                );
+              }}
+            >
+              <SelectTrigger id="app-repository">
+                <SelectValue
+                  placeholder={
+                    repositories.isPending ? "Loading repositories…" : "Select a repository"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {granted.map((record) => (
+                  <SelectItem key={record.full_name} value={record.full_name}>
+                    {record.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {repositories.isError ? (
+              <InlineError error={repositories.error} />
+            ) : repositories.isSuccess && granted.length === 0 ? (
+              <div className="flex flex-col items-start gap-2">
+                <p className="text-caption text-fg-muted">
+                  The GitHub App reads no repositories yet.
+                </p>
+                <InstallLink label="Add repositories on GitHub" variant="secondary" />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="app-production-ref" className="text-caption text-fg-muted">
+              Production ref
+            </Label>
+            <Select
+              value={productionRef}
+              onValueChange={setProductionRef}
+              disabled={!repository || branches.isPending}
+            >
+              <SelectTrigger id="app-production-ref">
+                <SelectValue
+                  placeholder={branches.isPending ? "Loading branches…" : "Select a branch"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {(branches.data?.branches ?? []).map((branch) => (
+                  <SelectItem key={branch} value={branch}>
+                    {branch}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {branches.isError ? <InlineError error={branches.error} /> : null}
+          </div>
+
           {create.isError ? (
             <p role="alert" className="text-caption text-fg">
               {create.error.message}
@@ -228,7 +308,10 @@ function CreateAppDialog() {
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={create.isPending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={!name.trim() || !projectId || create.isPending}>
+          <Button
+            onClick={submit}
+            disabled={!name.trim() || !projectId || !repository.trim() || create.isPending}
+          >
             {create.isPending ? "Creating…" : "Create app"}
           </Button>
         </DialogFooter>

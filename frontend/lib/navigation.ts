@@ -43,6 +43,12 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Access",
     items: [
       { href: "/users", label: "Users", icon: "user-round", availability: "current" },
+      {
+        href: "/users/activity",
+        label: "Activity",
+        icon: "scroll-text",
+        availability: "future",
+      },
       { href: "/api-keys", label: "API keys", icon: "key", availability: "current" },
       { href: "/organization", label: "Organization", icon: "building", availability: "current" },
     ],
@@ -63,29 +69,18 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: "sparkles",
         availability: "future",
       },
-      { href: "/runners", label: "Runners", icon: "server-cog", availability: "future" },
+      { href: "/servers", label: "Servers", icon: "server-cog", availability: "future" },
       { href: "/proxies", label: "Proxies", icon: "route", availability: "future" },
+      {
+        href: "/environment-variables",
+        label: "Environment variables",
+        icon: "sliders-horizontal",
+        availability: "future",
+      },
       {
         href: "/data-health",
         label: "Data health",
         icon: "git-compare",
-        availability: "future",
-      },
-    ],
-  },
-  {
-    label: "Roadmap settings",
-    items: [
-      {
-        href: "/settings/webhooks",
-        label: "Webhooks",
-        icon: "webhook",
-        availability: "future",
-      },
-      {
-        href: "/settings/activity",
-        label: "Activity",
-        icon: "scroll-text",
         availability: "future",
       },
     ],

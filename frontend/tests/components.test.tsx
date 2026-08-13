@@ -9,7 +9,7 @@ import { LoginScreen } from "@/components/auth/login-screen";
 
 import { StatusBadge } from "@/components/neurun/status-badge";
 import { ErrorPanel } from "@/components/neurun/error-panel";
-import { RoadmapRoute } from "@/components/neurun/feedback";
+import { UnbuiltRoute } from "@/components/neurun/feedback";
 import { NeurunApiError } from "@/lib/api/errors";
 import { useCursorPages } from "@/lib/view/use-cursor-pages";
 import { ROADMAP } from "@/lib/roadmap";
@@ -75,15 +75,13 @@ describe("ErrorPanel", () => {
   });
 });
 
-describe("RoadmapRoute", () => {
-  it("states that the capability is unavailable and names what is missing", () => {
-    render(<RoadmapRoute {...ROADMAP.runners} />);
+describe("UnbuiltRoute", () => {
+  it("renders the route's empty state rather than any record", () => {
+    render(<UnbuiltRoute {...ROADMAP.servers} />);
 
-    expect(screen.getByRole("heading", { name: "Runners" })).toBeInTheDocument();
-    expect(screen.getByText("not in this release")).toBeInTheDocument();
-    expect(
-      screen.getByText(/runner create \/ list \/ detail \/ delete/),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Servers" })).toBeInTheDocument();
+    expect(screen.getByText("No servers")).toBeInTheDocument();
+    expect(screen.getByText(/An app is executed, not hosted/)).toBeInTheDocument();
   });
 });
 

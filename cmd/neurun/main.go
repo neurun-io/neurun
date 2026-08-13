@@ -191,8 +191,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	var gitHubClient *github.Client
 	if cfg.GitHubAppID != 0 && len(cfg.GitHubPrivateKey) > 0 {
 		gitHubClient, err = github.New(github.Options{
-			AppID:      cfg.GitHubAppID,
-			PrivateKey: cfg.GitHubPrivateKey,
+			AppID:         cfg.GitHubAppID,
+			PrivateKey:    cfg.GitHubPrivateKey,
+			WebhookSecret: cfg.GitHubWebhookSecret,
 			Limits: github.Limits{
 				MaxArchiveBytes:   cfg.MaxDeploymentSourceBytes,
 				MaxArchiveEntries: cfg.MaxDeploymentArchiveEntries,
@@ -202,6 +203,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			return fmt.Errorf("configure GitHub app: %w", err)
 		}
 		logger.Info("github app configured", "app_id", cfg.GitHubAppID)
+		if len(cfg.GitHubWebhookSecret) == 0 {
+			logger.Warn("github webhook secret is not set; pushes will not deploy")
+		}
 	} else {
 		logger.Warn("github app is not configured; repository deployments are unavailable")
 	}
@@ -262,9 +266,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 				deployments.Check(readyCtx),
 			)
 		},
-		MaximumBodyBytes:       cfg.MaxRequestBodyBytes,
-		MaximumDeploymentBytes: cfg.MaxDeploymentSourceBytes,
-		SessionCookieSecure:    cfg.SessionCookieSecure,
+		MaximumBodyBytes:    cfg.MaxRequestBodyBytes,
+		SessionCookieSecure: cfg.SessionCookieSecure,
 	})
 	if err != nil {
 		return fmt.Errorf("configure control API: %w", err)

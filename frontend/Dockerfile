@@ -12,6 +12,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # a runtime environment variable never reaches the browser.
 ARG NEXT_PUBLIC_NEURUN_API_URL=http://localhost:1267
 ENV NEXT_PUBLIC_NEURUN_API_URL=$NEXT_PUBLIC_NEURUN_API_URL
+# The GitHub App slug its install URL is keyed by. Inlined at build time like
+# every NEXT_PUBLIC_ value, so it has to be present here rather than at runtime.
+ARG NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG=
+ENV NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG=$NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

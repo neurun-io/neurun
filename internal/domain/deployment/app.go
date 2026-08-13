@@ -43,6 +43,25 @@ func (record *App) Connect(repository, productionRef string, now time.Time) erro
 	return record.Validate()
 }
 
+// TracksRef reports whether a push to ref should deploy this app. An app that
+// names no production ref follows the repository's default branch, which is
+// what HEAD resolves to when the ref is deployed by hand.
+func (record App) TracksRef(ref, defaultBranch string) bool {
+	if record.Repository == "" || ref == "" {
+		return false
+	}
+	tracked := strings.TrimSpace(record.ProductionRef)
+	if tracked == "" || tracked == "HEAD" {
+		tracked = strings.TrimSpace(defaultBranch)
+	}
+	if tracked == "" {
+		return false
+	}
+	return ref == tracked ||
+		ref == "refs/heads/"+tracked ||
+		ref == "refs/tags/"+tracked
+}
+
 func NewApp(id, projectID, name string, now time.Time) (App, error) {
 	normalized, err := normalizeAppName(name)
 	if err != nil {

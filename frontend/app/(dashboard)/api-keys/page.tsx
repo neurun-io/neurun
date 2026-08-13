@@ -98,50 +98,46 @@ export default function APIKeysPage() {
         </Panel>
         {query.isError ? (
           <ErrorPanel error={query.error} onRetry={() => query.refetch()} />
+        ) : query.isPending ? (
+          <p className="text-fg-muted">Loading…</p>
+        ) : query.data.api_keys.length === 0 ? (
+          <EmptyState title="No API keys" description="Create a scoped API key above." />
         ) : (
-          <Panel label="API keys" flush>
-            {query.isPending ? (
-              <p className="p-4 text-fg-muted">Loading…</p>
-            ) : query.data.api_keys.length === 0 ? (
-              <EmptyState title="No API keys" description="Create a scoped API key above." />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>API key</TableHead>
-                    <TableHead>Scopes</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {query.data.api_keys.map((apiKey) => (
-                    <TableRow key={apiKey.id}>
-                      <TableCell>{apiKey.name}</TableCell>
-                      <TableCell className="font-mono">{apiKey.prefix}</TableCell>
-                      <TableCell className="font-mono text-micro">{apiKey.scopes.join(" ")}</TableCell>
-                      <TableCell><Timestamp value={apiKey.created_at} /></TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          disabled={Boolean(apiKey.revoked_at) || revoke.isPending}
-                          onClick={() =>
-                            revoke.mutate(apiKey.id, {
-                              onSuccess: () => toast.success("API key revoked"),
-                            })
-                          }
-                        >
-                          {apiKey.revoked_at ? "Revoked" : "Revoke"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </Panel>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>API key</TableHead>
+                <TableHead>Scopes</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {query.data.api_keys.map((apiKey) => (
+                <TableRow key={apiKey.id}>
+                  <TableCell>{apiKey.name}</TableCell>
+                  <TableCell className="font-mono">{apiKey.prefix}</TableCell>
+                  <TableCell className="font-mono text-micro">{apiKey.scopes.join(" ")}</TableCell>
+                  <TableCell><Timestamp value={apiKey.created_at} /></TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={Boolean(apiKey.revoked_at) || revoke.isPending}
+                      onClick={() =>
+                        revoke.mutate(apiKey.id, {
+                          onSuccess: () => toast.success("API key revoked"),
+                        })
+                      }
+                    >
+                      {apiKey.revoked_at ? "Revoked" : "Revoke"}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </div>
     </div>

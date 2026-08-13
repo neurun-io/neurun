@@ -57,6 +57,7 @@ services:
         # Read by the browser, so it must be an address the browser can reach,
         # not the internal service name.
         NEXT_PUBLIC_NEURUN_API_URL: http://localhost:${NEURUN_HTTP_PORT:-1267}
+        NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG: ${NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG:-}
     depends_on:
       neurun:
         condition: service_healthy

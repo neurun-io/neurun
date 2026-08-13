@@ -433,9 +433,20 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [name]
+              required: [name, repository]
               properties:
                 name: {type: string}
+                repository:
+                  type: string
+                  description: >-
+                    owner/name on GitHub. Required: an app has no other source
+                    of code, and the installation must already be able to read
+                    it.
+                production_ref:
+                  type: string
+                  description: >-
+                    The ref whose pushes deploy. Empty follows the repository's
+                    default branch.
       responses:
         "201":
           description: App created.
@@ -480,6 +491,158 @@ paths:
               schema: {$ref: "#/components/schemas/App"}
         "404": {$ref: "#/components/responses/Problem"}
         "409": {$ref: "#/components/responses/Problem"}
+  /v1/apps/{app_id}/repository:
+    parameters:
+      - name: app_id
+        in: path
+        required: true
+        schema: {type: string}
+    put:
+      operationId: connectRepository
+      description: >-
+        Point the app at a GitHub repository, or disconnect it by sending an
+        empty repository. The installation must already be able to read it: the
+        ref is resolved before anything is stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [repository]
+              properties:
+                repository:
+                  type: string
+                  description: owner/name, or empty to disconnect.
+                production_ref:
+                  type: string
+                  description: >-
+                    The ref a push must touch to deploy. Empty follows the
+                    repository's default branch.
+      responses:
+        "200":
+          description: App connected.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/App"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+  /v1/github/installation:
+    get:
+      operationId: getInstallation
+      responses:
+        "200":
+          description: The organization's GitHub App installation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Installation"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    post:
+      operationId: recordInstallation
+      description: >-
+        Record the installation GitHub redirects back with after somebody
+        installs the app. Re-installing replaces the previous record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [installation_id]
+              properties:
+                installation_id: {type: string}
+                account_login: {type: string}
+      responses:
+        "201":
+          description: Installation recorded.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Installation"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    delete:
+      operationId: deleteInstallation
+      responses:
+        "204": {description: Installation forgotten.}
+        "409": {$ref: "#/components/responses/Problem"}
+  /v1/github/repositories:
+    get:
+      operationId: listRepositories
+      description: The repositories this organization's installation can read.
+      responses:
+        "200":
+          description: Repositories the installation grants.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repositories]
+                properties:
+                  repositories:
+                    type: array
+                    items: {$ref: "#/components/schemas/Repository"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /v1/github/branches:
+    get:
+      operationId: listBranches
+      parameters:
+        - name: repository
+          in: query
+          required: true
+          description: owner/name.
+          schema: {type: string}
+      responses:
+        "200":
+          description: Branch names.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [branches]
+                properties:
+                  branches:
+                    type: array
+                    items: {type: string}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /v1/github/deployments:
+    post:
+      operationId: deployRef
+      description: >-
+        Build a ref of the app's connected repository. An absent ref uses the
+        app's production ref. A push to that ref does the same thing without
+        this call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [app_id]
+              properties:
+                app_id: {type: string}
+                ref: {type: string}
+      responses:
+        "201":
+          description: Deployment built.
+          headers:
+            Location: {$ref: "#/components/headers/Location"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Deployment"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /v1/users:
     get:
       operationId: listUsers
@@ -782,42 +945,6 @@ paths:
           $ref: "#/components/responses/Problem"
         "404": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
-    post:
-      operationId: createDeployment
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [app_id, runtime, source]
-              properties:
-                app_id:
-                  type: string
-                runtime:
-                  type: string
-                  const: python
-                entrypoint:
-                  type: string
-                  default: main.py:handler
-                source:
-                  type: string
-                  format: binary
-      responses:
-        "201":
-          description: Deployment built successfully.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Deployment"}
-        "401":
-          $ref: "#/components/responses/Problem"
-        "413":
-          $ref: "#/components/responses/Problem"
-        "422":
-          $ref: "#/components/responses/Problem"
   /v1/deployments/{deployment_id}:
     parameters:
       - $ref: "#/components/parameters/DeploymentID"
@@ -987,6 +1114,29 @@ components:
         id: {type: string}
         project_id: {type: string}
         name: {type: string}
+        repository:
+          type: string
+          description: owner/name on GitHub. Absent when the app is not connected.
+        production_ref:
+          type: string
+          description: The ref whose pushes deploy. Absent follows the default branch.
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    Repository:
+      type: object
+      required: [full_name, default_branch, private]
+      properties:
+        full_name: {type: string}
+        default_branch: {type: string}
+        private: {type: boolean}
+    Installation:
+      type: object
+      required: [id, organization_id, installation_id, account_login, created_at, updated_at]
+      properties:
+        id: {type: string}
+        organization_id: {type: string}
+        installation_id: {type: integer, format: int64}
+        account_login: {type: string}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
     Role:

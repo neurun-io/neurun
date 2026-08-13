@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { useState } from "react";
 
 import { ConfirmDeleteDialog } from "@/components/neurun/confirm-delete-dialog";
 import { ErrorPanel } from "@/components/neurun/error-panel";
 import { EmptyState } from "@/components/neurun/feedback";
 import { PageHeader } from "@/components/neurun/page-header";
-import { Panel } from "@/components/neurun/panel";
 import { Timestamp } from "@/components/neurun/timestamp";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,60 +44,58 @@ export default function ProjectsPage() {
     <div>
       <PageHeader
         title="Projects"
-        description="The ownership boundary for apps, deployments, builds and executions. Users and API keys belong to the installation, not to a project."
+        description="The ownership boundary for apps, deployments, builds and executions."
       />
-      <div className="p-6">
+      <div className="space-y-4 p-6">
+        <CreateProjectDialog />
+
         {query.isError ? (
           <ErrorPanel error={query.error} onRetry={() => query.refetch()} />
+        ) : query.isPending ? (
+          <p className="text-fg-muted">Loading…</p>
+        ) : query.data.projects.length === 0 ? (
+          <EmptyState
+            title="No projects"
+            description="Create one before deploying — an app must belong to a project."
+          />
         ) : (
-          <Panel label="Projects" actions={<CreateProjectDialog />} flush>
-            {query.isPending ? (
-              <p className="p-4 text-fg-muted">Loading…</p>
-            ) : query.data.projects.length === 0 ? (
-              <EmptyState
-                title="No projects"
-                description="Create one before deploying — an app must belong to a project."
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Updated</TableHead>
-                    <TableHead className="w-0 text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {query.data.projects.map((project) => (
-                    <TableRow key={project.id}>
-                      <TableCell>
-                        <Link className="font-mono underline" href={`/projects/${project.id}`}>
-                          {project.id}
-                        </Link>
-                      </TableCell>
-                      <TableCell>{project.name}</TableCell>
-                      <TableCell>
-                        <Timestamp value={project.updated_at} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            remove.reset();
-                            setPendingDelete(project);
-                          }}
-                        >
-                          Delete
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </Panel>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Project</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Updated</TableHead>
+                <TableHead className="w-0 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {query.data.projects.map((project) => (
+                <TableRow key={project.id}>
+                  <TableCell>
+                    <Link className="font-mono underline" href={`/projects/${project.id}`}>
+                      {project.id}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{project.name}</TableCell>
+                  <TableCell>
+                    <Timestamp value={project.updated_at} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        remove.reset();
+                        setPendingDelete(project);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </div>
 
@@ -152,8 +150,9 @@ function CreateProjectDialog() {
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="secondary">
-          New project
+        <Button>
+          <Plus aria-hidden />
+          Create project
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">

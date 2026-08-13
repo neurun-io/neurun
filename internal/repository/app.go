@@ -135,6 +135,32 @@ func (repository *AppRepository) List(
 	return records, nil
 }
 
+// ConnectedTo returns the apps in one organization pointed at a repository.
+// GitHub preserves the case of a repository name but does not distinguish it,
+// so neither does the match.
+func (repository *AppRepository) ConnectedTo(
+	ctx context.Context,
+	organizationID string,
+	name string,
+) ([]deployment.App, error) {
+	rows, err := repository.pool.Query(
+		ctx,
+		`SELECT `+appColumns+` FROM apps
+		 WHERE lower(repository) = lower($1) AND`+
+			fmt.Sprintf(inOrganization, "$2")+
+			` ORDER BY created_at DESC, id DESC`,
+		name, organizationID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list connected apps: %w", err)
+	}
+	records, err := pgx.CollectRows(rows, scanApp)
+	if err != nil {
+		return nil, fmt.Errorf("list connected apps: %w", err)
+	}
+	return records, nil
+}
+
 func (repository *AppRepository) Update(
 	ctx context.Context,
 	organizationID string,

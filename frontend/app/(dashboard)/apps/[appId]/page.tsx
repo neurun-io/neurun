@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+import { RepositoryPanel } from "@/components/github/repository-panel";
 import { ErrorPanel } from "@/components/neurun/error-panel";
 import { EmptyState } from "@/components/neurun/feedback";
 import { KeyValue } from "@/components/neurun/key-value";
@@ -57,6 +58,7 @@ export default function AppPage() {
             ]}
           />
         </Panel>
+        <RepositoryPanel app={app} />
         {deploymentsQuery.isError ? (
           <ErrorPanel error={deploymentsQuery.error} onRetry={() => deploymentsQuery.refetch()} />
         ) : (
@@ -64,7 +66,10 @@ export default function AppPage() {
             {deploymentsQuery.isPending ? (
               <p className="p-4 text-fg-muted">Loading…</p>
             ) : deploymentsQuery.data.deployments.length === 0 ? (
-              <EmptyState title="No deployments" description="Deploy this app from the SDK or Deployments page." />
+              <EmptyState
+                title="No deployments"
+                description="Push to this app's production ref, or deploy the current one from the repository panel above."
+              />
             ) : (
               <Table>
                 <TableHeader>

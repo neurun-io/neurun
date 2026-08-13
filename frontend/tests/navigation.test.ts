@@ -27,14 +27,14 @@ describe("focused navigation", () => {
         .filter((item) => item.availability === "future")
         .map((item) => item.href),
     ).toEqual([
+      "/users/activity",
       "/overview",
       "/stealth",
       "/ai-builder",
-      "/runners",
+      "/servers",
       "/proxies",
+      "/environment-variables",
       "/data-health",
-      "/settings/webhooks",
-      "/settings/activity",
     ]);
   });
 });

@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { InstallationPanel } from "@/components/github/installation-panel";
 import { ErrorPanel, InlineError } from "@/components/neurun/error-panel";
 import { KeyValue } from "@/components/neurun/key-value";
 import { PageHeader } from "@/components/neurun/page-header";
@@ -91,7 +92,10 @@ function OrganizationView() {
                   This account owns no organization. An account may own one.
                 </p>
               ) : (
-                <KeyValue rows={organizationRows(owned)} />
+                <div className="space-y-4">
+                  <KeyValue rows={organizationRows(owned)} />
+                  <InstallationPanel />
+                </div>
               )}
             </Panel>
 

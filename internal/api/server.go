@@ -49,34 +49,32 @@ const (
 type ReadyCheck func(context.Context) error
 
 type ServerOptions struct {
-	Deployments            *service.DeploymentService
-	Executions             *service.ExecutionService
-	Accounts               *service.AccountService
-	Sessions               *service.SessionService
-	Organizations          *service.OrganizationService
-	GitHub                 *service.GitHubService
-	Browsers               *service.BrowserService
-	AllowedOrigins         []string
-	Ready                  ReadyCheck
-	MaximumBodyBytes       int64
-	MaximumDeploymentBytes int64
-	SessionCookieSecure    bool
+	Deployments         *service.DeploymentService
+	Executions          *service.ExecutionService
+	Accounts            *service.AccountService
+	Sessions            *service.SessionService
+	Organizations       *service.OrganizationService
+	GitHub              *service.GitHubService
+	Browsers            *service.BrowserService
+	AllowedOrigins      []string
+	Ready               ReadyCheck
+	MaximumBodyBytes    int64
+	SessionCookieSecure bool
 }
 
 type Server struct {
-	deployments            *service.DeploymentService
-	executions             *service.ExecutionService
-	accounts               *service.AccountService
-	sessions               *service.SessionService
-	organizations          *service.OrganizationService
-	gitHub                 *service.GitHubService
-	browsers               *service.BrowserService
-	allowedOrigins         []string
-	ready                  ReadyCheck
-	maximumBodyBytes       int64
-	maximumDeploymentBytes int64
-	sessionCookieSecure    bool
-	engine                 *gin.Engine
+	deployments         *service.DeploymentService
+	executions          *service.ExecutionService
+	accounts            *service.AccountService
+	sessions            *service.SessionService
+	organizations       *service.OrganizationService
+	gitHub              *service.GitHubService
+	browsers            *service.BrowserService
+	allowedOrigins      []string
+	ready               ReadyCheck
+	maximumBodyBytes    int64
+	sessionCookieSecure bool
+	engine              *gin.Engine
 }
 
 func NewServer(options ServerOptions) (*Server, error) {
@@ -93,28 +91,22 @@ func NewServer(options ServerOptions) (*Server, error) {
 		return nil, errors.New("organization service is required")
 	case options.MaximumBodyBytes < 0:
 		return nil, errors.New("maximum request body bytes cannot be negative")
-	case options.MaximumDeploymentBytes < 0:
-		return nil, errors.New("maximum deployment source bytes cannot be negative")
 	}
 	if options.MaximumBodyBytes == 0 {
 		options.MaximumBodyBytes = defaultMaximumBodyBytes
 	}
-	if options.MaximumDeploymentBytes == 0 {
-		options.MaximumDeploymentBytes = service.DefaultMaxSourceBytes
-	}
 	server := &Server{
-		deployments:            options.Deployments,
-		executions:             options.Executions,
-		accounts:               options.Accounts,
-		sessions:               options.Sessions,
-		organizations:          options.Organizations,
-		gitHub:                 options.GitHub,
-		browsers:               options.Browsers,
-		allowedOrigins:         options.AllowedOrigins,
-		ready:                  options.Ready,
-		maximumBodyBytes:       options.MaximumBodyBytes,
-		maximumDeploymentBytes: options.MaximumDeploymentBytes,
-		sessionCookieSecure:    options.SessionCookieSecure,
+		deployments:         options.Deployments,
+		executions:          options.Executions,
+		accounts:            options.Accounts,
+		sessions:            options.Sessions,
+		organizations:       options.Organizations,
+		gitHub:              options.GitHub,
+		browsers:            options.Browsers,
+		allowedOrigins:      options.AllowedOrigins,
+		ready:               options.Ready,
+		maximumBodyBytes:    options.MaximumBodyBytes,
+		sessionCookieSecure: options.SessionCookieSecure,
 	}
 	server.engine = server.routes()
 	return server, nil
@@ -162,10 +154,14 @@ func (server *Server) routes() *gin.Engine {
 	engine.GET("/v1/auth/session", server.currentSession)
 	engine.GET("/v1/invites/lookup", server.lookupInvite)
 
+	// GitHub holds no credential of ours to present: it signs the body with the
+	// webhook secret instead, which the handler verifies before reading a word
+	// of the payload.
+	engine.POST("/v1/github/webhook", server.gitHubWebhook)
+
 	v1 := engine.Group("/v1", server.authenticate())
 
 	v1.GET("/deployments", server.scoped(ScopeDeploymentsRead), server.listDeployments)
-	v1.POST("/deployments", server.scoped(ScopeDeploymentsWrite), server.createDeployment)
 	v1.GET("/deployments/:deployment_id", server.scoped(ScopeDeploymentsRead), server.getDeployment)
 	v1.GET("/deployments/:deployment_id/executions", server.scoped(ScopeExecutionsRead), server.listDeploymentExecutions)
 	v1.POST("/deployments/:deployment_id/executions", server.scoped(ScopeExecutionsWrite), server.createExecution)
@@ -189,6 +185,8 @@ func (server *Server) routes() *gin.Engine {
 	v1.GET("/github/installation", server.scoped(ScopeAppsRead), server.getInstallation)
 	v1.POST("/github/installation", server.scoped(ScopeAppsWrite), server.recordInstallation)
 	v1.DELETE("/github/installation", server.scoped(ScopeAppsWrite), server.deleteInstallation)
+	v1.GET("/github/repositories", server.scoped(ScopeAppsRead), server.listRepositories)
+	v1.GET("/github/branches", server.scoped(ScopeAppsRead), server.listBranches)
 	v1.PUT("/apps/:app_id/repository", server.scoped(ScopeAppsWrite), server.connectRepository)
 	v1.POST("/github/deployments", server.scoped(ScopeDeploymentsWrite), server.deployRef)
 

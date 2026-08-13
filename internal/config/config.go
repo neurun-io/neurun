@@ -67,6 +67,7 @@ type Config struct {
 	SessionCookieSecure         bool
 	GitHubAppID                 int64
 	GitHubPrivateKey            []byte
+	GitHubWebhookSecret         []byte
 	AllowedOrigins              []string
 }
 
@@ -116,6 +117,9 @@ func Load() (Config, error) {
 			)
 		}
 	}
+	// The webhook secret is the shared token GitHub signs deliveries with, not
+	// a key, so it is taken verbatim rather than decoded.
+	cfg.GitHubWebhookSecret = []byte(value("NEURUN_GITHUB_WEBHOOK_SECRET", ""))
 	if cfg.SessionCookieSecure, err = boolValue(
 		"NEURUN_SESSION_COOKIE_SECURE", cfg.SessionCookieSecure,
 	); err != nil {

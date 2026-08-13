@@ -30,7 +30,7 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     name: "Source deployments",
-    detail: "POST /v1/deployments takes the archive as multipart and records its sha256 before building.",
+    detail: "A push to an app's production ref fetches that commit from GitHub and records its sha256 before building. Source is never uploaded.",
     state: "available",
   },
   {
@@ -70,8 +70,8 @@ export const CAPABILITIES: Capability[] = [
     state: "roadmap",
   },
   {
-    name: "Runners",
-    detail: "A server that holds one app resident and exposes an endpoint, billed for the time it is up instead of per execution.",
+    name: "Servers",
+    detail: "A machine that holds one app resident and exposes an endpoint, billed for the time it is up instead of per execution.",
     state: "roadmap",
   },
   {
@@ -90,8 +90,8 @@ export const CAPABILITIES: Capability[] = [
     state: "roadmap",
   },
   {
-    name: "Webhooks",
-    detail: "Endpoints, subscribed events, delivery state, secret rotation and replay.",
+    name: "Environment variables",
+    detail: "Per-app configuration and secrets, resolved when an execution starts rather than baked into a build.",
     state: "roadmap",
   },
   {

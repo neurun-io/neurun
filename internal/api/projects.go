@@ -100,7 +100,9 @@ func (server *Server) createApp(ctx *gin.Context) {
 	if !server.bindJSON(ctx, &body) {
 		return
 	}
-	record, err := server.deployments.CreateApp(ctx.Request.Context(), principalOf(ctx).OrganizationID, body)
+	// An app is only ever created from a repository, so creation goes through
+	// the integration that can prove the installation reads it.
+	record, err := server.gitHub.CreateApp(ctx.Request.Context(), principalOf(ctx).OrganizationID, body)
 	if err != nil {
 		writeError(ctx, err)
 		return

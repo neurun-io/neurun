@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/github"
 )
 
 type GitHubInstallationRepository struct {
@@ -28,8 +28,8 @@ func NewGitHubInstallationRepository(
 const installationColumns = `id, organization_id, installation_id, account_login,
 	created_at, updated_at`
 
-func scanInstallation(row pgx.CollectableRow) (deployment.Installation, error) {
-	var record deployment.Installation
+func scanInstallation(row pgx.CollectableRow) (github.Installation, error) {
+	var record github.Installation
 	err := row.Scan(
 		&record.ID, &record.OrganizationID, &record.InstallationID,
 		&record.AccountLogin, &record.CreatedAt, &record.UpdatedAt,
@@ -41,10 +41,10 @@ func scanInstallation(row pgx.CollectableRow) (deployment.Installation, error) {
 // previous record rather than accumulating one per attempt.
 func (repository *GitHubInstallationRepository) Save(
 	ctx context.Context,
-	record deployment.Installation,
-) (deployment.Installation, error) {
+	record github.Installation,
+) (github.Installation, error) {
 	if err := record.Validate(); err != nil {
-		return deployment.Installation{}, err
+		return github.Installation{}, err
 	}
 	rows, err := repository.pool.Query(
 		ctx,
@@ -60,11 +60,11 @@ func (repository *GitHubInstallationRepository) Save(
 		record.AccountLogin, record.CreatedAt,
 	)
 	if err != nil {
-		return deployment.Installation{}, classifyWriteError("save installation", err)
+		return github.Installation{}, classifyWriteError("save installation", err)
 	}
 	saved, err := pgx.CollectExactlyOneRow(rows, scanInstallation)
 	if err != nil {
-		return deployment.Installation{}, fmt.Errorf("save installation: %w", err)
+		return github.Installation{}, fmt.Errorf("save installation: %w", err)
 	}
 	return saved, nil
 }
@@ -72,7 +72,7 @@ func (repository *GitHubInstallationRepository) Save(
 func (repository *GitHubInstallationRepository) ByOrganization(
 	ctx context.Context,
 	organizationID string,
-) (deployment.Installation, error) {
+) (github.Installation, error) {
 	rows, err := repository.pool.Query(
 		ctx,
 		`SELECT `+installationColumns+` FROM github_installations
@@ -80,14 +80,40 @@ func (repository *GitHubInstallationRepository) ByOrganization(
 		organizationID,
 	)
 	if err != nil {
-		return deployment.Installation{}, fmt.Errorf("read installation: %w", err)
+		return github.Installation{}, fmt.Errorf("read installation: %w", err)
 	}
 	record, err := pgx.CollectExactlyOneRow(rows, scanInstallation)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return deployment.Installation{}, deployment.ErrNoInstallation
+		return github.Installation{}, github.ErrNoInstallation
 	}
 	if err != nil {
-		return deployment.Installation{}, fmt.Errorf("read installation: %w", err)
+		return github.Installation{}, fmt.Errorf("read installation: %w", err)
+	}
+	return record, nil
+}
+
+// ByInstallationID resolves the organization behind a webhook delivery. The
+// installation id is the only identity a delivery carries, and the column is
+// unique, so it names at most one organization.
+func (repository *GitHubInstallationRepository) ByInstallationID(
+	ctx context.Context,
+	installationID int64,
+) (github.Installation, error) {
+	rows, err := repository.pool.Query(
+		ctx,
+		`SELECT `+installationColumns+` FROM github_installations
+		 WHERE installation_id = $1`,
+		installationID,
+	)
+	if err != nil {
+		return github.Installation{}, fmt.Errorf("read installation: %w", err)
+	}
+	record, err := pgx.CollectExactlyOneRow(rows, scanInstallation)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return github.Installation{}, github.ErrNoInstallation
+	}
+	if err != nil {
+		return github.Installation{}, fmt.Errorf("read installation: %w", err)
 	}
 	return record, nil
 }
@@ -97,7 +123,7 @@ func (repository *GitHubInstallationRepository) ByOrganization(
 func (repository *GitHubInstallationRepository) ByApp(
 	ctx context.Context,
 	appID string,
-) (deployment.Installation, error) {
+) (github.Installation, error) {
 	rows, err := repository.pool.Query(
 		ctx,
 		`SELECT g.id, g.organization_id, g.installation_id, g.account_login,
@@ -109,14 +135,14 @@ func (repository *GitHubInstallationRepository) ByApp(
 		appID,
 	)
 	if err != nil {
-		return deployment.Installation{}, fmt.Errorf("read installation: %w", err)
+		return github.Installation{}, fmt.Errorf("read installation: %w", err)
 	}
 	record, err := pgx.CollectExactlyOneRow(rows, scanInstallation)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return deployment.Installation{}, deployment.ErrNoInstallation
+		return github.Installation{}, github.ErrNoInstallation
 	}
 	if err != nil {
-		return deployment.Installation{}, fmt.Errorf("read installation: %w", err)
+		return github.Installation{}, fmt.Errorf("read installation: %w", err)
 	}
 	return record, nil
 }
@@ -135,7 +161,7 @@ func (repository *GitHubInstallationRepository) Delete(
 		return fmt.Errorf("delete installation: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return deployment.ErrNoInstallation
+		return github.ErrNoInstallation
 	}
 	return nil
 }

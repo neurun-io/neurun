@@ -10,6 +10,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sessionScope, useSession } from "@/lib/session/store";
 import * as api from "./endpoints";
+import { NeurunApiError } from "./errors";
 import * as resources from "./resources";
 import { LIVE_POLL_INTERVAL_MS } from "./query-client";
 import { isTerminalExecutionStatus } from "./resource-types";
@@ -49,6 +50,10 @@ export const queryKeys = {
     [...queryKeys.scope(scope), "execution", id] as const,
   users: (scope: string) => [...queryKeys.scope(scope), "users"] as const,
   apiKeys: (scope: string) => [...queryKeys.scope(scope), "api-keys"] as const,
+  installation: (scope: string) => [...queryKeys.scope(scope), "github-installation"] as const,
+  repositories: (scope: string) => [...queryKeys.scope(scope), "github-repositories"] as const,
+  branches: (scope: string, repository: string) =>
+    [...queryKeys.scope(scope), "github-branches", repository] as const,
 
   browserProfiles: (scope: string) =>
     [...queryKeys.scope(scope), "browser-profiles"] as const,
@@ -248,11 +253,126 @@ export function useCreateAppMutation() {
   const scope = useScope();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ projectId, name }: { projectId: string; name: string }) =>
-      (await resources.createApp(projectId, name)).data,
+    mutationFn: async ({
+      projectId,
+      name,
+      repository,
+      productionRef,
+    }: {
+      projectId: string;
+      name: string;
+      repository: string;
+      productionRef: string;
+    }) => (await resources.createApp(projectId, name, repository, productionRef)).data,
     onSuccess: (app) => {
       queryClient.setQueryData(queryKeys.app(scope, app.id), app);
       void queryClient.invalidateQueries({ queryKey: queryKeys.apps(scope) });
+    },
+  });
+}
+
+/**
+ * The organization's GitHub App installation, or null when there is none.
+ *
+ * "Not installed" is the ordinary state of a fresh organization, and the server
+ * says so with 409 github_not_installed. A 503 means this control plane holds
+ * no GitHub credentials at all, which is also not an error the page should
+ * shout about — both resolve to null and the panel offers to install.
+ */
+export function useInstallationQuery() {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.installation(scope),
+    queryFn: async ({ signal }) => {
+      try {
+        return (await resources.getInstallation(signal)).data;
+      } catch (error) {
+        if (error instanceof NeurunApiError && (error.status === 409 || error.status === 503)) {
+          return null;
+        }
+        throw error;
+      }
+    },
+  });
+}
+
+/** What the installation grants. Empty means it was installed without repositories. */
+export function useRepositoriesQuery() {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.repositories(scope),
+    queryFn: async ({ signal }) => (await resources.listRepositories(signal)).data,
+  });
+}
+
+export function useBranchesQuery(repository: string) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: queryKeys.branches(scope, repository),
+    queryFn: async ({ signal }) => (await resources.listBranches(repository, signal)).data,
+    enabled: Boolean(repository),
+  });
+}
+
+export function useRecordInstallationMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      installationId,
+      accountLogin,
+    }: {
+      installationId: string;
+      accountLogin: string;
+    }) => (await resources.recordInstallation(installationId, accountLogin)).data,
+    onSuccess: (installation) => {
+      queryClient.setQueryData(queryKeys.installation(scope), installation);
+    },
+  });
+}
+
+/** Forgets the installation here. It stays installed on GitHub until removed there. */
+export function useDeleteInstallationMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => resources.deleteInstallation(),
+    onSuccess: () => {
+      queryClient.setQueryData(queryKeys.installation(scope), null);
+    },
+  });
+}
+
+export function useConnectRepositoryMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      repository,
+      productionRef,
+    }: {
+      id: string;
+      repository: string;
+      productionRef: string;
+    }) => (await resources.connectRepository(id, repository, productionRef)).data,
+    onSuccess: (app) => {
+      queryClient.setQueryData(queryKeys.app(scope, app.id), app);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.apps(scope) });
+    },
+  });
+}
+
+export function useDeployRefMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ appId, ref }: { appId: string; ref: string }) =>
+      (await resources.deployRef(appId, ref)).data,
+    onSuccess: (deployment) => {
+      queryClient.setQueryData(queryKeys.deployment(scope, deployment.id), deployment);
+      void queryClient.invalidateQueries({ queryKey: [...queryKeys.scope(scope), "deployments"] });
+      void queryClient.invalidateQueries({ queryKey: [...queryKeys.scope(scope), "builds"] });
     },
   });
 }
@@ -270,27 +390,6 @@ export function useDeleteAppMutation() {
       queryClient.removeQueries({ queryKey: queryKeys.app(scope, id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.apps(scope) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.deployments(scope) });
-    },
-  });
-}
-
-export function useCreateDeploymentMutation() {
-  const scope = useScope();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      appId,
-      source,
-      entrypoint,
-    }: {
-      appId: string;
-      source: File;
-      entrypoint: string;
-    }) => (await resources.createDeployment(appId, source, entrypoint)).data,
-    onSuccess: (deployment) => {
-      queryClient.setQueryData(queryKeys.deployment(scope, deployment.id), deployment);
-      void queryClient.invalidateQueries({ queryKey: [...queryKeys.scope(scope), "deployments"] });
-      void queryClient.invalidateQueries({ queryKey: [...queryKeys.scope(scope), "builds"] });
     },
   });
 }

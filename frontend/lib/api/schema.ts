@@ -325,6 +325,92 @@ export interface paths {
         patch: operations["updateApp"];
         trace?: never;
     };
+    "/v1/apps/{app_id}/repository": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Point the app at a GitHub repository, or disconnect it by sending an empty repository. The installation must already be able to read it: the ref is resolved before anything is stored. */
+        put: operations["connectRepository"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/github/installation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getInstallation"];
+        put?: never;
+        /** @description Record the installation GitHub redirects back with after somebody installs the app. Re-installing replaces the previous record. */
+        post: operations["recordInstallation"];
+        delete: operations["deleteInstallation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/github/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The repositories this organization's installation can read. */
+        get: operations["listRepositories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/github/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBranches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/github/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Build a ref of the app's connected repository. An absent ref uses the app's production ref. A push to that ref does the same thing without this call. */
+        post: operations["deployRef"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/users": {
         parameters: {
             query?: never;
@@ -507,7 +593,7 @@ export interface paths {
         };
         get: operations["listDeployments"];
         put?: never;
-        post: operations["createDeployment"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -632,6 +718,26 @@ export interface components {
             id: string;
             project_id: string;
             name: string;
+            /** @description owner/name on GitHub. Absent when the app is not connected. */
+            repository?: string;
+            /** @description The ref whose pushes deploy. Absent follows the default branch. */
+            production_ref?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        Repository: {
+            full_name: string;
+            default_branch: string;
+            private: boolean;
+        };
+        Installation: {
+            id: string;
+            organization_id: string;
+            /** Format: int64 */
+            installation_id: number;
+            account_login: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1580,6 +1686,10 @@ export interface operations {
             content: {
                 "application/json": {
                     name: string;
+                    /** @description owner/name on GitHub. Required: an app has no other source of code, and the installation must already be able to read it. */
+                    repository: string;
+                    /** @description The ref whose pushes deploy. Empty follows the repository's default branch. */
+                    production_ref?: string;
                 };
             };
         };
@@ -1648,6 +1758,196 @@ export interface operations {
             };
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+        };
+    };
+    connectRepository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description owner/name, or empty to disconnect. */
+                    repository: string;
+                    /** @description The ref a push must touch to deploy. Empty follows the repository's default branch. */
+                    production_ref?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description App connected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    getInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's GitHub App installation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Installation"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    recordInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    installation_id: string;
+                    account_login?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Installation recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Installation"];
+                };
+            };
+            422: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    deleteInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Installation forgotten. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    listRepositories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repositories the installation grants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        repositories: components["schemas"]["Repository"][];
+                    };
+                };
+            };
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listBranches: {
+        parameters: {
+            query: {
+                /** @description owner/name. */
+                repository: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Branch names. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        branches: string[];
+                    };
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    deployRef: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    app_id: string;
+                    ref?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Deployment built. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deployment"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            413: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     listUsers: {
@@ -2076,42 +2376,6 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
-            422: components["responses"]["Problem"];
-        };
-    };
-    createDeployment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": {
-                    app_id: string;
-                    /** @constant */
-                    runtime: "python";
-                    /** @default main.py:handler */
-                    entrypoint?: string;
-                    /** Format: binary */
-                    source: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Deployment built successfully. */
-            201: {
-                headers: {
-                    Location: components["headers"]["Location"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Deployment"];
-                };
-            };
-            401: components["responses"]["Problem"];
-            413: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
         };
     };

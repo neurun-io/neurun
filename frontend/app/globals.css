@@ -417,6 +417,11 @@
     color: var(--nr-text-muted);
   }
 
+  /* A hard two-colour blink: steps between ink and grey, never fading. */
+  .nr-blink-icon > svg {
+    animation: nr-ink-blink 2s step-end infinite;
+  }
+
   .nr-mono {
     font-family: var(--font-mono);
     font-size: 13px;
@@ -472,6 +477,17 @@
   50%,
   100% {
     opacity: 0;
+  }
+}
+
+@keyframes nr-ink-blink {
+  0%,
+  49% {
+    color: var(--nr-text-primary);
+  }
+  50%,
+  100% {
+    color: var(--nr-text-faint);
   }
 }
 

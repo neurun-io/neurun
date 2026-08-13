@@ -1,4 +1,10 @@
-package deployment
+// Package github holds the record of an organization's GitHub App
+// installation.
+//
+// An installation is not a deployment: it is one organization's link to GitHub,
+// and it outlives every deployment taken through it. Deployments only ever read
+// it, which is why it does not live beside them.
+package github
 
 import (
 	"errors"
@@ -8,6 +14,7 @@ import (
 )
 
 var (
+	ErrInvalid        = errors.New("invalid github record")
 	ErrNoInstallation = errors.New("no github installation for this organization")
 	ErrNotConnected   = errors.New("app is not connected to a repository")
 )

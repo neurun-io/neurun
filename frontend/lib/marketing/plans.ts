@@ -6,9 +6,9 @@
  * claims the execution to the moment it goes terminal. Queued time is not
  * billed, because a queued execution is holding no worker.
  *
- * Runners invert that and are metered by resident time instead. They are
+ * Servers invert that and are metered by resident time instead. They are
  * unbuilt, so they are priced nowhere and promised on no plan — see
- * `ROADMAP.runners`.
+ * `ROADMAP.servers`.
  */
 
 export type Cycle = "monthly" | "annual";

@@ -1,27 +1,35 @@
 package api
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/neurun-io/neurun/internal/domain/deployment"
+	githubdomain "github.com/neurun-io/neurun/internal/domain/github"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/github"
 )
 
-type installRequest struct {
-	InstallationID string `json:"installation_id"`
-	AccountLogin   string `json:"account_login"`
-}
+const (
+	// GitHub caps a delivery at 25MB, but a push event carries at most twenty
+	// commits and never approaches that.
+	maximumWebhookBytes = int64(5 << 20)
+	// A ceiling on a deploy that outlived its delivery, so a wedged build
+	// cannot leave a goroutine running for the life of the process.
+	webhookDeployTimeout = 30 * time.Minute
+)
 
 // recordInstallation stores the installation GitHub redirects back with after
 // somebody installs the app on their account.
 func (server *Server) recordInstallation(ctx *gin.Context) {
-	var body installRequest
+	var body dto.InstallRequest
 	if !server.bindJSON(ctx, &body) {
 		return
 	}
@@ -60,6 +68,35 @@ func (server *Server) deleteInstallation(ctx *gin.Context) {
 		return
 	}
 	ctx.Status(http.StatusNoContent)
+}
+
+// listRepositories serves what the installation grants, so an app is created
+// from a repository that is known to exist rather than one typed from memory.
+func (server *Server) listRepositories(ctx *gin.Context) {
+	records, err := server.gitHub.Repositories(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID,
+	)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"repositories": records})
+}
+
+func (server *Server) listBranches(ctx *gin.Context) {
+	repository := strings.TrimSpace(ctx.Query("repository"))
+	if repository == "" {
+		invalidRequest(ctx, "repository is required")
+		return
+	}
+	names, err := server.gitHub.Branches(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, repository,
+	)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"branches": names})
 }
 
 // connectRepository points an app at a repository, or disconnects it when the
@@ -103,6 +140,56 @@ func (server *Server) deployRef(ctx *gin.Context) {
 	ctx.JSON(http.StatusCreated, dto.NewDeploymentResponse(record))
 }
 
+// gitHubWebhook takes a delivery from GitHub. It carries neither a session nor
+// an API key: the signature over the body is the credential, so this route sits
+// outside the authenticated group.
+func (server *Server) gitHubWebhook(ctx *gin.Context) {
+	ctx.Request.Body = http.MaxBytesReader(
+		ctx.Writer, ctx.Request.Body, maximumWebhookBytes,
+	)
+	push, deployable, err := server.gitHub.ParsePush(ctx.Request)
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeProblem(ctx, http.StatusRequestEntityTooLarge, dto.Problem{
+				Code:    "request_too_large",
+				Message: "the delivery exceeds the configured limit",
+			})
+			return
+		}
+		writeError(ctx, err)
+		return
+	}
+	if !deployable {
+		// Signed, understood, and nothing to build: a ping, an event the app is
+		// subscribed to but this server does not act on, or a deleted branch.
+		ctx.Status(http.StatusNoContent)
+		return
+	}
+
+	// A build runs for minutes and GitHub abandons a delivery after ten
+	// seconds, so the deploy outlives the request that started it. Detaching
+	// the context rather than reusing it keeps the build from being cancelled
+	// the moment this handler returns.
+	deployCtx, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx.Request.Context()), webhookDeployTimeout,
+	)
+	go func() {
+		defer cancel()
+		deployed, err := server.gitHub.Push(deployCtx, push)
+		attributes := []any{
+			"delivery", push.Delivery, "repository", push.Repository,
+			"ref", push.Ref, "commit", push.Commit, "deployments", len(deployed),
+		}
+		if err != nil {
+			slog.Error("github push deploy failed", append(attributes, "error", err)...)
+			return
+		}
+		slog.Info("github push deployed", attributes...)
+	}()
+	ctx.Status(http.StatusAccepted)
+}
+
 // writeGitHubError maps integration failures onto their HTTP shape.
 func writeGitHubError(ctx *gin.Context, err error) bool {
 	switch {
@@ -111,12 +198,26 @@ func writeGitHubError(ctx *gin.Context, err error) bool {
 			Code:    "github_not_configured",
 			Message: "this control plane holds no GitHub App credentials",
 		})
-	case errors.Is(err, deployment.ErrNoInstallation):
+	case errors.Is(err, github.ErrNoWebhookSecret):
+		writeProblem(ctx, http.StatusServiceUnavailable, dto.Problem{
+			Code:    "github_not_configured",
+			Message: "this control plane holds no GitHub webhook secret",
+		})
+	case errors.Is(err, github.ErrSignature):
+		// GitHub's own guidance for a missing or mismatched signature is 403,
+		// and GitHub is the only caller this route has.
+		writeProblem(ctx, http.StatusForbidden, dto.Problem{
+			Code:    "invalid_signature",
+			Message: "the delivery signature did not match",
+		})
+	case errors.Is(err, githubdomain.ErrInvalid):
+		invalidRequest(ctx, err.Error())
+	case errors.Is(err, githubdomain.ErrNoInstallation):
 		writeProblem(ctx, http.StatusConflict, dto.Problem{
 			Code:    "github_not_installed",
 			Message: "install the GitHub App on this organization first",
 		})
-	case errors.Is(err, deployment.ErrNotConnected):
+	case errors.Is(err, githubdomain.ErrNotConnected):
 		writeProblem(ctx, http.StatusConflict, dto.Problem{
 			Code:    "app_not_connected",
 			Message: "connect this app to a repository first",

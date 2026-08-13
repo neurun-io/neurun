@@ -22,7 +22,7 @@ export const API_BASE_URL = (
 ).replace(/\/+$/, "");
 
 export interface RequestOptions {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** Path below the control-plane root, e.g. `/v1/jobs`. */
   path: string;
   query?: Record<string, string | number | string[] | undefined>;
@@ -90,8 +90,7 @@ export async function request<T>(
   const url = `${API_BASE_URL}${path}${buildQuery(options.query)}`;
 
   const headers = new Headers({ Accept: "application/json" });
-  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
-  if (options.body !== undefined && !isFormData) {
+  if (options.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
   let response: Response;
@@ -99,12 +98,7 @@ export async function request<T>(
     response = await fetch(url, {
       method,
       headers,
-      body:
-        options.body === undefined
-          ? undefined
-          : isFormData
-            ? (options.body as FormData)
-            : JSON.stringify(options.body),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: options.signal,
       // Never let a browser or intermediary cache a user's evidence.
       cache: "no-store",

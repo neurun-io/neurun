@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { ErrorPanel } from "@/components/neurun/error-panel";
 import { Callout, EmptyState } from "@/components/neurun/feedback";
 import { PageHeader } from "@/components/neurun/page-header";
-import { Panel } from "@/components/neurun/panel";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -35,56 +34,52 @@ export default function UsersPage() {
 
         {query.isError ? (
           <ErrorPanel error={query.error} onRetry={() => query.refetch()} />
+        ) : query.isPending ? (
+          <p className="text-fg-muted">Loading…</p>
+        ) : query.data.users.length === 0 ? (
+          <EmptyState
+            title="No users"
+            description="Invite somebody to give them access."
+          />
         ) : (
-          <Panel label="Users" flush>
-            {query.isPending ? (
-              <p className="p-4 text-fg-muted">Loading…</p>
-            ) : query.data.users.length === 0 ? (
-              <EmptyState
-                title="No users"
-                description="Invite somebody to give them access."
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {query.data.users.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>
-                        <div className="font-medium">{user.email}</div>
-                        <div className="font-mono text-micro text-fg-muted">{user.id}</div>
-                      </TableCell>
-                      <TableCell>{user.disabled ? "disabled" : "active"}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          disabled={update.isPending}
-                          onClick={() =>
-                            update.mutate(
-                              { id: user.id, body: { disabled: !user.disabled } },
-                              {
-                                onSuccess: () =>
-                                  toast.success(user.disabled ? "User enabled" : "User disabled"),
-                              },
-                            )
-                          }
-                        >
-                          {user.disabled ? "Enable" : "Disable"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </Panel>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {query.data.users.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell>
+                    <div className="font-medium">{user.email}</div>
+                    <div className="font-mono text-micro text-fg-muted">{user.id}</div>
+                  </TableCell>
+                  <TableCell>{user.disabled ? "disabled" : "active"}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={update.isPending}
+                      onClick={() =>
+                        update.mutate(
+                          { id: user.id, body: { disabled: !user.disabled } },
+                          {
+                            onSuccess: () =>
+                              toast.success(user.disabled ? "User enabled" : "User disabled"),
+                          },
+                        )
+                      }
+                    >
+                      {user.disabled ? "Enable" : "Disable"}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </div>
     </div>

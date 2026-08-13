@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, Info, Inbox, Map } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Panel } from "./panel";
+import { PageHeader } from "./page-header";
 
 /* -------------------------------------------------------------------------- */
 /* Callout                                                                     */
@@ -87,54 +87,32 @@ export function EmptyState({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Roadmap route                                                               */
+/* Unbuilt route                                                               */
 /* -------------------------------------------------------------------------- */
 
 /**
- * An honest unavailable-capability page.
- *
- * Nothing here fakes data or implies a capability works. The page names the
- * contracts the backend must publish before the route can be built, so the gap
- * is legible to whoever picks the work up.
+ * A route whose entity does not exist yet, laid out like every route whose
+ * entity does. Nothing here fakes a record: the page is the empty state a real
+ * one would show before its first row.
  */
-export function RoadmapRoute({
+export function UnbuiltRoute({
   title,
   summary,
-  requires,
+  empty,
   children,
 }: {
   title: string;
   summary: ReactNode;
-  /** Endpoints or contracts this route needs, quoted from the spec. */
-  requires: readonly string[];
+  empty: { title: string; description: ReactNode };
   children?: ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-10">
-      <header className="mb-6">
-        <div className="mb-2 flex items-center gap-2">
-          <h1 className="text-2xl">{title}</h1>
-          <span className="inline-flex items-center rounded-xs border border-dashed border-line-default px-1.5 py-0.5 font-mono text-micro text-fg-muted">
-            not in this release
-          </span>
-        </div>
-        <p className="nr-measure text-sm text-fg-secondary">{summary}</p>
-      </header>
-
-      <Panel label="Backend contracts required">
-        <ul className="space-y-1.5">
-          {requires.map((item) => (
-            <li key={item} className="flex gap-2 font-mono text-caption text-fg-secondary">
-              <span aria-hidden className="text-fg-faint">
-                —
-              </span>
-              <span className="min-w-0 break-words">{item}</span>
-            </li>
-          ))}
-        </ul>
-      </Panel>
-
-      {children ? <div className="mt-4">{children}</div> : null}
+    <div>
+      <PageHeader title={title} description={summary} />
+      <div className="space-y-4 p-6">
+        <EmptyState title={empty.title} description={empty.description} />
+        {children}
+      </div>
     </div>
   );
 }

@@ -51,17 +51,19 @@ type Limits struct {
 // installation token, minted and cached by ghinstallation, so nothing here
 // holds a long-lived credential.
 type Client struct {
-	appID      int64
-	privateKey []byte
-	limits     Limits
-	transport  http.RoundTripper
+	appID         int64
+	privateKey    []byte
+	webhookSecret []byte
+	limits        Limits
+	transport     http.RoundTripper
 }
 
 type Options struct {
-	AppID      int64
-	PrivateKey []byte
-	Limits     Limits
-	Transport  http.RoundTripper
+	AppID         int64
+	PrivateKey    []byte
+	WebhookSecret []byte
+	Limits        Limits
+	Transport     http.RoundTripper
 }
 
 func New(options Options) (*Client, error) {
@@ -78,10 +80,11 @@ func New(options Options) (*Client, error) {
 		options.Limits.MaxArchiveEntries = 20_000
 	}
 	return &Client{
-		appID:      options.AppID,
-		privateKey: options.PrivateKey,
-		limits:     options.Limits,
-		transport:  options.Transport,
+		appID:         options.AppID,
+		privateKey:    options.PrivateKey,
+		webhookSecret: options.WebhookSecret,
+		limits:        options.Limits,
+		transport:     options.Transport,
 	}, nil
 }
 
