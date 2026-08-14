@@ -36,7 +36,6 @@ func (server *Server) createProject(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.Header("Location", "/v1/projects/"+record.ID)
 	ctx.JSON(http.StatusCreated, dto.NewProjectResponse(record))
 }
 
@@ -107,7 +106,6 @@ func (server *Server) createApp(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.Header("Location", "/v1/apps/"+record.ID)
 	ctx.JSON(http.StatusCreated, dto.NewAppResponse(record))
 }
 

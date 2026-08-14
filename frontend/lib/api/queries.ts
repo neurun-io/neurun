@@ -357,13 +357,8 @@ export function useRecordInstallationMutation() {
   const scope = useScope();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      installationId,
-      accountLogin,
-    }: {
-      installationId: string;
-      accountLogin: string;
-    }) => (await resources.recordInstallation(installationId, accountLogin)).data,
+    mutationFn: async (installationId: string) =>
+      (await resources.recordInstallation(installationId)).data,
     onSuccess: (installation) => {
       queryClient.setQueryData(queryKeys.installation(scope), installation);
     },

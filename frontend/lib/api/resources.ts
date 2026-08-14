@@ -294,12 +294,12 @@ export function getInstallation(signal?: AbortSignal) {
   );
 }
 
-export function recordInstallation(installationId: string, accountLogin: string) {
+export function recordInstallation(installationId: string) {
   return request<Installation>(
     {
       method: "POST",
       path: "/v1/github/installation",
-      body: { installation_id: installationId, account_login: accountLogin },
+      body: { installation_id: installationId },
     },
     installationSchema as never,
   );

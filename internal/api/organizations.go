@@ -159,7 +159,6 @@ func (server *Server) createOrganization(ctx *gin.Context) {
 		return
 	}
 	server.reissue(ctx, principal.UserID, membership)
-	ctx.Header("Location", "/v1/organization")
 	ctx.JSON(http.StatusCreated, dto.NewOrganizationResponse(created))
 }
 
@@ -306,7 +305,6 @@ func (server *Server) createInvite(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.Header("Location", "/v1/invites/"+record.ID)
 	ctx.JSON(http.StatusCreated, dto.CreatedInviteResponse{
 		InviteResponse: dto.NewInviteResponse(record.Invite),
 		Token:          record.Token,

@@ -361,8 +361,7 @@ curl -sS "$NEURUN_URL/v1/deployments?app_id=app_7QK2M0X4&limit=20" \\
   -H "authorization: Bearer $NEURUN_KEY" \\
   -d '{"input":{"url":"https://example.com"}}'
 
-HTTP/1.1 202 Accepted
-Location: /v1/executions/exe_01HXQ8F2M4`}</Snippet>
+HTTP/1.1 202 Accepted`}</Snippet>
 
         <H2 id="states">States</H2>
         <P>

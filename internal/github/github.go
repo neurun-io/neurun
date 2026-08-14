@@ -95,6 +95,23 @@ func (client *Client) forInstallation(installationID int64) (*github.Client, err
 	if err != nil {
 		return nil, fmt.Errorf("github: installation transport: %w", err)
 	}
+	return newAPI(transport)
+}
+
+// asApp authenticates as the app itself rather than as one of its
+// installations, which is the only way to read an installation GitHub has not
+// been told about yet.
+func (client *Client) asApp() (*github.Client, error) {
+	transport, err := ghinstallation.NewAppsTransport(
+		client.transport, client.appID, client.privateKey,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("github: app transport: %w", err)
+	}
+	return newAPI(transport)
+}
+
+func newAPI(transport http.RoundTripper) (*github.Client, error) {
 	api, err := github.NewClient(
 		github.WithTransport(transport),
 		github.WithTimeout(2*time.Minute),
@@ -103,6 +120,21 @@ func (client *Client) forInstallation(installationID int64) (*github.Client, err
 		return nil, fmt.Errorf("github: client: %w", err)
 	}
 	return api, nil
+}
+
+// Account is the user or organization the app is installed on. GitHub's
+// post-install redirect carries only the installation id, so the login is read
+// back from GitHub rather than taken from whoever posts it.
+func (client *Client) Account(ctx context.Context, installationID int64) (string, error) {
+	api, err := client.asApp()
+	if err != nil {
+		return "", err
+	}
+	installation, response, err := api.Apps.GetInstallation(ctx, installationID)
+	if err != nil {
+		return "", classify(response, err)
+	}
+	return installation.GetAccount().GetLogin(), nil
 }
 
 // ResolveRef turns a branch, tag or SHA into the commit SHA it names.

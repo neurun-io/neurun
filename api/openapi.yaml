@@ -172,8 +172,6 @@ paths:
       responses:
         "201":
           description: Organization created and the session moved into it.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Organization"}
@@ -311,8 +309,6 @@ paths:
       responses:
         "201":
           description: Invitation created.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CreatedInvite"}
@@ -450,8 +446,6 @@ paths:
       responses:
         "201":
           description: App created.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/App"}
@@ -544,7 +538,9 @@ paths:
       operationId: recordInstallation
       description: >-
         Record the installation GitHub redirects back with after somebody
-        installs the app. Re-installing replaces the previous record.
+        installs the app. The account it is installed on is read from GitHub,
+        since the redirect carries only the installation id. Re-installing
+        replaces the previous record.
       requestBody:
         required: true
         content:
@@ -555,13 +551,13 @@ paths:
               required: [installation_id]
               properties:
                 installation_id: {type: string}
-                account_login: {type: string}
       responses:
         "201":
           description: Installation recorded.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Installation"}
+        "409": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
     delete:
@@ -633,8 +629,6 @@ paths:
       responses:
         "201":
           description: Deployment built.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Deployment"}
@@ -749,8 +743,6 @@ paths:
       responses:
         "201":
           description: Profile created.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/BrowserProfile"}
@@ -869,8 +861,6 @@ paths:
       responses:
         "201":
           description: Key created; secret is returned only here.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CreatedAPIKey"}
@@ -997,8 +987,6 @@ paths:
       responses:
         "202":
           description: Execution durably queued and pinned to the latest ready build.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Execution"}
@@ -1047,8 +1035,6 @@ paths:
       responses:
         "202":
           description: New execution queued with the exact original build and input.
-          headers:
-            Location: {$ref: "#/components/headers/Location"}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Execution"}
@@ -1059,9 +1045,6 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-  headers:
-    Location:
-      schema: {type: string}
   parameters:
     Limit:
       name: limit

@@ -109,7 +109,6 @@ func (server *Server) createAPIKey(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.Header("Location", "/v1/api-keys/"+record.ID)
 	ctx.JSON(http.StatusCreated, dto.NewCreatedKeyResponse(record))
 }
 

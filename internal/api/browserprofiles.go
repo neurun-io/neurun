@@ -64,7 +64,6 @@ func (server *Server) createBrowserProfile(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.Header("Location", "/v1/browser-profiles/"+record.ID)
 	ctx.JSON(http.StatusCreated, dto.NewBrowserProfileResponse(record))
 }
 

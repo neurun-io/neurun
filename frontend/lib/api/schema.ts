@@ -353,7 +353,7 @@ export interface paths {
         };
         get: operations["getInstallation"];
         put?: never;
-        /** @description Record the installation GitHub redirects back with after somebody installs the app. Re-installing replaces the previous record. */
+        /** @description Record the installation GitHub redirects back with after somebody installs the app. The account it is installed on is read from GitHub, since the redirect carries only the installation id. Re-installing replaces the previous record. */
         post: operations["recordInstallation"];
         delete: operations["deleteInstallation"];
         options?: never;
@@ -1085,9 +1085,7 @@ export interface components {
         ExecutionID: string;
     };
     requestBodies: never;
-    headers: {
-        Location: string;
-    };
+    headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -1333,7 +1331,6 @@ export interface operations {
             /** @description Organization created and the session moved into it. */
             201: {
                 headers: {
-                    Location: components["headers"]["Location"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -1510,7 +1507,6 @@ export interface operations {
             /** @description Invitation created. */
             201: {
                 headers: {
-                    Location: components["headers"]["Location"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -1695,7 +1691,6 @@ export interface operations {
             /** @description App created. */
             201: {
                 headers: {
-                    Location: components["headers"]["Location"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -1825,7 +1820,6 @@ export interface operations {
             content: {
                 "application/json": {
                     installation_id: string;
-                    account_login?: string;
                 };
             };
         };
@@ -1839,6 +1833,7 @@ export interface operations {
                     "application/json": components["schemas"]["Installation"];
                 };
             };
+            409: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };
@@ -1934,7 +1929,6 @@ export interface operations {
             /** @description Deployment built. */
             201: {
                 headers: {
-                    Location: components["headers"]["Location"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -2091,7 +2085,6 @@ export interface operations {
             /** @description Profile created. */
             201: {
                 headers: {
-                    Location: components["headers"]["Location"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -2268,7 +2261,6 @@ export interface operations {
             /** @description Key created; secret is returned only here. */
             201: {
                 headers: {
-                    Location: components["headers"]["Location"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -2446,7 +2438,6 @@ export interface operations {
             /** @description Execution durably queued and pinned to the latest ready build. */
             202: {
                 headers: {
-                    Location: components["headers"]["Location"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -2519,7 +2510,6 @@ export interface operations {
             /** @description New execution queued with the exact original build and input. */
             202: {
                 headers: {
-                    Location: components["headers"]["Location"];
                     [name: string]: unknown;
                 };
                 content: {

@@ -113,14 +113,23 @@ func (service *GitHubService) Push(
 	return deployed, errors.Join(problems...)
 }
 
+// Install records the installation GitHub redirected back with. Whose account
+// it is comes from GitHub, not from the caller: the redirect carries only an
+// installation id, so the browser has nothing else to go on.
 func (service *GitHubService) Install(
 	ctx context.Context,
 	organizationID string,
 	installationID int64,
-	accountLogin string,
 ) (githubdomain.Installation, error) {
 	if !service.Configured() {
 		return githubdomain.Installation{}, github.ErrNotConfigured
+	}
+	accountLogin, err := service.client.Account(ctx, installationID)
+	if err != nil {
+		if errors.Is(err, github.ErrNotFound) {
+			return githubdomain.Installation{}, githubdomain.ErrNoInstallation
+		}
+		return githubdomain.Installation{}, err
 	}
 	id, err := service.newID("ghi")
 	if err != nil {

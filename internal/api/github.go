@@ -39,8 +39,7 @@ func (server *Server) recordInstallation(ctx *gin.Context) {
 		return
 	}
 	record, err := server.gitHub.Install(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID,
-		installationID, body.AccountLogin,
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, installationID,
 	)
 	if err != nil {
 		writeError(ctx, err)
@@ -136,7 +135,6 @@ func (server *Server) deployRef(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.Header("Location", "/v1/deployments/"+record.ID)
 	ctx.JSON(http.StatusCreated, dto.NewDeploymentResponse(record))
 }
 

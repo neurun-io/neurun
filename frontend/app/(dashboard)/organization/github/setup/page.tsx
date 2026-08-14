@@ -9,7 +9,7 @@
  * next request into a same-site one, which does carry it.
  */
 
-import { use, useEffect, useRef } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -25,54 +25,75 @@ export default function Page({
 }: {
   searchParams: Promise<{ installation_id?: string; setup_action?: string }>;
 }) {
-  const { installation_id: installationId, setup_action: action } = use(searchParams);
+  const { installation_id: installationId, setup_action: action } =
+    use(searchParams);
   const record = useRecordInstallationMutation();
   const router = useRouter();
   // GitHub sends the browser here on install and again on every configure, and
   // React runs effects twice in development; recording once is the point.
   const attempted = useRef(false);
+  // How it went is kept here rather than read back off the mutation. That
+  // second run of the effect is a remount, and a remount detaches a mutation
+  // from the request it already started with nothing to reattach it: its
+  // status, its error and its callbacks all stop moving, whatever the server
+  // answers. The promise is the only part that still settles.
+  const [failure, setFailure] = useState<unknown>(null);
 
   useEffect(() => {
     if (!installationId || attempted.current) return;
     attempted.current = true;
-    record.mutate(
-      { installationId, accountLogin: "" },
-      {
-        onSuccess: (installation) => {
-          toast.success(`Connected ${installation.account_login || "GitHub"}`);
-          router.replace("/organization");
-        },
-      },
-    );
+    record
+      .mutateAsync(installationId)
+      .then((installation) => {
+        toast.success(`Connected ${installation.account_login}`);
+        router.replace("/organization");
+      })
+      .catch(setFailure);
   }, [installationId, record, router]);
+
+  const failed = !installationId || failure !== null;
 
   return (
     <div>
       <PageHeader
-        title="Connecting GitHub"
-        description="Recording the installation GitHub just handed back."
+        title={failed ? "GitHub not connected" : "Connecting GitHub"}
+        description={
+          failed
+            ? "Nothing was recorded."
+            : "Recording the installation GitHub just handed back."
+        }
       />
       <div className="space-y-4 p-6">
-        <Panel label={action === "update" ? "Installation updated" : "Installation"}>
+        <Panel
+          label={
+            failed
+              ? "Not recorded"
+              : action === "update"
+                ? "Installation updated"
+                : "Installation"
+          }
+        >
           {!installationId ? (
             <div className="space-y-3">
               <p className="text-sm text-fg-muted">
-                GitHub did not send an installation id. Start the install from the organization
-                page rather than opening this one directly.
+                GitHub did not send an installation id. Start the install from
+                the organization page rather than opening this one directly.
               </p>
               <Button asChild size="sm" variant="secondary">
                 <Link href="/organization">Back to organization</Link>
               </Button>
             </div>
-          ) : record.isError ? (
+          ) : failure !== null ? (
             <div className="space-y-3">
-              <InlineError error={record.error} />
+              <InlineError error={failure} />
               <Button asChild size="sm" variant="secondary">
                 <Link href="/organization">Back to organization</Link>
               </Button>
             </div>
           ) : (
-            <p className="text-sm text-fg-muted">Recording installation {installationId}…</p>
+            <p className="text-sm text-fg-muted">
+              Recording installation {installationId}…
+            </p>
           )}
         </Panel>
       </div>

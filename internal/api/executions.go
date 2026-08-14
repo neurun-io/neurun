@@ -29,7 +29,6 @@ func (server *Server) createExecution(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.Header("Location", "/v1/executions/"+record.ID)
 	ctx.JSON(http.StatusAccepted, dto.NewExecutionResponse(record))
 }
 
@@ -88,6 +87,5 @@ func (server *Server) rerunExecution(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.Header("Location", "/v1/executions/"+record.ID)
 	ctx.JSON(http.StatusAccepted, dto.NewExecutionResponse(record))
 }

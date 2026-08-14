@@ -10,7 +10,6 @@ import (
 // installs the app on their account.
 type InstallRequest struct {
 	InstallationID string `json:"installation_id"`
-	AccountLogin   string `json:"account_login"`
 }
 
 type ConnectRepositoryRequest struct {
