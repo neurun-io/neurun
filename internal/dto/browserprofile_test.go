@@ -15,12 +15,11 @@ func profileWithSecrets() browser.Profile {
 		ID:             "bp_1",
 		OrganizationID: "org_1",
 		Name:           "shopper",
-		Browser:        browser.KindChrome,
-		Identity: &browser.Identity{
-			OS:    browser.OSWindows,
-			Brand: browser.BrandChrome,
-			Geo:   "US",
-			Proxy: "socks5://user:hunter2@proxy.example.com:1080",
+		Identity: browser.Identity{
+			OS:      browser.OSWindows,
+			Browser: browser.BrowserChrome,
+			Geo:     "US",
+			Proxy:   "socks5://user:hunter2@proxy.example.com:1080",
 		},
 		Cookies: []browser.Cookie{
 			{Name: "sid", Value: "s3cr3t-session", Domain: ".example.com", Path: "/"},
@@ -55,7 +54,7 @@ func TestBrowserProfileResponseReportsWhatItHidesInstead(t *testing.T) {
 
 	response := NewBrowserProfileResponse(profileWithSecrets())
 
-	if response.Identity == nil || !response.Identity.ProxySet {
+	if !response.Identity.ProxySet {
 		t.Fatal("a set proxy should be reported as set")
 	}
 	if response.Identity.Proxy != "" {
@@ -97,12 +96,14 @@ func TestBrowserProfileStateResponseReturnsTheValues(t *testing.T) {
 	}
 }
 
-func TestBrowserProfileResponseWithoutAnIdentity(t *testing.T) {
+// The browser a profile is comes from the identity, so a list view never has to
+// reach into it and the two can never disagree.
+func TestBrowserProfileResponseReportsTheIdentitysBrowser(t *testing.T) {
 	t.Parallel()
 
 	record := profileWithSecrets()
-	record.Identity = nil
-	if response := NewBrowserProfileResponse(record); response.Identity != nil {
-		t.Errorf("Identity = %+v, want nil", response.Identity)
+	record.Identity.Browser = browser.BrowserSafari
+	if response := NewBrowserProfileResponse(record); response.Browser != "safari" {
+		t.Errorf("Browser = %q, want safari", response.Browser)
 	}
 }

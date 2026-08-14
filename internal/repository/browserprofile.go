@@ -12,7 +12,7 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/browser"
 )
 
-const browserProfileColumns = `id, organization_id, name, browser, identity,
+const browserProfileColumns = `id, organization_id, name, identity,
 	cookies, local_storage, session_storage, created_at, updated_at`
 
 type BrowserProfileRepository struct {
@@ -30,17 +30,14 @@ func scanBrowserProfile(row pgx.CollectableRow) (browser.Profile, error) {
 	var record browser.Profile
 	var identity, cookies, localStorage, sessionStorage []byte
 	if err := row.Scan(
-		&record.ID, &record.OrganizationID, &record.Name, &record.Browser,
+		&record.ID, &record.OrganizationID, &record.Name,
 		&identity, &cookies, &localStorage, &sessionStorage,
 		&record.CreatedAt, &record.UpdatedAt,
 	); err != nil {
 		return browser.Profile{}, err
 	}
-	if len(identity) > 0 {
-		record.Identity = new(browser.Identity)
-		if err := json.Unmarshal(identity, record.Identity); err != nil {
-			return browser.Profile{}, fmt.Errorf("decode identity: %w", err)
-		}
+	if err := json.Unmarshal(identity, &record.Identity); err != nil {
+		return browser.Profile{}, fmt.Errorf("decode identity: %w", err)
 	}
 	if err := json.Unmarshal(cookies, &record.Cookies); err != nil {
 		return browser.Profile{}, fmt.Errorf("decode cookies: %w", err)
@@ -80,10 +77,6 @@ func browserProfileDocuments(record browser.Profile) ([][]byte, error) {
 		}
 		documents = append(documents, document)
 	}
-	// A nil identity marshals to the literal "null"; the column takes SQL NULL.
-	if record.Identity == nil {
-		documents[0] = nil
-	}
 	return documents, nil
 }
 
@@ -101,11 +94,11 @@ func (repository *BrowserProfileRepository) Create(
 	rows, err := repository.pool.Query(
 		ctx,
 		`INSERT INTO browser_profiles
-		 (id, organization_id, name, browser, identity,
+		 (id, organization_id, name, identity,
 		  cookies, local_storage, session_storage, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING `+browserProfileColumns,
-		record.ID, record.OrganizationID, record.Name, string(record.Browser),
+		record.ID, record.OrganizationID, record.Name,
 		documents[0], documents[1], documents[2], documents[3],
 		record.CreatedAt, record.UpdatedAt,
 	)

@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.33.0
-// source: browser.proto
+// source: proto/browser.proto
 
 package browserpb
 
@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Browser_OpenSession_FullMethodName  = "/neurun.browser.v1.Browser/OpenSession"
-	Browser_Execute_FullMethodName      = "/neurun.browser.v1.Browser/Execute"
-	Browser_CloseSession_FullMethodName = "/neurun.browser.v1.Browser/CloseSession"
+	Browser_OpenSession_FullMethodName       = "/neurun.browser.v1.Browser/OpenSession"
+	Browser_Navigate_FullMethodName          = "/neurun.browser.v1.Browser/Navigate"
+	Browser_WaitForNavigation_FullMethodName = "/neurun.browser.v1.Browser/WaitForNavigation"
+	Browser_CloseSession_FullMethodName      = "/neurun.browser.v1.Browser/CloseSession"
 )
 
 // BrowserClient is the client API for Browser service.
@@ -36,16 +37,17 @@ const (
 // environment, keeps the handle, and relays. That is what makes a session
 // something the dashboard can list and watch — nothing is happening on a port
 // only the tenant's code knows about.
+//
+// What neurun-browser serves on the other side is browserservice.proto. The two
+// are deliberately separate: this one is a public contract with tenant code, and
+// that one is an internal detail nothing outside the host may depend on.
 type BrowserClient interface {
 	// OpenSession spawns a browser and returns the session it created.
 	OpenSession(ctx context.Context, in *OpenSessionRequest, opts ...grpc.CallOption) (*Session, error)
-	// Execute relays one command to the session's browser and returns its reply.
-	//
-	// The payload is opaque on purpose. The control plane brokers sessions, not
-	// browser semantics: it never parses a command, so the browser service's
-	// command set can grow without a release here, and a command it has never
-	// heard of is not a command it can corrupt.
-	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*ExecuteResponse, error)
+	// Navigate drives the session to a URL.
+	Navigate(ctx context.Context, in *NavigateRequest, opts ...grpc.CallOption) (*NavigateResponse, error)
+	// WaitForNavigation blocks until the page the session is on has navigated.
+	WaitForNavigation(ctx context.Context, in *WaitForNavigationRequest, opts ...grpc.CallOption) (*WaitForNavigationResponse, error)
 	// CloseSession stops the browser and drops the session.
 	CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error)
 }
@@ -68,10 +70,20 @@ func (c *browserClient) OpenSession(ctx context.Context, in *OpenSessionRequest,
 	return out, nil
 }
 
-func (c *browserClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*ExecuteResponse, error) {
+func (c *browserClient) Navigate(ctx context.Context, in *NavigateRequest, opts ...grpc.CallOption) (*NavigateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ExecuteResponse)
-	err := c.cc.Invoke(ctx, Browser_Execute_FullMethodName, in, out, cOpts...)
+	out := new(NavigateResponse)
+	err := c.cc.Invoke(ctx, Browser_Navigate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *browserClient) WaitForNavigation(ctx context.Context, in *WaitForNavigationRequest, opts ...grpc.CallOption) (*WaitForNavigationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WaitForNavigationResponse)
+	err := c.cc.Invoke(ctx, Browser_WaitForNavigation_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -100,16 +112,17 @@ func (c *browserClient) CloseSession(ctx context.Context, in *CloseSessionReques
 // environment, keeps the handle, and relays. That is what makes a session
 // something the dashboard can list and watch — nothing is happening on a port
 // only the tenant's code knows about.
+//
+// What neurun-browser serves on the other side is browserservice.proto. The two
+// are deliberately separate: this one is a public contract with tenant code, and
+// that one is an internal detail nothing outside the host may depend on.
 type BrowserServer interface {
 	// OpenSession spawns a browser and returns the session it created.
 	OpenSession(context.Context, *OpenSessionRequest) (*Session, error)
-	// Execute relays one command to the session's browser and returns its reply.
-	//
-	// The payload is opaque on purpose. The control plane brokers sessions, not
-	// browser semantics: it never parses a command, so the browser service's
-	// command set can grow without a release here, and a command it has never
-	// heard of is not a command it can corrupt.
-	Execute(context.Context, *ExecuteRequest) (*ExecuteResponse, error)
+	// Navigate drives the session to a URL.
+	Navigate(context.Context, *NavigateRequest) (*NavigateResponse, error)
+	// WaitForNavigation blocks until the page the session is on has navigated.
+	WaitForNavigation(context.Context, *WaitForNavigationRequest) (*WaitForNavigationResponse, error)
 	// CloseSession stops the browser and drops the session.
 	CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error)
 	mustEmbedUnimplementedBrowserServer()
@@ -125,8 +138,11 @@ type UnimplementedBrowserServer struct{}
 func (UnimplementedBrowserServer) OpenSession(context.Context, *OpenSessionRequest) (*Session, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method OpenSession not implemented")
 }
-func (UnimplementedBrowserServer) Execute(context.Context, *ExecuteRequest) (*ExecuteResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Execute not implemented")
+func (UnimplementedBrowserServer) Navigate(context.Context, *NavigateRequest) (*NavigateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Navigate not implemented")
+}
+func (UnimplementedBrowserServer) WaitForNavigation(context.Context, *WaitForNavigationRequest) (*WaitForNavigationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WaitForNavigation not implemented")
 }
 func (UnimplementedBrowserServer) CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloseSession not implemented")
@@ -170,20 +186,38 @@ func _Browser_OpenSession_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Browser_Execute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ExecuteRequest)
+func _Browser_Navigate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NavigateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BrowserServer).Execute(ctx, in)
+		return srv.(BrowserServer).Navigate(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Browser_Execute_FullMethodName,
+		FullMethod: Browser_Navigate_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BrowserServer).Execute(ctx, req.(*ExecuteRequest))
+		return srv.(BrowserServer).Navigate(ctx, req.(*NavigateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Browser_WaitForNavigation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WaitForNavigationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServer).WaitForNavigation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Browser_WaitForNavigation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServer).WaitForNavigation(ctx, req.(*WaitForNavigationRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -218,8 +252,12 @@ var Browser_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Browser_OpenSession_Handler,
 		},
 		{
-			MethodName: "Execute",
-			Handler:    _Browser_Execute_Handler,
+			MethodName: "Navigate",
+			Handler:    _Browser_Navigate_Handler,
+		},
+		{
+			MethodName: "WaitForNavigation",
+			Handler:    _Browser_WaitForNavigation_Handler,
 		},
 		{
 			MethodName: "CloseSession",
@@ -227,240 +265,5 @@ var Browser_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "browser.proto",
-}
-
-const (
-	BrowserService_Open_FullMethodName          = "/neurun.browser.v1.BrowserService/Open"
-	BrowserService_Run_FullMethodName           = "/neurun.browser.v1.BrowserService/Run"
-	BrowserService_Close_FullMethodName         = "/neurun.browser.v1.BrowserService/Close"
-	BrowserService_StreamDisplay_FullMethodName = "/neurun.browser.v1.BrowserService/StreamDisplay"
-)
-
-// BrowserServiceClient is the client API for BrowserService service.
-//
-// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// BrowserService is what neurun-browser serves. The control plane is its only
-// client — nothing else knows where it listens, and it is never on a routable
-// interface.
-type BrowserServiceClient interface {
-	// Open spawns a browser and returns the session the service minted for it.
-	Open(ctx context.Context, in *OpenRequest, opts ...grpc.CallOption) (*OpenResponse, error)
-	// Run performs one command against a session.
-	Run(ctx context.Context, in *RunRequest, opts ...grpc.CallOption) (*RunResponse, error)
-	// Close stops the browser.
-	Close(ctx context.Context, in *CloseRequest, opts ...grpc.CallOption) (*CloseResponse, error)
-	// StreamDisplay is a pipe to the session's framebuffer. Each chunk is opaque
-	// RFB: client-to-server frames in, server-to-client frames out.
-	//
-	// The session is named in the neurun-session-id metadata rather than in every
-	// chunk, because it is a property of the stream and not of a frame.
-	StreamDisplay(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DisplayChunk, DisplayChunk], error)
-}
-
-type browserServiceClient struct {
-	cc grpc.ClientConnInterface
-}
-
-func NewBrowserServiceClient(cc grpc.ClientConnInterface) BrowserServiceClient {
-	return &browserServiceClient{cc}
-}
-
-func (c *browserServiceClient) Open(ctx context.Context, in *OpenRequest, opts ...grpc.CallOption) (*OpenResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(OpenResponse)
-	err := c.cc.Invoke(ctx, BrowserService_Open_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *browserServiceClient) Run(ctx context.Context, in *RunRequest, opts ...grpc.CallOption) (*RunResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RunResponse)
-	err := c.cc.Invoke(ctx, BrowserService_Run_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *browserServiceClient) Close(ctx context.Context, in *CloseRequest, opts ...grpc.CallOption) (*CloseResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CloseResponse)
-	err := c.cc.Invoke(ctx, BrowserService_Close_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *browserServiceClient) StreamDisplay(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DisplayChunk, DisplayChunk], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &BrowserService_ServiceDesc.Streams[0], BrowserService_StreamDisplay_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[DisplayChunk, DisplayChunk]{ClientStream: stream}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BrowserService_StreamDisplayClient = grpc.BidiStreamingClient[DisplayChunk, DisplayChunk]
-
-// BrowserServiceServer is the server API for BrowserService service.
-// All implementations must embed UnimplementedBrowserServiceServer
-// for forward compatibility.
-//
-// BrowserService is what neurun-browser serves. The control plane is its only
-// client — nothing else knows where it listens, and it is never on a routable
-// interface.
-type BrowserServiceServer interface {
-	// Open spawns a browser and returns the session the service minted for it.
-	Open(context.Context, *OpenRequest) (*OpenResponse, error)
-	// Run performs one command against a session.
-	Run(context.Context, *RunRequest) (*RunResponse, error)
-	// Close stops the browser.
-	Close(context.Context, *CloseRequest) (*CloseResponse, error)
-	// StreamDisplay is a pipe to the session's framebuffer. Each chunk is opaque
-	// RFB: client-to-server frames in, server-to-client frames out.
-	//
-	// The session is named in the neurun-session-id metadata rather than in every
-	// chunk, because it is a property of the stream and not of a frame.
-	StreamDisplay(grpc.BidiStreamingServer[DisplayChunk, DisplayChunk]) error
-	mustEmbedUnimplementedBrowserServiceServer()
-}
-
-// UnimplementedBrowserServiceServer must be embedded to have
-// forward compatible implementations.
-//
-// NOTE: this should be embedded by value instead of pointer to avoid a nil
-// pointer dereference when methods are called.
-type UnimplementedBrowserServiceServer struct{}
-
-func (UnimplementedBrowserServiceServer) Open(context.Context, *OpenRequest) (*OpenResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Open not implemented")
-}
-func (UnimplementedBrowserServiceServer) Run(context.Context, *RunRequest) (*RunResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Run not implemented")
-}
-func (UnimplementedBrowserServiceServer) Close(context.Context, *CloseRequest) (*CloseResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Close not implemented")
-}
-func (UnimplementedBrowserServiceServer) StreamDisplay(grpc.BidiStreamingServer[DisplayChunk, DisplayChunk]) error {
-	return status.Errorf(codes.Unimplemented, "method StreamDisplay not implemented")
-}
-func (UnimplementedBrowserServiceServer) mustEmbedUnimplementedBrowserServiceServer() {}
-func (UnimplementedBrowserServiceServer) testEmbeddedByValue()                        {}
-
-// UnsafeBrowserServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to BrowserServiceServer will
-// result in compilation errors.
-type UnsafeBrowserServiceServer interface {
-	mustEmbedUnimplementedBrowserServiceServer()
-}
-
-func RegisterBrowserServiceServer(s grpc.ServiceRegistrar, srv BrowserServiceServer) {
-	// If the following call pancis, it indicates UnimplementedBrowserServiceServer was
-	// embedded by pointer and is nil.  This will cause panics if an
-	// unimplemented method is ever invoked, so we test this at initialization
-	// time to prevent it from happening at runtime later due to I/O.
-	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
-		t.testEmbeddedByValue()
-	}
-	s.RegisterService(&BrowserService_ServiceDesc, srv)
-}
-
-func _BrowserService_Open_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(OpenRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(BrowserServiceServer).Open(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: BrowserService_Open_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BrowserServiceServer).Open(ctx, req.(*OpenRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _BrowserService_Run_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RunRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(BrowserServiceServer).Run(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: BrowserService_Run_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BrowserServiceServer).Run(ctx, req.(*RunRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _BrowserService_Close_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CloseRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(BrowserServiceServer).Close(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: BrowserService_Close_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BrowserServiceServer).Close(ctx, req.(*CloseRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _BrowserService_StreamDisplay_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(BrowserServiceServer).StreamDisplay(&grpc.GenericServerStream[DisplayChunk, DisplayChunk]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BrowserService_StreamDisplayServer = grpc.BidiStreamingServer[DisplayChunk, DisplayChunk]
-
-// BrowserService_ServiceDesc is the grpc.ServiceDesc for BrowserService service.
-// It's only intended for direct use with grpc.RegisterService,
-// and not to be introspected or modified (even as a copy)
-var BrowserService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "neurun.browser.v1.BrowserService",
-	HandlerType: (*BrowserServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "Open",
-			Handler:    _BrowserService_Open_Handler,
-		},
-		{
-			MethodName: "Run",
-			Handler:    _BrowserService_Run_Handler,
-		},
-		{
-			MethodName: "Close",
-			Handler:    _BrowserService_Close_Handler,
-		},
-	},
-	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "StreamDisplay",
-			Handler:       _BrowserService_StreamDisplay_Handler,
-			ServerStreams: true,
-			ClientStreams: true,
-		},
-	},
-	Metadata: "browser.proto",
+	Metadata: "proto/browser.proto",
 }

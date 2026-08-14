@@ -26,12 +26,12 @@ import { Switch } from "@/components/ui/switch";
 import { useIdentityCatalogQuery } from "@/lib/api/queries";
 import type {
   BrowserIdentity,
-  BrowserKind,
   BrowserProfile,
   CatalogGPU,
   IdentityCatalog,
 } from "@/lib/api/resource-types";
 import {
+  browsersFor,
   browserVersionsFor,
   catalogDraft,
   deviceForModel,
@@ -43,7 +43,7 @@ import {
   osVersionsFor,
   platformVersionsFor,
   toDraft,
-  withBrand,
+  withBrowser,
   withDevice,
   withGeo,
   withOS,
@@ -56,8 +56,8 @@ import {
 
 export interface ProfileValues {
   name: string;
-  browser: BrowserKind;
-  identity: BrowserIdentity | null;
+  /** Absent on create means the server draws one. */
+  identity?: BrowserIdentity;
 }
 
 /**
@@ -83,11 +83,10 @@ export function ProfileForm({
 }) {
   const catalog = useIdentityCatalogQuery();
   const nameId = useId();
-  const browserId = useId();
   const identityId = useId();
 
   const [name, setName] = useState(profile?.name ?? "");
-  const [browser, setBrowser] = useState<BrowserKind>(profile?.browser ?? "chrome");
+  const [shown, setShown] = useState(false);
   const [draft, setDraft] = useState<IdentityDraft | null>(() =>
     profile?.identity ? toDraft(profile.identity) : null,
   );
@@ -102,12 +101,12 @@ export function ProfileForm({
 
   function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSubmit({ name: name.trim(), browser, identity: bound && fromDraft(bound) });
+    onSubmit({ name: name.trim(), identity: bound ? fromDraft(bound) : undefined });
   }
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor={nameId}>Name</Label>
           <Input
@@ -119,33 +118,15 @@ export function ProfileForm({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor={browserId}>Browser</Label>
-          <Select
-            value={browser}
-            onValueChange={(value) => setBrowser(value as BrowserKind)}
-            disabled={profile !== undefined}
-          >
-            <SelectTrigger id={browserId} className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="chrome">Chrome</SelectItem>
-              <SelectItem value="firefox">Firefox</SelectItem>
-            </SelectContent>
-          </Select>
-          {profile ? <Hint>Fixed at creation.</Hint> : null}
-        </div>
-
-        <div className="space-y-1.5">
           <Label htmlFor={identityId}>Identity</Label>
           <div className="flex h-9 items-center gap-2.5 rounded-md border border-input px-3">
             <Switch
               id={identityId}
               disabled={!catalog.data}
-              checked={draft !== null}
+              checked={shown}
               onCheckedChange={(on) => {
-                if (!on) return setDraft(null);
-                if (!catalog.data) return;
+                setShown(on);
+                if (!on || draft || !catalog.data) return;
                 setDraft(
                   profile?.identity
                     ? toDraft(profile.identity, catalog.data)
@@ -153,28 +134,22 @@ export function ProfileForm({
                 );
               }}
             />
-            <span className="text-sm text-fg-secondary">
-              {draft ? "Stealth persona" : "Plain browser"}
-            </span>
+            <span className="text-sm text-fg-secondary">{shown ? "Shown" : "Hidden"}</span>
           </div>
-          <Hint>A plain browser still keeps its cookies and storage.</Hint>
+          <Hint>
+            {draft ? "What every session wears." : "Drawn from the catalogue if you leave it."}
+          </Hint>
         </div>
       </div>
 
-      {bound && catalog.data ? (
+      {shown && bound && catalog.data ? (
         <IdentityFields
           draft={bound}
           catalog={catalog.data}
           setDraft={setDraft}
           notes={
             <>
-              {browser === "firefox" ? (
-                <Callout kind="warning" title="Firefox will not wear this">
-                  rustenium-identity drives Chrome over CDP only. The identity is stored
-                  and applied to nothing until Firefox carries one.
-                </Callout>
-              ) : null}
-              {bound.brand === "safari" ? (
+              {bound.browser === "safari" ? (
                 <Callout kind="note" title="Safari reports less than this">
                   Safari exposes no deviceMemory and no User-Agent Client Hints, so those
                   fields are carried but never read. Its WebGL pair is fixed to Apple.
@@ -230,7 +205,7 @@ function IdentityFields({
 
   const phone = isMobile(catalog, draft.os);
   const device = phone ? deviceNamed(catalog, draft.device) : undefined;
-  const gpus = gpusFor(catalog, draft.os, draft.brand, draft.device);
+  const gpus = gpusFor(catalog, draft.os, draft.device);
   const screenValue = `${draft.logical_width}×${draft.logical_height}`;
 
   return (
@@ -307,18 +282,18 @@ function IdentityFields({
 
       <Group title="Browser claim">
         <ChoiceField
-          label="Brand"
-          value={draft.brand}
-          options={catalog.operating_systems.find((entry) => entry.os === draft.os)?.brands ?? []}
+          label="Browser"
+          value={draft.browser}
+          options={browsersFor(catalog, draft.os)}
           onChange={(value) =>
-            setDraft(withBrand(draft, catalog, value as IdentityDraft["brand"]))
+            setDraft(withBrowser(draft, catalog, value as IdentityDraft["browser"]))
           }
-          hint="What the browser claims to be, not what it runs on."
+          hint="What it claims to be, not what runs."
         />
         <ChoiceField
           label="Browser version"
           value={draft.browser_version}
-          options={browserVersionsFor(catalog, draft.brand)}
+          options={browserVersionsFor(catalog, draft.browser)}
           onChange={(value) => set("browser_version", value)}
         />
       </Group>

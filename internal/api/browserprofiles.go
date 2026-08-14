@@ -56,14 +56,9 @@ func (server *Server) createBrowserProfile(ctx *gin.Context) {
 	if !server.bindJSON(ctx, &body) {
 		return
 	}
-	kind, err := browser.ParseKind(body.Browser)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
 	record, err := server.browsers.Create(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID,
-		strings.TrimSpace(body.Name), kind, body.Identity,
+		strings.TrimSpace(body.Name), body.Identity,
 	)
 	if err != nil {
 		writeError(ctx, err)

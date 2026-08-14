@@ -92,7 +92,7 @@ const browserSessionSchema = z.looseObject({
   app_id: z.string(),
   execution_id: z.string().optional(),
   browser_profile_id: z.string().optional(),
-  browser: z.enum(["chrome", "firefox"]),
+  browser: z.enum(["chrome", "safari"]),
   status: z.enum(["starting", "live", "failed"]),
   started_at: timestampSchema,
   updated_at: timestampSchema,
@@ -130,7 +130,7 @@ const keySchema = z.looseObject({
 const redactedIdentitySchema = z.looseObject({
   os: z.string(),
   os_version: z.string(),
-  brand: z.string(),
+  browser: z.string(),
   geo: z.string(),
   proxy_set: z.boolean(),
 });
@@ -147,8 +147,8 @@ const redactedCookieSchema = z.looseObject({
 const browserProfileSchema = z.looseObject({
   id: z.string(),
   name: z.string(),
-  browser: z.enum(["chrome", "firefox"]),
-  identity: redactedIdentitySchema.nullish(),
+  browser: z.enum(["chrome", "safari"]),
+  identity: redactedIdentitySchema,
   cookies: z.array(redactedCookieSchema),
   storage_origins: z.array(z.string()),
   created_at: timestampSchema,
@@ -436,9 +436,16 @@ export function getIdentityCatalog(signal?: AbortSignal) {
           os: z.string(),
           form_factor: z.string(),
           navigator_platform: z.string(),
-          brands: z.array(z.string()),
+          browsers: z.array(z.string()),
           versions: z.array(
             z.looseObject({ os_version: z.string(), platform_versions: z.array(z.string()) }),
+          ),
+          gpus: z.array(
+            z.looseObject({
+              vendor: z.string(),
+              webgl_renderer: z.string(),
+              webgl_vendor: z.string(),
+            }),
           ),
         }),
       ),
@@ -446,7 +453,7 @@ export function getIdentityCatalog(signal?: AbortSignal) {
         z.looseObject({
           name: z.string(),
           os: z.string(),
-          brands: z.array(z.string()),
+          browsers: z.array(z.string()),
           models: z.array(z.string()),
           versions: z.array(
             z.looseObject({ os_version: z.string(), platform_versions: z.array(z.string()) }),
@@ -470,18 +477,9 @@ export function getIdentityCatalog(signal?: AbortSignal) {
           ),
         }),
       ),
-      browsers: z.array(z.looseObject({ brand: z.string(), versions: z.array(z.string()) })),
+      browsers: z.array(z.looseObject({ browser: z.string(), versions: z.array(z.string()) })),
       screens: z.array(z.looseObject({ width: z.number(), height: z.number() })),
       density_pixel_ratios: z.array(z.number()),
-      gpus: z.array(
-        z.looseObject({
-          os: z.string(),
-          brands: z.array(z.string()),
-          vendor: z.string(),
-          webgl_renderer: z.string(),
-          webgl_vendor: z.string(),
-        }),
-      ),
       hardware_concurrency: z.array(z.number()),
       memory: z.array(z.number()),
       geos: z.array(
@@ -509,11 +507,8 @@ export function getBrowserProfile(id: string, signal?: AbortSignal) {
   );
 }
 
-export function createBrowserProfile(body: {
-  name: string;
-  browser: BrowserKind;
-  identity?: BrowserIdentity | null;
-}) {
+/** No identity means no opinion: the server draws one from the catalogue. */
+export function createBrowserProfile(body: { name: string; identity?: BrowserIdentity }) {
   return request<BrowserProfile>(
     { method: "POST", path: "/v1/browser-profiles", body },
     browserProfileSchema as never,
@@ -522,7 +517,7 @@ export function createBrowserProfile(body: {
 
 export function updateBrowserProfile(
   id: string,
-  body: { name?: string; identity?: BrowserIdentity | null },
+  body: { name?: string; identity?: BrowserIdentity },
 ) {
   return request<BrowserProfile>(
     { method: "PATCH", path: `/v1/browser-profiles/${segment(id)}`, body },

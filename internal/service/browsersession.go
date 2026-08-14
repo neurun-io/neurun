@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/neurun-io/neurun/internal/browserpb"
+	"github.com/neurun-io/neurun/internal/browserservicepb"
 	"github.com/neurun-io/neurun/internal/domain/browser"
 	"github.com/neurun-io/neurun/internal/ids"
 	"github.com/neurun-io/neurun/internal/repository"
@@ -21,8 +21,8 @@ import (
 // DisplayStream is the framebuffer pipe, narrowed to what a bridge needs. The
 // transport is gRPC; the API layer does not need to know that.
 type DisplayStream interface {
-	Send(*browserpb.DisplayChunk) error
-	Recv() (*browserpb.DisplayChunk, error)
+	Send(*browserservicepb.DisplayChunk) error
+	Recv() (*browserservicepb.DisplayChunk, error)
 }
 
 // sessionIDMetadata names the session a display stream belongs to. It is a
@@ -60,7 +60,7 @@ type OpenRequest struct {
 	AppID          string
 	ExecutionID    string
 	ProfileID      string
-	Browser        browser.Kind
+	Browser        browser.Browser
 	DisplayAddress string
 }
 
@@ -97,7 +97,7 @@ type AdoptRequest struct {
 	AppID          string
 	ExecutionID    string
 	ProfileID      string
-	Browser        browser.Kind
+	Browser        browser.Browser
 	DisplayAddress string
 }
 
@@ -216,7 +216,7 @@ func (service *BrowserSessionService) OpenDisplay(
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial browser service: %w", err)
 	}
-	stream, err := browserpb.NewBrowserServiceClient(connection).StreamDisplay(
+	stream, err := browserservicepb.NewBrowserServiceClient(connection).StreamDisplay(
 		metadata.AppendToOutgoingContext(ctx, sessionIDMetadata, record.ID),
 	)
 	if err != nil {
@@ -229,7 +229,7 @@ func (service *BrowserSessionService) OpenDisplay(
 // setDisplay accepts only a loopback address.
 //
 // The address is the browser service's gRPC endpoint, and the control plane
-// dials it on a viewer's behalf — so an address pointing anywhere else would
+// dials it on a viewer's behalf â€” so an address pointing anywhere else would
 // turn the display endpoint into a request forger against whatever the server
 // can reach.
 func setDisplay(record *browser.Session, address string) error {

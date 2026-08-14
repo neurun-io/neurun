@@ -65,7 +65,7 @@ export default function BrowserProfilePage() {
   const profile = query.data;
   const identity = profile.identity;
   const remembers = profile.cookies.length > 0 || profile.storage_origins.length > 0;
-  const mobile = identity?.os === "Android" || identity?.os === "Ios";
+  const mobile = identity.os === "Android" || identity.os === "Ios";
 
   function commit(values: ProfileValues) {
     update.mutate(
@@ -126,26 +126,15 @@ export default function BrowserProfilePage() {
         meta={
           <>
             <Fact icon={<BrowserIcon browser={profile.browser} />}>{profile.browser}</Fact>
-            {identity ? (
-              <>
-                <Fact icon={mobile ? <Smartphone /> : <Laptop />}>
-                  {identity.os.toLowerCase()} {identity.os_version}
-                </Fact>
-                <Fact icon={<Monitor />}>
-                  {identity.screen?.logical_width}×{identity.screen?.logical_height}
-                </Fact>
-                <Fact icon={<Cpu />}>{identity.hardware_concurrency} cores</Fact>
-                <Fact icon={<MemoryStick />}>{identity.memory} GiB</Fact>
-                {identity.brand !== profile.browser ? (
-                  <Badge variant="outline">as {identity.brand}</Badge>
-                ) : null}
-                {identity.proxy_set ? <Badge variant="outline">proxy</Badge> : null}
-              </>
-            ) : (
-              <span className="font-sans text-micro font-semibold text-fg-muted">
-                · no-stealth
-              </span>
-            )}
+            <Fact icon={mobile ? <Smartphone /> : <Laptop />}>
+              {identity.os.toLowerCase()} {identity.os_version}
+            </Fact>
+            <Fact icon={<Monitor />}>
+              {identity.screen?.logical_width}×{identity.screen?.logical_height}
+            </Fact>
+            <Fact icon={<Cpu />}>{identity.hardware_concurrency} cores</Fact>
+            <Fact icon={<MemoryStick />}>{identity.memory} GiB</Fact>
+            {identity.proxy_set ? <Badge variant="outline">proxy</Badge> : null}
             <Fact icon={<Cookie />}>{profile.cookies.length}</Fact>
             <Fact icon={<Database />}>{profile.storage_origins.length}</Fact>
             <Timestamp value={profile.updated_at} />

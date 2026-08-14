@@ -23,8 +23,8 @@ browser history and `Referer`.
 
 ### 2. Open the session
 
-`OpenSession` over gRPC to `127.0.0.1`, carrying the identity and that state.
-Back comes a CDP or BiDi endpoint.
+`OpenSession` over gRPC to `127.0.0.1`, naming the profile. Back comes a session
+id — never an endpoint; the session is driven through this service.
 
 The browser server is a separate process on loopback **beside the SDK**. The
 control plane holds no connection to it and has no session endpoints. That is
@@ -37,8 +37,9 @@ why:
 
 ### 3. Drive it
 
-CDP for Chrome, BiDi for Firefox. Everything in `input-dispatch.md` and
-`human-behaviour.md` happens here.
+One RPC per command — `Navigate`, `WaitForNavigation` — each shaped after the
+browser's own function. The set grows as the browser implements more. Everything
+in `input-dispatch.md` and `human-behaviour.md` happens here.
 
 ### 4. Close and store
 
@@ -54,7 +55,7 @@ corrupted a login can be thrown away by not writing back.
 | Situation | What happens | What to do |
 | --- | --- | --- |
 | Session abandoned | profile unchanged | nothing; this is the safe path |
-| Firefox session closed | capture is **empty** | do not PUT — see `profile-state.md` |
+| Capture comes back empty | a PUT would wipe the profile | do not PUT — see `profile-state.md` |
 | PUT with a partial jar | the missing cookies are deleted | send the whole capture, never a subset |
 | Two sessions on one profile | both capture; last PUT wins | serialise runs per profile |
 | Proxy down at launch | launch fails during timezone resolution, before navigation | set the timezone explicitly to remove the dependency |

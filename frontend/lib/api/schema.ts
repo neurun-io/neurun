@@ -794,14 +794,18 @@ export interface components {
             /** @description Returned exactly once. Only a digest is stored. */
             token: string;
         };
-        /** @enum {string} */
-        BrowserKind: "chrome" | "firefox";
+        /**
+         * @description Chrome is the only browser that launches; Safari is a Chrome wearing Safari, which is what a site reads either way.
+         * @enum {string}
+         */
+        BrowserKind: "chrome" | "safari";
         /** @description A browser persona. Cookie values and the identity proxy are secrets and are never returned here; GET .../state returns them. */
         BrowserProfile: {
             id: string;
             name: string;
+            /** @description Repeats identity.browser, so a list view does not have to reach into the identity for it. */
             browser: components["schemas"]["BrowserKind"];
-            identity: components["schemas"]["RedactedBrowserIdentity"] | null;
+            identity: components["schemas"]["RedactedBrowserIdentity"];
             cookies: components["schemas"]["RedactedCookie"][];
             storage_origins: string[];
             /** Format: date-time */
@@ -809,7 +813,7 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        /** @description Selectable values for a BrowserIdentity. Several are binding: an operating system fixes navigator.platform, bitness and architecture, limits which releases and brands exist under it, and each release carries its own UA-CH platform versions — Windows 11 reports 15.0.0, and Windows 7 and 8 both report 0.0.0. */
+        /** @description Selectable values for a BrowserIdentity. Several are binding: an operating system fixes navigator.platform, bitness and architecture, limits which releases, browsers and cards exist under it, and each release carries its own UA-CH platform versions — Windows 11 reports 15.0.0, and Windows 7 and 8 both report 0.0.0. */
         IdentityCatalog: {
             operating_systems: components["schemas"]["CatalogOS"][];
             /** @description Handsets. The binding unit on mobile. */
@@ -818,7 +822,6 @@ export interface components {
             screens: components["schemas"]["CatalogScreen"][];
             /** @description Pairs with a screen to give the physical resolution. */
             density_pixel_ratios: number[];
-            gpus: components["schemas"]["CatalogGPU"][];
             hardware_concurrency: number[];
             /** @description deviceMemory in GiB. The browser caps what it reports at 8. */
             memory: number[];
@@ -828,7 +831,7 @@ export interface components {
             /** @enum {string} */
             os: "Windows" | "Macintosh" | "Linux" | "Android" | "Ios";
             /**
-             * @description A mobile system carries no platform or releases of its own — the handset does, so a device is chosen first and fixes them.
+             * @description A mobile system carries no platform, releases or cards of its own — the handset does, so a device is chosen first and fixes them.
              * @enum {string}
              */
             form_factor: "desktop" | "mobile";
@@ -836,8 +839,10 @@ export interface components {
             bitness: string;
             architecture: string;
             /** @description What runs on the platform. There is no Safari on Windows. */
-            brands: ("chrome" | "safari" | "edge")[];
+            browsers: components["schemas"]["BrowserKind"][];
             versions: components["schemas"]["CatalogOSVersion"][];
+            /** @description The cards this system reports. Empty on a mobile system. */
+            gpus: components["schemas"]["CatalogGPU"][];
         };
         /** @description One release and the UA-CH platform versions that belong to it, newest first. The release a user names and the value that ships in the record are different strings. */
         CatalogOSVersion: {
@@ -849,7 +854,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             os: "Windows" | "Macintosh" | "Linux" | "Android" | "Ios";
-            brands: ("chrome" | "safari" | "edge")[];
+            browsers: components["schemas"]["BrowserKind"][];
             /** @description What Sec-CH-UA-Model reports; several codes share one handset. */
             models: string[];
             versions: components["schemas"]["CatalogOSVersion"][];
@@ -866,8 +871,7 @@ export interface components {
             gpus: components["schemas"]["CatalogGPU"][];
         };
         CatalogBrowser: {
-            /** @enum {string} */
-            brand: "chrome" | "safari" | "edge";
+            browser: components["schemas"]["BrowserKind"];
             /** @description Released versions, newest first. */
             versions: string[];
         };
@@ -877,11 +881,8 @@ export interface components {
             height: number;
             share: number;
         };
-        /** @description Bound to the platform that can report it. ANGLE over Direct3D exists only on Windows, "… OpenGL Engine" only on a Mac, and Safari reports one Apple pair whatever card is underneath. */
+        /** @description One card's WebGL strings. It says nothing about where it runs because it does not have to: it is listed under the system or the handset that reports it, and ANGLE over Direct3D on a Mac is not a card in the wrong place, it is a card that does not exist. */
         CatalogGPU: {
-            /** @enum {string} */
-            os: "Windows" | "Macintosh" | "Linux" | "Android" | "Ios";
-            brands: ("chrome" | "safari" | "edge")[];
             vendor: string;
             webgl_renderer: string;
             webgl_vendor: string;
@@ -909,11 +910,8 @@ export interface components {
                 navigator_platform: string;
                 version: string;
             };
-            /**
-             * @description What the browser claims to be, not what it runs on.
-             * @enum {string}
-             */
-            brand: "chrome" | "safari" | "edge";
+            /** @description What it claims to be, not what runs: rustenium-identity drives Chrome, so a Safari profile is a Chrome wearing Safari. */
+            browser: components["schemas"]["BrowserKind"];
             browser_version: number[];
             screen: {
                 logical_width: number;
@@ -2084,9 +2082,8 @@ export interface operations {
             content: {
                 "application/json": {
                     name: string;
-                    browser: components["schemas"]["BrowserKind"];
-                    /** @description Absent launches the browser as itself. */
-                    identity?: components["schemas"]["BrowserIdentity"] | null;
+                    /** @description Absent means no opinion, not a bare browser: one is drawn from the catalogue, seeded so it holds still for this profile and differs from the next. It names the browser, which is why there is no separate field for that. */
+                    identity?: components["schemas"]["BrowserIdentity"];
                 };
             };
         };
@@ -2160,8 +2157,8 @@ export interface operations {
             content: {
                 "application/json": {
                     name?: string;
-                    /** @description Null strips the identity; omitted leaves it alone. */
-                    identity?: components["schemas"]["BrowserIdentity"] | null;
+                    /** @description Replaces the presentation; omitted leaves it alone. There is no way to remove it — every profile wears one. */
+                    identity?: components["schemas"]["BrowserIdentity"];
                 };
             };
         };

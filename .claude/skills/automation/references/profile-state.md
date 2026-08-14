@@ -55,19 +55,15 @@ So:
 - Never hand-assemble a partial body "to update one cookie".
 - Absent collections mean empty, not unchanged.
 
-## The Firefox footgun
-
-`CloseSession` on Firefox returns an **empty state**. Not because the browser had
-none — because rustenium exposes no BiDi storage API to move cookies with, and
-rustenium-identity drives Chrome over CDP only.
+## An empty capture is a wipe
 
 An empty body is indistinguishable from a browser that genuinely holds no
-cookies. Combined with replace semantics, **PUTting a Firefox capture erases the
-profile**.
+cookies, and replace semantics turn the first into the second: **PUTting an empty
+capture erases the profile**.
 
-The server cannot catch this: both cases are the same request. Until Firefox
-carries state, the SDK must not write back after a Firefox session. A Firefox
-profile is usable — it launches, it runs — it just cannot accumulate a past.
+The server cannot catch this — both cases are the same request. A capture that
+comes back empty after a run that signed in is a failure to read state, not a
+state worth storing, so check it before writing it back.
 
 ## Concurrency
 
@@ -95,7 +91,7 @@ stealth concern. → `stealth` skill, `references/continuity.md`.
 
 1. Are the origins you need actually visited in the run?
 2. Is the capture written back **whole**?
-3. Is the browser Chrome? If Firefox, skip the write.
+3. Is it empty? Then it is a wipe — do not write it.
 4. Is anything else touching this profile right now?
 5. Did the run leave the profile in a state you want to keep — or is abandoning
    it the better outcome?

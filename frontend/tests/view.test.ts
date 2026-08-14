@@ -16,7 +16,7 @@ import {
   identityChanged,
   fromDraft,
   gpusFor,
-  withBrand,
+  withBrowser,
   withGeo,
   withOS,
   withOSVersion,
@@ -170,10 +170,17 @@ const CATALOG: IdentityCatalog = {
       navigator_platform: "Win32",
       bitness: "64",
       architecture: "x86",
-      brands: ["chrome", "edge"],
+      browsers: ["chrome"],
       versions: [
         { os_version: "11", platform_versions: ["15.0.0", "14.0.0"] },
         { os_version: "7", platform_versions: ["0.0.0"] },
+      ],
+      gpus: [
+        {
+          vendor: "Intel",
+          webgl_renderer: "ANGLE (Intel(R) HD Graphics 620 Direct3D11 vs_5_0 ps_5_0)",
+          webgl_vendor: "Google Inc. (Intel)",
+        },
       ],
     },
     {
@@ -182,8 +189,16 @@ const CATALOG: IdentityCatalog = {
       navigator_platform: "MacIntel",
       bitness: "64",
       architecture: "x86",
-      brands: ["chrome", "safari"],
+      browsers: ["chrome", "safari"],
       versions: [{ os_version: "14", platform_versions: ["14.6"] }],
+      gpus: [
+        {
+          vendor: "Intel",
+          webgl_renderer: "Intel Iris OpenGL Engine",
+          webgl_vendor: "Intel Inc.",
+        },
+        { vendor: "Apple", webgl_renderer: "Apple GPU", webgl_vendor: "Apple Inc." },
+      ],
     },
     {
       os: "Android",
@@ -191,15 +206,16 @@ const CATALOG: IdentityCatalog = {
       navigator_platform: "",
       bitness: "",
       architecture: "",
-      brands: ["chrome"],
+      browsers: ["chrome"],
       versions: [],
+      gpus: [],
     },
   ],
   devices: [
     {
       name: "Samsung Galaxy S23",
       os: "Android",
-      brands: ["chrome"],
+      browsers: ["chrome"],
       models: ["SM-S911B", "SM-S911U"],
       versions: [{ os_version: "13", platform_versions: ["13.0.0"] }],
       navigator_platforms: ["Linux armv8l"],
@@ -214,48 +230,22 @@ const CATALOG: IdentityCatalog = {
       memory: [8],
       gpus: [
         {
-          os: "Android",
-          brands: ["chrome"],
           vendor: "Qualcomm",
-          webgl_renderer: "Adreno 740",
+          webgl_renderer: "ANGLE (Qualcomm, Adreno (TM) 740, OpenGL ES 3.2)",
           webgl_vendor: "Qualcomm",
         },
       ],
     },
   ],
   browsers: [
-    { brand: "chrome", versions: ["139.0.6889.109", "138.0.0.0"] },
-    { brand: "safari", versions: ["18"] },
-    { brand: "edge", versions: ["138.0.3402.56"] },
+    { browser: "chrome", versions: ["139.0.6889.109", "138.0.0.0"] },
+    { browser: "safari", versions: ["18"] },
   ],
   screens: [
     { width: 1920, height: 1080, share: 28.58 },
     { width: 1512, height: 982, share: 1.2 },
   ],
   density_pixel_ratios: [1, 2],
-  gpus: [
-    {
-      os: "Windows",
-      brands: ["chrome", "edge"],
-      vendor: "Intel",
-      webgl_renderer: "ANGLE (Intel(R) HD Graphics 620 Direct3D11 vs_5_0 ps_5_0)",
-      webgl_vendor: "Google Inc. (Intel)",
-    },
-    {
-      os: "Macintosh",
-      brands: ["chrome"],
-      vendor: "Intel",
-      webgl_renderer: "Intel Iris OpenGL Engine",
-      webgl_vendor: "Intel Inc.",
-    },
-    {
-      os: "Macintosh",
-      brands: ["safari"],
-      vendor: "Apple",
-      webgl_renderer: "Apple GPU",
-      webgl_vendor: "Apple Inc.",
-    },
-  ],
   hardware_concurrency: [2, 4, 6, 8],
   memory: [2, 4, 8],
   geos: [
@@ -273,7 +263,7 @@ describe("identity bindings", () => {
       navigator_platform: "Win32",
       os_version: "11",
       platform_version: "15.0.0",
-      brand: "chrome",
+      browser: "chrome",
       browser_version: "139.0.6889.109",
       webgl_renderer: "ANGLE (Intel(R) HD Graphics 620 Direct3D11 vs_5_0 ps_5_0)",
       geo: "US",
@@ -285,16 +275,13 @@ describe("identity bindings", () => {
   });
 
   it("re-chooses everything the operating system owns", () => {
-    const windows = withBrand(catalogDraft(CATALOG), CATALOG, "edge");
-    expect(windows.brand).toBe("edge");
-
-    const mac = withOS(windows, CATALOG, "Macintosh");
+    const mac = withOS(catalogDraft(CATALOG), CATALOG, "Macintosh");
 
     expect(mac.navigator_platform).toBe("MacIntel");
     expect(mac.os_version).toBe("14");
     expect(mac.platform_version).toBe("14.6");
-    // Edge does not run on the Mac catalogue, and a Direct3D card cannot.
-    expect(mac.brand).toBe("chrome");
+    // A Direct3D card cannot come along to a Mac.
+    expect(mac.browser).toBe("chrome");
     expect(mac.webgl_renderer).toBe("Intel Iris OpenGL Engine");
     expect(mac.webgl_vendor).toBe("Intel Inc.");
   });
@@ -306,13 +293,14 @@ describe("identity bindings", () => {
     expect(draft.platform_version).toBe("0.0.0");
   });
 
-  it("gives Safari the one WebGL pair it ever reports", () => {
+  it("moves the version list with the browser and nothing else", () => {
     const mac = withOS(catalogDraft(CATALOG), CATALOG, "Macintosh");
-    const safari = withBrand(mac, CATALOG, "safari");
+    const safari = withBrowser(mac, CATALOG, "safari");
 
-    expect(safari.webgl_renderer).toBe("Apple GPU");
-    expect(safari.webgl_vendor).toBe("Apple Inc.");
-    expect(gpusFor(CATALOG, "Macintosh", "safari")).toHaveLength(1);
+    expect(safari.browser).toBe("safari");
+    expect(safari.browser_version).toBe("18");
+    // The card belongs to the Mac, not to which browser is claimed.
+    expect(safari.webgl_renderer).toBe("Intel Iris OpenGL Engine");
   });
 
   it("lets a country carry its language list and clock", () => {
@@ -341,16 +329,16 @@ describe("identity bindings", () => {
     // Screen, card, cores and memory shipped in one box.
     expect(phone.logical_width).toBe("360");
     expect(phone.original_width).toBe("1080");
-    expect(phone.webgl_renderer).toBe("Adreno 740");
+    expect(phone.webgl_renderer).toContain("Adreno (TM) 740");
     expect(phone.memory).toBe("8");
     // A phone is battery-powered and touched, not moused.
     expect(phone).toMatchObject({ has_touch: true, has_mouse: false, has_battery: true });
   });
 
   it("offers only the cards the chosen handset carries", () => {
-    expect(gpusFor(CATALOG, "Android", "chrome", "Samsung Galaxy S23")).toHaveLength(1);
+    expect(gpusFor(CATALOG, "Android", "Samsung Galaxy S23")).toHaveLength(1);
     // Without a handset there is nothing coherent to offer.
-    expect(gpusFor(CATALOG, "Android", "chrome")).toHaveLength(0);
+    expect(gpusFor(CATALOG, "Android")).toHaveLength(0);
   });
 
   it("drops the handset when the profile goes back to a desktop", () => {
@@ -378,7 +366,7 @@ describe("fingerprint and version guards", () => {
     os: "Windows",
     os_version: "11",
     platform: { navigator_platform: "Win32", version: "15.0.0" },
-    brand: "chrome",
+    browser: "chrome",
     browser_version: [139, 0, 6889, 109],
     screen: {
       logical_width: 1920,

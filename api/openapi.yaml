@@ -736,14 +736,16 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [name, browser]
+              required: [name]
               properties:
                 name: {type: string}
-                browser: {$ref: "#/components/schemas/BrowserKind"}
                 identity:
                   allOf: [{$ref: "#/components/schemas/BrowserIdentity"}]
-                  nullable: true
-                  description: Absent launches the browser as itself.
+                  description: >-
+                    Absent means no opinion, not a bare browser: one is drawn
+                    from the catalogue, seeded so it holds still for this profile
+                    and differs from the next. It names the browser, which is why
+                    there is no separate field for that.
       responses:
         "201":
           description: Profile created.
@@ -780,8 +782,9 @@ paths:
                 name: {type: string}
                 identity:
                   allOf: [{$ref: "#/components/schemas/BrowserIdentity"}]
-                  nullable: true
-                  description: Null strips the identity; omitted leaves it alone.
+                  description: >-
+                    Replaces the presentation; omitted leaves it alone. There is
+                    no way to remove it — every profile wears one.
       responses:
         "200":
           description: Profile updated.
@@ -1195,7 +1198,10 @@ components:
               description: Returned exactly once. Only a digest is stored.
     BrowserKind:
       type: string
-      enum: [chrome, firefox]
+      description: >-
+        Chrome is the only browser that launches; Safari is a Chrome wearing
+        Safari, which is what a site reads either way.
+      enum: [chrome, safari]
     BrowserProfile:
       type: object
       description: >-
@@ -1205,10 +1211,12 @@ components:
       properties:
         id: {type: string}
         name: {type: string}
-        browser: {$ref: "#/components/schemas/BrowserKind"}
-        identity:
-          allOf: [{$ref: "#/components/schemas/RedactedBrowserIdentity"}]
-          nullable: true
+        browser:
+          allOf: [{$ref: "#/components/schemas/BrowserKind"}]
+          description: >-
+            Repeats identity.browser, so a list view does not have to reach into
+            the identity for it.
+        identity: {$ref: "#/components/schemas/RedactedBrowserIdentity"}
         cookies:
           type: array
           items: {$ref: "#/components/schemas/RedactedCookie"}
@@ -1222,12 +1230,12 @@ components:
       description: >-
         Selectable values for a BrowserIdentity. Several are binding: an
         operating system fixes navigator.platform, bitness and architecture,
-        limits which releases and brands exist under it, and each release
+        limits which releases, browsers and cards exist under it, and each release
         carries its own UA-CH platform versions — Windows 11 reports 15.0.0,
         and Windows 7 and 8 both report 0.0.0.
       required:
         [operating_systems, devices, browsers, screens, density_pixel_ratios,
-         gpus, hardware_concurrency, memory, geos]
+         hardware_concurrency, memory, geos]
       properties:
         operating_systems:
           type: array
@@ -1246,9 +1254,6 @@ components:
           type: array
           description: Pairs with a screen to give the physical resolution.
           items: {type: number}
-        gpus:
-          type: array
-          items: {$ref: "#/components/schemas/CatalogGPU"}
         hardware_concurrency:
           type: array
           items: {type: integer}
@@ -1262,25 +1267,30 @@ components:
     CatalogOS:
       type: object
       required:
-        [os, form_factor, navigator_platform, bitness, architecture, brands, versions]
+        [os, form_factor, navigator_platform, bitness, architecture, browsers,
+         versions, gpus]
       properties:
         os: {type: string, enum: [Windows, Macintosh, Linux, Android, Ios]}
         form_factor:
           type: string
           enum: [desktop, mobile]
           description: >-
-            A mobile system carries no platform or releases of its own — the
-            handset does, so a device is chosen first and fixes them.
+            A mobile system carries no platform, releases or cards of its own —
+            the handset does, so a device is chosen first and fixes them.
         navigator_platform: {type: string}
         bitness: {type: string}
         architecture: {type: string}
-        brands:
+        browsers:
           type: array
           description: What runs on the platform. There is no Safari on Windows.
-          items: {type: string, enum: [chrome, safari, edge]}
+          items: {$ref: "#/components/schemas/BrowserKind"}
         versions:
           type: array
           items: {$ref: "#/components/schemas/CatalogOSVersion"}
+        gpus:
+          type: array
+          description: The cards this system reports. Empty on a mobile system.
+          items: {$ref: "#/components/schemas/CatalogGPU"}
     CatalogOSVersion:
       type: object
       description: >-
@@ -1300,14 +1310,14 @@ components:
         the ratio, the GPU, the cores and the memory together, because they
         shipped in one box. Only the release and which card answered are choices.
       required:
-        [name, os, brands, models, versions, navigator_platforms, screen,
+        [name, os, browsers, models, versions, navigator_platforms, screen,
          hardware_concurrency, memory, gpus]
       properties:
         name: {type: string}
         os: {type: string, enum: [Windows, Macintosh, Linux, Android, Ios]}
-        brands:
+        browsers:
           type: array
-          items: {type: string, enum: [chrome, safari, edge]}
+          items: {$ref: "#/components/schemas/BrowserKind"}
         models:
           type: array
           description: What Sec-CH-UA-Model reports; several codes share one handset.
@@ -1340,9 +1350,9 @@ components:
           items: {$ref: "#/components/schemas/CatalogGPU"}
     CatalogBrowser:
       type: object
-      required: [brand, versions]
+      required: [browser, versions]
       properties:
-        brand: {type: string, enum: [chrome, safari, edge]}
+        browser: {$ref: "#/components/schemas/BrowserKind"}
         versions:
           type: array
           description: Released versions, newest first.
@@ -1358,15 +1368,12 @@ components:
     CatalogGPU:
       type: object
       description: >-
-        Bound to the platform that can report it. ANGLE over Direct3D exists
-        only on Windows, "… OpenGL Engine" only on a Mac, and Safari reports one
-        Apple pair whatever card is underneath.
-      required: [os, brands, vendor, webgl_renderer, webgl_vendor]
+        One card's WebGL strings. It says nothing about where it runs because it
+        does not have to: it is listed under the system or the handset that
+        reports it, and ANGLE over Direct3D on a Mac is not a card in the wrong
+        place, it is a card that does not exist.
+      required: [vendor, webgl_renderer, webgl_vendor]
       properties:
-        os: {type: string, enum: [Windows, Macintosh, Linux, Android, Ios]}
-        brands:
-          type: array
-          items: {type: string, enum: [chrome, safari, edge]}
         vendor: {type: string}
         webgl_renderer: {type: string}
         webgl_vendor: {type: string}
@@ -1388,7 +1395,7 @@ components:
       type: object
       description: Mirrors the rustenium-identity record the browser server applies.
       required:
-        [os, os_version, platform, brand, browser_version, screen,
+        [os, os_version, platform, browser, browser_version, screen,
          hardware_concurrency, memory, gpu, geo, language]
       properties:
         device_model: {type: string, description: Empty means desktop or laptop.}
@@ -1405,10 +1412,11 @@ components:
             architecture: {type: string}
             navigator_platform: {type: string}
             version: {type: string}
-        brand:
-          type: string
-          enum: [chrome, safari, edge]
-          description: What the browser claims to be, not what it runs on.
+        browser:
+          allOf: [{$ref: "#/components/schemas/BrowserKind"}]
+          description: >-
+            What it claims to be, not what runs: rustenium-identity drives
+            Chrome, so a Safari profile is a Chrome wearing Safari.
         browser_version:
           type: array
           items: {type: integer}

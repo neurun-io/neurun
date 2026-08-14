@@ -2,6 +2,7 @@ package browsergrpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/neurun-io/neurun/internal/browserpb"
+	"github.com/neurun-io/neurun/internal/browserservicepb"
 	"github.com/neurun-io/neurun/internal/domain/browser"
 	"github.com/neurun-io/neurun/internal/service"
 )
@@ -30,19 +32,23 @@ type Server struct {
 	browserpb.UnimplementedBrowserServer
 
 	sessions   *service.BrowserSessionService
+	profiles   *service.BrowserService
 	tokens     *service.ExecutionTokenService
 	supervisor *Supervisor
 }
 
 func NewServer(
 	sessions *service.BrowserSessionService,
+	profiles *service.BrowserService,
 	tokens *service.ExecutionTokenService,
 	supervisor *Supervisor,
 ) (*Server, error) {
-	if sessions == nil || tokens == nil || supervisor == nil {
+	if sessions == nil || profiles == nil || tokens == nil || supervisor == nil {
 		return nil, errors.New("browser grpc server requires its dependencies")
 	}
-	return &Server{sessions: sessions, tokens: tokens, supervisor: supervisor}, nil
+	return &Server{
+		sessions: sessions, profiles: profiles, tokens: tokens, supervisor: supervisor,
+	}, nil
 }
 
 // Serve listens on addr, which must be loopback.
@@ -80,16 +86,22 @@ func (server *Server) OpenSession(
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, err.Error())
 	}
-	kind, err := browser.ParseKind(request.GetBrowser())
+	// The browser service has no database, so the persona is resolved here and
+	// travels with the request.
+	kind, persona, err := server.persona(
+		ctx, identity.OrganizationID,
+		request.GetBrowserProfileId(), request.GetBrowser(),
+	)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, err
 	}
 
-	opened, err := client.Open(ctx, &browserpb.OpenRequest{
+	opened, err := client.Open(ctx, &browserservicepb.OpenRequest{
 		Browser:          string(kind),
 		BrowserProfileId: request.GetBrowserProfileId(),
 		AppId:            identity.AppID,
 		ExecutionId:      identity.ExecutionID,
+		Identity:         persona,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "browser service: %v", err)
@@ -98,11 +110,11 @@ func (server *Server) OpenSession(
 	// Registered against the id the service minted, so the dashboard and the
 	// service agree on what to call it.
 	record, err := server.sessions.Adopt(ctx, identity.OrganizationID, service.AdoptRequest{
-		SessionID:      opened.GetSessionId(),
-		AppID:          identity.AppID,
-		ExecutionID:    identity.ExecutionID,
-		ProfileID:      request.GetBrowserProfileId(),
-		Browser:        kind,
+		SessionID:   opened.GetSessionId(),
+		AppID:       identity.AppID,
+		ExecutionID: identity.ExecutionID,
+		ProfileID:   request.GetBrowserProfileId(),
+		Browser:     kind,
 		// Every session has a framebuffer, and it is reached through the browser
 		// service itself — it multiplexes them all behind one port.
 		DisplayAddress: server.supervisor.Address(),
@@ -110,41 +122,74 @@ func (server *Server) OpenSession(
 	if err != nil {
 		// The browser is already up; leaving it would strand a process nothing
 		// can reach.
-		_, _ = client.Close(ctx, &browserpb.CloseRequest{SessionId: opened.GetSessionId()})
+		_, _ = client.Close(ctx, &browserservicepb.CloseRequest{SessionId: opened.GetSessionId()})
 		return nil, status.Errorf(codes.Internal, "register session: %v", err)
 	}
 	return sessionMessage(record), nil
 }
 
-func (server *Server) Execute(
+func (server *Server) Navigate(
 	ctx context.Context,
-	request *browserpb.ExecuteRequest,
-) (*browserpb.ExecuteResponse, error) {
+	request *browserpb.NavigateRequest,
+) (*browserpb.NavigateResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	_, err = client.Navigate(ctx, &browserservicepb.NavigateRequest{
+		SessionId: request.GetSessionId(),
+		Url:       request.GetUrl(),
+		Referer:   request.Referer,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "browser service: %v", err)
+	}
+	return &browserpb.NavigateResponse{}, nil
+}
+
+func (server *Server) WaitForNavigation(
+	ctx context.Context,
+	request *browserpb.WaitForNavigationRequest,
+) (*browserpb.WaitForNavigationResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	_, err = client.WaitForNavigation(ctx, &browserservicepb.WaitForNavigationRequest{
+		SessionId: request.GetSessionId(),
+		// The two enums are the same enum, declared twice, so the number carries.
+		WaitUntil: browserservicepb.WaitUntil(request.GetWaitUntil()),
+		TimeoutMs: request.GetTimeoutMs(),
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "browser service: %v", err)
+	}
+	return &browserpb.WaitForNavigationResponse{}, nil
+}
+
+// driving authorizes a command against a session and returns the client to
+// relay it with.
+//
+// Scoped before relaying: a session id from another organization reads as absent
+// rather than as forbidden. The lookup doubles as the lease refresh — a session
+// being driven is a session that is alive, so activity keeps it listed instead
+// of a timer expiring one mid-run.
+func (server *Server) driving(
+	ctx context.Context,
+	sessionID string,
+) (browserservicepb.BrowserServiceClient, error) {
 	identity, err := server.identify(ctx)
 	if err != nil {
 		return nil, err
 	}
-	// Scoped before relaying: a session id from another organization reads as
-	// absent rather than as forbidden. The lookup doubles as the lease refresh —
-	// a session being driven is a session that is alive, so activity keeps it
-	// listed instead of a timer expiring one mid-run.
-	if _, err := server.sessions.Touch(
-		ctx, identity.OrganizationID, request.GetSessionId(),
-	); err != nil {
+	if _, err := server.sessions.Touch(ctx, identity.OrganizationID, sessionID); err != nil {
 		return nil, status.Error(codes.NotFound, "browser session not found")
 	}
 	client, err := server.supervisor.Client(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, err.Error())
 	}
-	result, err := client.Run(ctx, &browserpb.RunRequest{
-		SessionId: request.GetSessionId(),
-		Command:   request.GetCommand(),
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "browser service: %v", err)
-	}
-	return &browserpb.ExecuteResponse{Result: result.GetResult()}, nil
+	return client, nil
 }
 
 func (server *Server) CloseSession(
@@ -165,7 +210,7 @@ func (server *Server) CloseSession(
 		return nil, status.Error(codes.Unavailable, err.Error())
 	}
 	if _, err := client.Close(
-		ctx, &browserpb.CloseRequest{SessionId: request.GetSessionId()},
+		ctx, &browserservicepb.CloseRequest{SessionId: request.GetSessionId()},
 	); err != nil {
 		// The browser may already be gone; the record must not outlive it either
 		// way, so this is logged rather than returned.
@@ -178,6 +223,43 @@ func (server *Server) CloseSession(
 		return nil, status.Errorf(codes.Internal, "close session: %v", err)
 	}
 	return &browserpb.CloseSessionResponse{}, nil
+}
+
+// persona resolves what the browser will wear, and which browser that makes it.
+//
+// A named profile answers both: its identity says chrome or safari, so the
+// browser field in the request is not consulted at all — two answers that could
+// disagree is one answer too many. Without a profile the caller is saying it
+// does not care to keep anything, and gets a coherent machine drawn for this
+// session alone.
+func (server *Server) persona(
+	ctx context.Context,
+	organizationID, profileID, requested string,
+) (browser.Browser, []byte, error) {
+	identity := browser.Identity{}
+
+	if strings.TrimSpace(profileID) == "" {
+		claimed, err := browser.ParseBrowser(requested)
+		if err != nil {
+			return "", nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		if identity, err = browser.EphemeralIdentity(claimed); err != nil {
+			return "", nil, status.Errorf(codes.Internal, "mint an identity: %v", err)
+		}
+	} else {
+		record, err := server.profiles.Get(ctx, organizationID, profileID)
+		if err != nil {
+			// A profile from another organization reads as absent, never forbidden.
+			return "", nil, status.Error(codes.NotFound, "browser profile not found")
+		}
+		identity = record.Identity
+	}
+
+	document, err := json.Marshal(identity)
+	if err != nil {
+		return "", nil, status.Errorf(codes.Internal, "encode identity: %v", err)
+	}
+	return identity.Browser, document, nil
 }
 
 // identify turns the token into who the caller is. Nothing else in the request

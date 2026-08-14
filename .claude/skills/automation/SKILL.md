@@ -46,8 +46,8 @@ goes wrong.
 
 - **`PUT .../state` replaces, it does not merge.** The browser returns its whole
   cookie jar, so a cookie missing from the body was deleted.
-- **A Firefox session returns an empty state.** Writing it back **erases the
-  profile**. Do not PUT after a Firefox session.
+- **An empty capture erases the profile.** It is indistinguishable from a browser
+  that genuinely holds nothing, so check before writing one back.
 - **`GET .../state` takes `browser_profiles:write`, not `:read`.** Reading state
   is exporting live sessions.
 - **The gRPC surface on loopback carries no authentication.** That is safe only
@@ -79,7 +79,7 @@ goes wrong.
 
 | Mistake | Fix |
 | --- | --- |
-| PUT after a Firefox session | It returns empty; the PUT erases the profile |
+| PUT an empty capture | It is a wipe, not a no-op. The server cannot tell the difference |
 | Merging captured state into stored state | The capture is authoritative and complete. Replace |
 | Expecting storage for an origin you never visited | CDP hands back only what was opened. Visit it, or accept the gap |
 | Restoring storage from the wrong origin | You cannot set another origin's storage. Restore visits each in turn |

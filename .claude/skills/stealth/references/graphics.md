@@ -50,7 +50,8 @@ Every noise value is a pure function of `(FP_SEED, pixel index)`. No
 
 - **← User agent.** The renderer must match the OS the UA claims. Direct3D on a
   Mac, or a bare `Apple M2` on Windows, is a contradiction a single regex finds.
-  The catalogue enforces this by binding every GPU to an `os` and a brand list.
+  The catalogue enforces this structurally: a card is listed under the system or
+  the handset that reports it, and nowhere else.
 - **← Brand.** ANGLE is a Chromium layer. A Safari identity that reports an ANGLE
   string is claiming a translation layer WebKit does not use.
 - **← Hardware.** A high-end discrete GPU next to 2 cores and 2 GiB of memory

@@ -44,7 +44,7 @@ type Session struct {
 	// ProfileID names the browser profile this session wears, when it wears one.
 	// A plain browser has none, and that is the ordinary case.
 	ProfileID string        `json:"browser_profile_id,omitempty"`
-	Browser   Kind          `json:"browser"`
+	Browser   Browser       `json:"browser"`
 	Status    SessionStatus `json:"status"`
 	// DisplayAddress is the loopback address of the VNC server in front of this
 	// session's Xvfb. It never leaves the server: a caller is given a session id
@@ -57,14 +57,14 @@ type Session struct {
 
 func NewSession(
 	id, organizationID, appID string,
-	browser Kind,
+	claimed Browser,
 	now time.Time,
 ) (Session, error) {
 	record := Session{
 		ID:             strings.TrimSpace(id),
 		OrganizationID: strings.TrimSpace(organizationID),
 		AppID:          strings.TrimSpace(appID),
-		Browser:        browser,
+		Browser:        claimed,
 		Status:         SessionStarting,
 		StartedAt:      now,
 		UpdatedAt:      now,

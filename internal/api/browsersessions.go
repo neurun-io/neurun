@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
-	"github.com/neurun-io/neurun/internal/browserpb"
+	"github.com/neurun-io/neurun/internal/browserservicepb"
 	"github.com/neurun-io/neurun/internal/domain/browser"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/service"
@@ -156,7 +156,7 @@ func pipeDisplay(
 			if kind != websocket.BinaryMessage || len(payload) == 0 {
 				continue
 			}
-			if err := stream.Send(&browserpb.DisplayChunk{Data: payload}); err != nil {
+			if err := stream.Send(&browserservicepb.DisplayChunk{Data: payload}); err != nil {
 				return
 			}
 		}

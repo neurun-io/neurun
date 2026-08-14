@@ -96,9 +96,8 @@ export default function BrowserProfilesPage() {
 }
 
 /**
- * One profile as it looks from outside: the browser it launches, the machine it
- * presents as, and what it remembers. A profile with no identity says so — that
- * is the difference between a persona and a plain browser.
+ * One profile as it looks from outside: the machine it presents as, and what it
+ * remembers.
  */
 function ProfileCard({
   profile,
@@ -108,7 +107,7 @@ function ProfileCard({
   onDelete: () => void;
 }) {
   const identity = profile.identity;
-  const mobile = identity?.os === "Android" || identity?.os === "Ios";
+  const mobile = identity.os === "Android" || identity.os === "Ios";
 
   return (
     <li className="flex min-w-0 flex-col gap-2 rounded-lg border border-line bg-surface-panel p-3">
@@ -131,27 +130,15 @@ function ProfileCard({
 
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-micro text-fg-secondary">
         <Fact icon={<BrowserIcon browser={profile.browser} />}>{profile.browser}</Fact>
-        {identity ? (
-          <>
-            <Fact icon={mobile ? <Smartphone /> : <Laptop />}>
-              {identity.os.toLowerCase()} {identity.os_version}
-            </Fact>
-            <Fact icon={<Monitor />}>
-              {identity.screen?.logical_width}×{identity.screen?.logical_height}
-            </Fact>
-            <Fact icon={<Cpu />}>{identity.hardware_concurrency} cores</Fact>
-            <Fact icon={<MemoryStick />}>{identity.memory} GiB</Fact>
-            {/* The claim is only worth saying when it is not the engine's own name. */}
-            {identity.brand !== profile.browser ? (
-              <Badge variant="outline">as {identity.brand}</Badge>
-            ) : null}
-            {identity.proxy_set ? <Badge variant="outline">proxy</Badge> : null}
-          </>
-        ) : (
-          <span className="font-sans text-micro font-semibold text-fg-muted">
-            · no-stealth
-          </span>
-        )}
+        <Fact icon={mobile ? <Smartphone /> : <Laptop />}>
+          {identity.os.toLowerCase()} {identity.os_version}
+        </Fact>
+        <Fact icon={<Monitor />}>
+          {identity.screen?.logical_width}×{identity.screen?.logical_height}
+        </Fact>
+        <Fact icon={<Cpu />}>{identity.hardware_concurrency} cores</Fact>
+        <Fact icon={<MemoryStick />}>{identity.memory} GiB</Fact>
+        {identity.proxy_set ? <Badge variant="outline">proxy</Badge> : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2.5 font-mono text-micro text-fg-muted">

@@ -354,7 +354,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	browserSupervisor := browsergrpc.NewSupervisor(cfg.BrowserService)
 	defer browserSupervisor.Close()
 	browserRPC, err := browsergrpc.NewServer(
-		browserSessionService, executionTokens, browserSupervisor,
+		browserSessionService, browserService, executionTokens, browserSupervisor,
 	)
 	if err != nil {
 		return fmt.Errorf("configure browser grpc: %w", err)

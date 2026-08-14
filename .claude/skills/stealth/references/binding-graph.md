@@ -18,22 +18,28 @@ Bitness and architecture are **empty strings on mobile**, not absent and not
 `x86` — `cdp.rs` blanks them whenever `device_model` is set, and client hints are
 built from the same test.
 
-Narrowed by the OS: the brand list, the release list, the GPU list, and whether
+Narrowed by the OS: the browser list, the release list, the GPU list, and whether
 the form factor is `desktop` (screen and hardware are chosen) or `mobile` (a
-handset supplies them).
+handset supplies them). Each of those is a field *on* the OS entry in the
+catalogue, so a card or a release cannot be offered under a system that never
+reported it.
 
 Switching OS must re-choose everything under it. Carrying the old values across
 is how a Mac ends up claiming `Win32` — `withOS` in
-`frontend/lib/view/browser-identity.ts` re-derives brand, release, platform
+`frontend/lib/view/browser-identity.ts` re-derives browser, release, platform
 version and GPU on every switch, and clears the handset when moving to a desktop.
 
-## OS × brand is not a preference
+## OS × browser is not a preference
 
 `rustenium_identity::ua::build_user_agent` returns
 `IdentityError::UaError("unsupported OS/browser combination")` for any pair it
 does not know. Offering one in a form produces a profile the runtime refuses.
 
-| OS | Brands | UA shape |
+The crate's pairs are below. **Neurun offers a subset**: `chrome` and `safari`
+only, so the Edge column is what the crate can build, not what a profile can ask
+for.
+
+| OS | Browsers | UA shape |
 | --- | --- | --- |
 | Windows | chrome, edge | `Mozilla/5.0 (Windows NT {nt}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{v} Safari/537.36`, Edge appends ` Edg/{v}` |
 | Macintosh | chrome, safari, edge | `Mozilla/5.0 (Macintosh; Intel Mac OS X {v_underscored}) …` — Chrome/Edge use `AppleWebKit/537.36`, Safari uses `AppleWebKit/605.1.15 … Version/{v} Safari/605.1.15` |
@@ -69,19 +75,22 @@ Windows also has a **second** mapping, into the UA string rather than client
 hints: NT `10.0` for 11 and 10, `6.3` for 8.1, `6.2` for 8, `6.1` for 7. Two
 different encodings of the same release, both derived, neither typed.
 
-## Brand
+## Browser
 
-A brand fixes:
+The identity field is `browser`, and it is the only browser a profile has.
 
-- **Its version list.** Chrome and Edge carry four-part Chromium versions; Safari
-  carries two-part versions (`18`, `17.6`). Edge's own full version is not its
-  Chromium version — the catalogue stores the Edge one.
-- **Its WebGL pair.** See `references/graphics.md`.
+It fixes:
+
+- **Its version list.** Chrome carries four-part Chromium versions; Safari
+  carries two-part versions (`18`, `17.6`).
 - **Which APIs exist.** Safari — and every browser on iOS, because they are all
   WebKit — has no `navigator.userAgentData` and no `navigator.deviceMemory`, and
-  must not have `window.chrome`. Chrome carries three plugins; Edge carries none.
-- **Client hints or not.** Built for Chrome and Edge, skipped entirely on iOS and
-  for Safari.
+  must not have `window.chrome`. Chrome carries three plugins.
+- **Client hints or not.** Built for Chrome, skipped entirely on iOS and for
+  Safari.
+
+It does **not** fix the WebGL pair: the card belongs to the system or the
+handset. See `references/graphics.md`.
 
 ## Handset — the binding unit on mobile
 
@@ -126,7 +135,7 @@ the dependency.
 ## What the server enforces
 
 `Identity.Validate` in `internal/domain/browser/identity.go` checks fields
-independently: OS, brand and geo are valid enums; os version, navigator platform,
+independently: OS, browser and geo are valid enums; os version, navigator platform,
 platform version, browser version, languages, screen, hardware and GPU are
 non-empty and non-zero.
 

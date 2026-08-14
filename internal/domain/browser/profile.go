@@ -22,32 +22,33 @@ var (
 	ErrConflict = errors.New("browser profile conflict")
 )
 
-// Kind is the browser a profile launches. Identity.Brand is what it claims to
-// be, which is a different question.
-type Kind string
+// Browser is which browser a profile is. Chrome is the only one that actually
+// launches — rustenium-identity drives it over CDP and nothing else — so Safari
+// here is a Chrome wearing Safari, which is what a site reads either way.
+type Browser string
 
 const (
-	KindChrome  Kind = "chrome"
-	KindFirefox Kind = "firefox"
+	BrowserChrome Browser = "chrome"
+	BrowserSafari Browser = "safari"
 )
 
-func (kind Kind) Valid() bool {
-	switch kind {
-	case KindChrome, KindFirefox:
+func (value Browser) Valid() bool {
+	switch value {
+	case BrowserChrome, BrowserSafari:
 		return true
 	default:
 		return false
 	}
 }
 
-func ParseKind(raw string) (Kind, error) {
-	kind := Kind(strings.ToLower(strings.TrimSpace(raw)))
-	if !kind.Valid() {
+func ParseBrowser(raw string) (Browser, error) {
+	value := Browser(strings.ToLower(strings.TrimSpace(raw)))
+	if !value.Valid() {
 		return "", fmt.Errorf(
-			"%w: unknown browser %q (expected chrome or firefox)", ErrInvalid, raw,
+			"%w: unknown browser %q (expected chrome or safari)", ErrInvalid, raw,
 		)
 	}
-	return kind, nil
+	return value, nil
 }
 
 type Cookie struct {
@@ -65,14 +66,15 @@ type Cookie struct {
 // Storage is origin to key to value.
 type Storage map[string]map[string]string
 
-// Profile is one browser persona: an optional identity, and the state it
-// accumulated. A nil Identity launches the browser as itself.
+// Profile is one browser persona: the identity it wears, and the state it
+// accumulated. The identity is not optional — a browser presenting as itself is
+// the easiest kind to catch — so a profile created without one is seeded from
+// the catalogue instead.
 type Profile struct {
 	ID             string    `json:"id"`
 	OrganizationID string    `json:"organization_id"`
 	Name           string    `json:"name"`
-	Browser        Kind      `json:"browser"`
-	Identity       *Identity `json:"identity,omitempty"`
+	Identity       Identity  `json:"identity"`
 	Cookies        []Cookie  `json:"cookies"`
 	LocalStorage   Storage   `json:"local_storage"`
 	SessionStorage Storage   `json:"session_storage"`
@@ -80,9 +82,11 @@ type Profile struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+// New builds a profile. A nil identity means the caller has no opinion, not that
+// it wants a bare browser: one is drawn from the catalogue, seeded by the id so
+// two profiles never share a fingerprint.
 func New(
 	id, organizationID, name string,
-	kind Kind,
 	identity *Identity,
 	now time.Time,
 ) (Profile, error) {
@@ -90,12 +94,18 @@ func New(
 	if err != nil {
 		return Profile{}, err
 	}
+	if identity == nil {
+		seeded, err := DefaultIdentity(id, "")
+		if err != nil {
+			return Profile{}, err
+		}
+		identity = &seeded
+	}
 	record := Profile{
 		ID:             id,
 		OrganizationID: organizationID,
 		Name:           normalized,
-		Browser:        kind,
-		Identity:       identity,
+		Identity:       *identity,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -116,9 +126,12 @@ func (record *Profile) Rename(name string, now time.Time) error {
 	return record.Validate()
 }
 
-// SetIdentity replaces the presentation half. A nil identity strips it, which
-// leaves the profile's state intact.
-func (record *Profile) SetIdentity(identity *Identity, now time.Time) error {
+// SetIdentity replaces the presentation half and leaves the state intact.
+//
+// Every field of it feeds the fingerprint, so this mints a new persona wearing
+// the old profile's cookies. That is the caller's decision to make, not one to
+// prevent.
+func (record *Profile) SetIdentity(identity Identity, now time.Time) error {
 	record.Identity = identity
 	record.UpdatedAt = notBefore(now, record.CreatedAt)
 	return record.Validate()
@@ -163,13 +176,8 @@ func (record Profile) Validate() error {
 	if err != nil || name != record.Name {
 		return fmt.Errorf("%w: profile name is not normalized", ErrInvalid)
 	}
-	if !record.Browser.Valid() {
-		return fmt.Errorf("%w: profile browser is invalid", ErrInvalid)
-	}
-	if record.Identity != nil {
-		if err := record.Identity.Validate(); err != nil {
-			return err
-		}
+	if err := record.Identity.Validate(); err != nil {
+		return err
 	}
 	for _, cookie := range record.Cookies {
 		if cookie.Name == "" || cookie.Domain == "" {

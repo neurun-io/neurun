@@ -4,13 +4,13 @@
  * Two jobs. Every field is text while it is being typed — a number input that is
  * mid-edit is an empty string, not a NaN, and the parse happens once on submit.
  * And the fields bind: the catalogue the server publishes says which releases,
- * brands and GPUs exist under an operating system, so choosing one narrows the
- * next rather than leaving twenty free-text boxes that can contradict each
+ * browsers and cards exist under an operating system, so choosing one narrows
+ * the next rather than leaving twenty free-text boxes that can contradict each
  * other. A Direct3D renderer on a Mac is not a typo, it is a caught bot.
  */
 import type {
-  BrowserBrand,
   BrowserIdentity,
+  BrowserKind,
   CatalogDevice,
   CatalogGPU,
   CatalogOS,
@@ -31,7 +31,7 @@ export interface IdentityDraft {
   platform_version: string;
   bitness: string;
   architecture: string;
-  brand: BrowserBrand;
+  browser: BrowserKind;
   browser_version: string;
   logical_width: string;
   logical_height: string;
@@ -82,12 +82,12 @@ export function platformVersionsFor(
   );
 }
 
-export function brandsFor(catalog: IdentityCatalog, os: string): BrowserBrand[] {
-  return osEntry(catalog, os)?.brands ?? [];
+export function browsersFor(catalog: IdentityCatalog, os: string): BrowserKind[] {
+  return osEntry(catalog, os)?.browsers ?? [];
 }
 
-export function browserVersionsFor(catalog: IdentityCatalog, brand: string): string[] {
-  return catalog.browsers.find((entry) => entry.brand === brand)?.versions ?? [];
+export function browserVersionsFor(catalog: IdentityCatalog, browser: string): string[] {
+  return catalog.browsers.find((entry) => entry.browser === browser)?.versions ?? [];
 }
 
 export function isMobile(catalog: IdentityCatalog, os: string): boolean {
@@ -117,18 +117,17 @@ export function deviceForModel(
 /**
  * On a phone the handset owns the card list; on a desktop the OS does. Either
  * way the answer is bound — a renderer the platform cannot report is not on
- * offer.
+ * offer, because it is not in that platform's list at all.
  */
 export function gpusFor(
   catalog: IdentityCatalog,
   os: string,
-  brand: string,
   device?: string,
 ): CatalogGPU[] {
   if (isMobile(catalog, os)) {
     return device ? (deviceNamed(catalog, device)?.gpus ?? []) : [];
   }
-  return catalog.gpus.filter((gpu) => gpu.os === os && gpu.brands.includes(brand as BrowserBrand));
+  return osEntry(catalog, os)?.gpus ?? [];
 }
 
 /** Releases come from the handset on mobile and from the system on a desktop. */
@@ -166,28 +165,20 @@ export function withGPU(draft: IdentityDraft, gpu: CatalogGPU): IdentityDraft {
   };
 }
 
-/**
- * A brand fixes its own version list and, with the OS, which cards can report.
- * Safari on a Mac reports one Apple pair whatever silicon is underneath.
- */
-export function withBrand(
+/** A browser fixes its own version list; nothing else moves with it. */
+export function withBrowser(
   draft: IdentityDraft,
   catalog: IdentityCatalog,
-  brand: BrowserBrand,
+  browser: BrowserKind,
 ): IdentityDraft {
-  const versions = browserVersionsFor(catalog, brand);
-  const gpus = gpusFor(catalog, draft.os, brand);
-  let next: IdentityDraft = {
+  const versions = browserVersionsFor(catalog, browser);
+  return {
     ...draft,
-    brand,
+    browser,
     browser_version: versions.includes(draft.browser_version)
       ? draft.browser_version
       : (versions[0] ?? draft.browser_version),
   };
-  if (gpus.length > 0 && !gpus.some((gpu) => gpu.webgl_renderer === next.webgl_renderer)) {
-    next = withGPU(next, gpus[0]);
-  }
-  return next;
 }
 
 export function withOSVersion(
@@ -242,9 +233,9 @@ export function withDevice(
 
 /**
  * The widest binding. An OS fixes navigator.platform, bitness and architecture
- * outright, and everything below it — release, brand, GPU — is re-chosen rather
- * than carried across, because carrying it across is how a Mac ends up claiming
- * Win32.
+ * outright, and everything below it — release, browser, GPU — is re-chosen
+ * rather than carried across, because carrying it across is how a Mac ends up
+ * claiming Win32.
  */
 export function withOS(
   draft: IdentityDraft,
@@ -254,15 +245,15 @@ export function withOS(
   const entry = osEntry(catalog, os);
   if (!entry) return draft;
 
-  const brand = entry.brands.includes(draft.brand) ? draft.brand : entry.brands[0];
+  const browser = entry.browsers.includes(draft.browser) ? draft.browser : entry.browsers[0];
 
   if (entry.form_factor === "mobile") {
     const device = devicesFor(catalog, entry.os)[0];
-    const phone: IdentityDraft = { ...draft, os: entry.os, brand };
+    const phone: IdentityDraft = { ...draft, os: entry.os, browser };
     return device ? withDevice(phone, catalog, device.name) : phone;
   }
 
-  const next: IdentityDraft = {
+  let next: IdentityDraft = {
     ...draft,
     os: entry.os,
     device: "",
@@ -273,10 +264,15 @@ export function withOS(
     has_touch: false,
     has_mouse: true,
   };
-  return withBrand(
+  // The card list is the system's, so a renderer from the last one cannot stay.
+  const gpus = gpusFor(catalog, entry.os);
+  if (gpus.length > 0 && !gpus.some((gpu) => gpu.webgl_renderer === next.webgl_renderer)) {
+    next = withGPU(next, gpus[0]);
+  }
+  return withBrowser(
     withOSVersion(next, catalog, entry.versions[0]?.os_version ?? next.os_version),
     catalog,
-    brand,
+    browser,
   );
 }
 
@@ -311,7 +307,7 @@ export function catalogDraft(catalog: IdentityCatalog): IdentityDraft {
     platform_version: "",
     bitness: "",
     architecture: "",
-    brand: "chrome",
+    browser: "chrome",
     browser_version: "",
     logical_width: String(screen?.width ?? 1920),
     logical_height: String(screen?.height ?? 1080),
@@ -364,7 +360,7 @@ export function toDraft(
     platform_version: identity.platform?.version ?? "",
     bitness: identity.platform?.bitness ?? "",
     architecture: identity.platform?.architecture ?? "",
-    brand: identity.brand ?? "chrome",
+    browser: identity.browser ?? "chrome",
     browser_version: (identity.browser_version ?? []).join("."),
     logical_width: text(identity.screen?.logical_width),
     logical_height: text(identity.screen?.logical_height),
@@ -402,7 +398,7 @@ export function fromDraft(draft: IdentityDraft): BrowserIdentity {
       navigator_platform: draft.navigator_platform.trim(),
       version: draft.platform_version.trim(),
     },
-    brand: draft.brand,
+    browser: draft.browser,
     browser_version: numbers(draft.browser_version),
     screen: {
       logical_width: number(draft.logical_width),

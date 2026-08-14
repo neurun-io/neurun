@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/neurun-io/neurun/internal/browserpb"
+	"github.com/neurun-io/neurun/internal/browserservicepb"
 )
 
 // ErrNoBrowserService is the executable not being configured. Every browser
@@ -51,7 +51,7 @@ func NewSupervisor(executable string) *Supervisor {
 // Client returns a client to the running service, starting it if it is not.
 func (supervisor *Supervisor) Client(
 	ctx context.Context,
-) (browserpb.BrowserServiceClient, error) {
+) (browserservicepb.BrowserServiceClient, error) {
 	if supervisor.executable == "" {
 		return nil, ErrNoBrowserService
 	}
@@ -59,12 +59,12 @@ func (supervisor *Supervisor) Client(
 	defer supervisor.mu.Unlock()
 
 	if supervisor.connection != nil && supervisor.alive() {
-		return browserpb.NewBrowserServiceClient(supervisor.connection), nil
+		return browserservicepb.NewBrowserServiceClient(supervisor.connection), nil
 	}
 	if err := supervisor.start(ctx); err != nil {
 		return nil, err
 	}
-	return browserpb.NewBrowserServiceClient(supervisor.connection), nil
+	return browserservicepb.NewBrowserServiceClient(supervisor.connection), nil
 }
 
 // Address is where the service listens, for anything that needs to record it.

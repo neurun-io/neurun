@@ -43,14 +43,13 @@ func (service *BrowserService) Create(
 	ctx context.Context,
 	organizationID string,
 	name string,
-	kind browser.Kind,
 	identity *browser.Identity,
 ) (browser.Profile, error) {
 	id, err := service.newID("bp")
 	if err != nil {
 		return browser.Profile{}, err
 	}
-	record, err := browser.New(id, organizationID, name, kind, identity, service.now())
+	record, err := browser.New(id, organizationID, name, identity, service.now())
 	if err != nil {
 		return browser.Profile{}, err
 	}
@@ -86,12 +85,12 @@ func (service *BrowserService) Rename(
 	return service.profiles.Update(ctx, record)
 }
 
-// SetIdentity replaces the presentation half. A nil identity strips it, which
-// leaves the profile's cookies and storage where they are.
+// SetIdentity replaces the presentation half and leaves the profile's cookies
+// and storage where they are.
 func (service *BrowserService) SetIdentity(
 	ctx context.Context,
 	organizationID, profileID string,
-	identity *browser.Identity,
+	identity browser.Identity,
 ) (browser.Profile, error) {
 	record, err := service.profiles.GetByID(ctx, organizationID, profileID)
 	if err != nil {

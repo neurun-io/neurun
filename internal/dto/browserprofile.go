@@ -8,31 +8,33 @@ import (
 )
 
 type CreateBrowserProfileRequest struct {
-	Name    string `json:"name"`
-	Browser string `json:"browser"`
-	// Identity absent launches the browser as itself.
+	Name string `json:"name"`
+	// Identity absent means no opinion, not a bare browser: the server draws one
+	// from the catalogue. The browser a profile is comes from this.
 	Identity *browser.Identity `json:"identity"`
 }
 
 type UpdateBrowserProfileRequest struct {
 	Name *string `json:"name"`
-	// Identity present replaces the presentation; a JSON null strips it. Absent
-	// leaves it alone, which is why this needs two levels of pointer.
-	Identity **browser.Identity `json:"identity"`
+	// Identity present replaces the presentation; absent leaves it alone. There
+	// is no way to remove it — every profile wears one.
+	Identity *browser.Identity `json:"identity"`
 }
 
 // BrowserProfileResponse never carries a secret. Cookie values and the identity
 // proxy are what make a profile worth stealing, so they are summarised here and
 // returned only by the state endpoint, which needs a write scope.
 type BrowserProfileResponse struct {
-	ID             string            `json:"id"`
-	Name           string            `json:"name"`
-	Browser        string            `json:"browser"`
-	Identity       *IdentityResponse `json:"identity"`
-	Cookies        []CookieResponse  `json:"cookies"`
-	StorageOrigins []string          `json:"storage_origins"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Browser repeats identity.browser, because a list view needs it and should
+	// not have to reach into the identity for it.
+	Browser        string           `json:"browser"`
+	Identity       IdentityResponse `json:"identity"`
+	Cookies        []CookieResponse `json:"cookies"`
+	StorageOrigins []string         `json:"storage_origins"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
 // IdentityResponse is the stored identity with the proxy URL removed. Its
@@ -74,20 +76,19 @@ type SaveBrowserProfileStateRequest struct {
 }
 
 func NewBrowserProfileResponse(record browser.Profile) BrowserProfileResponse {
+	identity := record.Identity
+	proxySet := identity.Proxy != ""
+	identity.Proxy = ""
+
 	response := BrowserProfileResponse{
 		ID:             record.ID,
 		Name:           record.Name,
-		Browser:        string(record.Browser),
+		Browser:        string(record.Identity.Browser),
+		Identity:       IdentityResponse{Identity: identity, ProxySet: proxySet},
 		Cookies:        make([]CookieResponse, 0, len(record.Cookies)),
 		StorageOrigins: storageOrigins(record),
 		CreatedAt:      record.CreatedAt,
 		UpdatedAt:      record.UpdatedAt,
-	}
-	if record.Identity != nil {
-		identity := *record.Identity
-		proxySet := identity.Proxy != ""
-		identity.Proxy = ""
-		response.Identity = &IdentityResponse{Identity: identity, ProxySet: proxySet}
 	}
 	for _, cookie := range record.Cookies {
 		response.Cookies = append(response.Cookies, CookieResponse{

@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package neurun.browserservice.v1;
+
+option go_package = "github.com/neurun-io/neurun/internal/browserservicepb;browserservicepb";
+
+// BrowserService is what neurun-browser serves. The control plane is its only
+// client — nothing else knows where it listens, and it is never on a routable
+// interface.
+//
+// It is a separate package from browser.proto rather than a second service in
+// it, because they are two different contracts: that one is what tenant code is
+// allowed to call, this one is how the control plane talks to a process it
+// owns. Sharing a file made it easy to read one as the other.
+service BrowserService {
+  // Open spawns a browser and returns the session the service minted for it.
+  rpc Open(OpenRequest) returns (OpenResponse);
+
+  // Navigate drives a session to a URL.
+  rpc Navigate(NavigateRequest) returns (NavigateResponse);
+
+  // WaitForNavigation blocks until the session's page has navigated.
+  rpc WaitForNavigation(WaitForNavigationRequest) returns (WaitForNavigationResponse);
+
+  // Close stops the browser.
+  rpc Close(CloseRequest) returns (CloseResponse);
+
+  // StreamDisplay is a pipe to the session's framebuffer. Each chunk is opaque
+  // RFB: client-to-server frames in, server-to-client frames out.
+  //
+  // The session is named in the neurun-session-id metadata rather than in every
+  // chunk, because it is a property of the stream and not of a frame.
+  rpc StreamDisplay(stream DisplayChunk) returns (stream DisplayChunk);
+}
+
+message OpenRequest {
+  string browser = 1;
+  string browser_profile_id = 2;
+  string app_id = 3;
+  string execution_id = 4;
+  // The rustenium-identity record, as JSON, and never empty — this service has
+  // no database to read a profile from, so the control plane resolves it: the
+  // profile's when one is named, otherwise a coherent machine drawn for this
+  // session alone.
+  //
+  // Opaque because that crate owns the schema, so a field added to an identity
+  // is not a release here.
+  bytes identity = 5;
+}
+
+message OpenResponse {
+  string session_id = 1;
+}
+
+// The commands, shaped after the browser's own functions. They mirror
+// browser.proto's because the control plane relays them without reinterpreting
+// anything: a difference between the two would be a translation, and a
+// translation is a place for the meaning to drift.
+message NavigateRequest {
+  string session_id = 1;
+  string url = 2;
+  // Absent sends no Referer, which is not the same as sending an empty one.
+  optional string referer = 3;
+}
+
+message NavigateResponse {}
+
+message WaitForNavigationRequest {
+  string session_id = 1;
+  // Unspecified is Load, which is the browser's own default.
+  WaitUntil wait_until = 2;
+  // The browser takes a Duration; this is it in milliseconds, which is as fine
+  // as a navigation timeout is ever set. Zero leaves its default in place.
+  uint32 timeout_ms = 3;
+}
+
+message WaitForNavigationResponse {}
+
+// WaitUntil is how far into a navigation to wait, mirroring the browser's enum.
+enum WaitUntil {
+  WAIT_UNTIL_UNSPECIFIED = 0;
+  WAIT_UNTIL_COMMIT = 1;
+  WAIT_UNTIL_DOM_CONTENT_LOADED = 2;
+  WAIT_UNTIL_LOAD = 3;
+  WAIT_UNTIL_NETWORK_ALMOST_IDLE = 4;
+  WAIT_UNTIL_NETWORK_IDLE = 5;
+}
+
+message CloseRequest {
+  string session_id = 1;
+}
+
+message CloseResponse {}
+
+message DisplayChunk {
+  bytes data = 1;
+}

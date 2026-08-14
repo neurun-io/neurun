@@ -59,7 +59,7 @@ The loop:
 ```
 1. read NEURUN_GRPC_ADDRESS and NEURUN_EXECUTION_TOKEN
 2. OpenSession{browser, browser_profile_id?}   → session id
-3. Execute{session_id, command}                 as many times as needed
+3. Navigate / WaitForNavigation{session_id, …} as many times as needed
 4. CloseSession{session_id}                     including on failure
 ```
 
@@ -69,9 +69,11 @@ There is no heartbeat. **Driving a session renews its lease**, because a browser
 being commanded is a browser that is alive — a session left idle past the lease
 leaves the list, and one being used never does.
 
-`Execute` carries an opaque command. The control plane brokers sessions, not
-browser semantics: it never parses one, so the browser service's command set can
-grow without a release here.
+Each command is its own RPC, shaped after the browser's own function — `Navigate`
+takes a URL and an optional referer, `WaitForNavigation` takes a `WaitUntil` and
+a timeout. The set is small because the browser implements a small set, and it
+grows one command at a time. A caller can read what it is allowed to do off the
+service definition, and a command nobody serves fails to compile.
 
 ## What an operator can do
 
@@ -106,8 +108,11 @@ a port the kernel chose — two planes on a machine never fight over a number. I
 binds loopback. Sessions do not outlive it, which is correct: the browsers were
 its children.
 
-It must serve `neurun.browser.v1.BrowserService` — `Open`, `Run`, `Close`,
-`StreamDisplay` — from [`proto/browser.proto`](../proto/browser.proto).
+It must serve `neurun.browserservice.v1.BrowserService` — `Open`, `Navigate`,
+`WaitForNavigation`, `Close`, `StreamDisplay` — from
+[`proto/browserservice.proto`](../proto/browserservice.proto). What the SDK
+calls is a separate file, [`proto/browser.proto`](../proto/browser.proto): one is
+a public contract with tenant code, the other an internal detail of this host.
 The session id in a `Session` is **the one the service minted**; the control
 plane adopts it rather than assigning its own, so both sides call a session by
 the same name.

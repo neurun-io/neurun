@@ -137,10 +137,11 @@ export interface CreatedApiKey extends ApiKey {
   secret: string;
 }
 
-export type BrowserKind = "chrome" | "firefox";
-
-/** What a browser claims to be. There is no Firefox brand upstream. */
-export type BrowserBrand = "chrome" | "safari" | "edge";
+/**
+ * Chrome is the only browser that launches; Safari is a Chrome wearing Safari,
+ * which is what a site reads either way.
+ */
+export type BrowserKind = "chrome" | "safari";
 
 export interface BrowserIdentity {
   device_model?: string;
@@ -155,7 +156,8 @@ export interface BrowserIdentity {
     navigator_platform: string;
     version: string;
   };
-  brand: BrowserBrand;
+  /** What it claims to be, not what runs. */
+  browser: BrowserKind;
   browser_version: number[];
   screen: {
     logical_width: number;
@@ -199,17 +201,16 @@ export interface RedactedCookie {
  * The values an identity is assembled from.
  *
  * Several are binding rather than independent: an OS fixes navigator.platform,
- * bitness and architecture, limits which brands and releases exist under it, and
- * each release carries its own UA-CH platform versions — Windows 11 reports
- * 15.0.0, and 7 and 8 both report 0.0.0.
+ * bitness and architecture, limits which browsers, releases and cards exist
+ * under it, and each release carries its own UA-CH platform versions — Windows
+ * 11 reports 15.0.0, and 7 and 8 both report 0.0.0.
  */
 export interface IdentityCatalog {
   operating_systems: CatalogOS[];
   devices: CatalogDevice[];
-  browsers: { brand: BrowserBrand; versions: string[] }[];
+  browsers: { browser: BrowserKind; versions: string[] }[];
   screens: { width: number; height: number; share: number }[];
   density_pixel_ratios: number[];
-  gpus: CatalogGPU[];
   hardware_concurrency: number[];
   memory: number[];
   geos: CatalogGeo[];
@@ -222,14 +223,15 @@ export interface CatalogOSVersion {
 
 export interface CatalogOS {
   os: BrowserIdentity["os"];
-  /** Mobile carries no platform or releases: the handset does. */
+  /** Mobile carries no platform, releases or cards: the handset does. */
   form_factor: "desktop" | "mobile";
   navigator_platform: string;
   bitness: string;
   architecture: string;
   /** What runs on the platform. There is no Safari on Windows. */
-  brands: BrowserBrand[];
+  browsers: BrowserKind[];
   versions: CatalogOSVersion[];
+  gpus: CatalogGPU[];
 }
 
 /**
@@ -240,7 +242,7 @@ export interface CatalogOS {
 export interface CatalogDevice {
   name: string;
   os: BrowserIdentity["os"];
-  brands: BrowserBrand[];
+  browsers: BrowserKind[];
   models: string[];
   versions: CatalogOSVersion[];
   navigator_platforms: string[];
@@ -250,10 +252,11 @@ export interface CatalogDevice {
   gpus: CatalogGPU[];
 }
 
-/** Bound to the platform that reports it — Direct3D is Windows, and only there. */
+/**
+ * One card's WebGL strings. Where it runs is the list it is in — Direct3D is
+ * Windows, and only there.
+ */
 export interface CatalogGPU {
-  os: BrowserIdentity["os"];
-  brands: BrowserBrand[];
   vendor: string;
   webgl_renderer: string;
   webgl_vendor: string;
@@ -268,8 +271,9 @@ export interface CatalogGeo {
 export interface BrowserProfile {
   id: string;
   name: string;
+  /** Repeats identity.browser, so a list does not have to reach into it. */
   browser: BrowserKind;
-  identity: RedactedBrowserIdentity | null;
+  identity: RedactedBrowserIdentity;
   cookies: RedactedCookie[];
   storage_origins: string[];
   created_at: string;

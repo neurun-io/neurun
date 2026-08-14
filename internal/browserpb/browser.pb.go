@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        v6.33.0
-// source: browser.proto
+// source: proto/browser.proto
 
 package browserpb
 
@@ -21,11 +21,73 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// WaitUntil is how far into a navigation to wait, mirroring the browser's enum.
+type WaitUntil int32
+
+const (
+	WaitUntil_WAIT_UNTIL_UNSPECIFIED         WaitUntil = 0
+	WaitUntil_WAIT_UNTIL_COMMIT              WaitUntil = 1
+	WaitUntil_WAIT_UNTIL_DOM_CONTENT_LOADED  WaitUntil = 2
+	WaitUntil_WAIT_UNTIL_LOAD                WaitUntil = 3
+	WaitUntil_WAIT_UNTIL_NETWORK_ALMOST_IDLE WaitUntil = 4
+	WaitUntil_WAIT_UNTIL_NETWORK_IDLE        WaitUntil = 5
+)
+
+// Enum value maps for WaitUntil.
+var (
+	WaitUntil_name = map[int32]string{
+		0: "WAIT_UNTIL_UNSPECIFIED",
+		1: "WAIT_UNTIL_COMMIT",
+		2: "WAIT_UNTIL_DOM_CONTENT_LOADED",
+		3: "WAIT_UNTIL_LOAD",
+		4: "WAIT_UNTIL_NETWORK_ALMOST_IDLE",
+		5: "WAIT_UNTIL_NETWORK_IDLE",
+	}
+	WaitUntil_value = map[string]int32{
+		"WAIT_UNTIL_UNSPECIFIED":         0,
+		"WAIT_UNTIL_COMMIT":              1,
+		"WAIT_UNTIL_DOM_CONTENT_LOADED":  2,
+		"WAIT_UNTIL_LOAD":                3,
+		"WAIT_UNTIL_NETWORK_ALMOST_IDLE": 4,
+		"WAIT_UNTIL_NETWORK_IDLE":        5,
+	}
+)
+
+func (x WaitUntil) Enum() *WaitUntil {
+	p := new(WaitUntil)
+	*p = x
+	return p
+}
+
+func (x WaitUntil) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WaitUntil) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_browser_proto_enumTypes[0].Descriptor()
+}
+
+func (WaitUntil) Type() protoreflect.EnumType {
+	return &file_proto_browser_proto_enumTypes[0]
+}
+
+func (x WaitUntil) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WaitUntil.Descriptor instead.
+func (WaitUntil) EnumDescriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{0}
+}
+
 type OpenSessionRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// chrome or firefox.
+	// chrome or safari. Read only when no profile is named: a profile's identity
+	// already says which browser it is, and two answers that could disagree is
+	// one answer too many.
 	Browser string `protobuf:"bytes,1,opt,name=browser,proto3" json:"browser,omitempty"`
-	// The profile to wear. Empty is a plain browser, which is the ordinary case.
+	// The profile to wear. Empty still gets a persona — one is drawn for the
+	// session — it just is not kept, along with the cookies it collected.
 	BrowserProfileId string `protobuf:"bytes,2,opt,name=browser_profile_id,json=browserProfileId,proto3" json:"browser_profile_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -33,7 +95,7 @@ type OpenSessionRequest struct {
 
 func (x *OpenSessionRequest) Reset() {
 	*x = OpenSessionRequest{}
-	mi := &file_browser_proto_msgTypes[0]
+	mi := &file_proto_browser_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +107,7 @@ func (x *OpenSessionRequest) String() string {
 func (*OpenSessionRequest) ProtoMessage() {}
 
 func (x *OpenSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[0]
+	mi := &file_proto_browser_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +120,7 @@ func (x *OpenSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenSessionRequest.ProtoReflect.Descriptor instead.
 func (*OpenSessionRequest) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{0}
+	return file_proto_browser_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *OpenSessionRequest) GetBrowser() string {
@@ -93,7 +155,7 @@ type Session struct {
 
 func (x *Session) Reset() {
 	*x = Session{}
-	mi := &file_browser_proto_msgTypes[1]
+	mi := &file_proto_browser_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -105,7 +167,7 @@ func (x *Session) String() string {
 func (*Session) ProtoMessage() {}
 
 func (x *Session) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[1]
+	mi := &file_proto_browser_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -118,7 +180,7 @@ func (x *Session) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Session.ProtoReflect.Descriptor instead.
 func (*Session) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{1}
+	return file_proto_browser_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Session) GetId() string {
@@ -170,31 +232,37 @@ func (x *Session) GetStartedAt() int64 {
 	return 0
 }
 
-type ExecuteRequest struct {
+// Every command names its session and is its own message, shaped after the
+// browser's own function rather than after anything convenient here. The set is
+// small because the browser implements a small set; it grows one command at a
+// time, on purpose. A caller can see what it is allowed to do from the service
+// definition alone, and a command nobody serves fails to compile rather than at
+// runtime.
+type NavigateRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	// A serialized browser-service command. Neither the SDK's encoding nor the
-	// browser service's is this service's business.
-	Command       []byte `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
+	Url       string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	// Absent sends no Referer, which is not the same as sending an empty one.
+	Referer       *string `protobuf:"bytes,3,opt,name=referer,proto3,oneof" json:"referer,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ExecuteRequest) Reset() {
-	*x = ExecuteRequest{}
-	mi := &file_browser_proto_msgTypes[2]
+func (x *NavigateRequest) Reset() {
+	*x = NavigateRequest{}
+	mi := &file_proto_browser_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ExecuteRequest) String() string {
+func (x *NavigateRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ExecuteRequest) ProtoMessage() {}
+func (*NavigateRequest) ProtoMessage() {}
 
-func (x *ExecuteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[2]
+func (x *NavigateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -205,47 +273,53 @@ func (x *ExecuteRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExecuteRequest.ProtoReflect.Descriptor instead.
-func (*ExecuteRequest) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{2}
+// Deprecated: Use NavigateRequest.ProtoReflect.Descriptor instead.
+func (*NavigateRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *ExecuteRequest) GetSessionId() string {
+func (x *NavigateRequest) GetSessionId() string {
 	if x != nil {
 		return x.SessionId
 	}
 	return ""
 }
 
-func (x *ExecuteRequest) GetCommand() []byte {
+func (x *NavigateRequest) GetUrl() string {
 	if x != nil {
-		return x.Command
+		return x.Url
 	}
-	return nil
+	return ""
 }
 
-type ExecuteResponse struct {
+func (x *NavigateRequest) GetReferer() string {
+	if x != nil && x.Referer != nil {
+		return *x.Referer
+	}
+	return ""
+}
+
+type NavigateResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Result        []byte                 `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ExecuteResponse) Reset() {
-	*x = ExecuteResponse{}
-	mi := &file_browser_proto_msgTypes[3]
+func (x *NavigateResponse) Reset() {
+	*x = NavigateResponse{}
+	mi := &file_proto_browser_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ExecuteResponse) String() string {
+func (x *NavigateResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ExecuteResponse) ProtoMessage() {}
+func (*NavigateResponse) ProtoMessage() {}
 
-func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[3]
+func (x *NavigateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -256,16 +330,108 @@ func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExecuteResponse.ProtoReflect.Descriptor instead.
-func (*ExecuteResponse) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{3}
+// Deprecated: Use NavigateResponse.ProtoReflect.Descriptor instead.
+func (*NavigateResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *ExecuteResponse) GetResult() []byte {
+type WaitForNavigationRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// Unspecified is Load, which is the browser's own default.
+	WaitUntil WaitUntil `protobuf:"varint,2,opt,name=wait_until,json=waitUntil,proto3,enum=neurun.browser.v1.WaitUntil" json:"wait_until,omitempty"`
+	// The browser takes a Duration; this is it in milliseconds, which is as fine
+	// as a navigation timeout is ever set. Zero leaves its default in place.
+	TimeoutMs     uint32 `protobuf:"varint,3,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WaitForNavigationRequest) Reset() {
+	*x = WaitForNavigationRequest{}
+	mi := &file_proto_browser_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WaitForNavigationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WaitForNavigationRequest) ProtoMessage() {}
+
+func (x *WaitForNavigationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[4]
 	if x != nil {
-		return x.Result
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
 	}
-	return nil
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WaitForNavigationRequest.ProtoReflect.Descriptor instead.
+func (*WaitForNavigationRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *WaitForNavigationRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *WaitForNavigationRequest) GetWaitUntil() WaitUntil {
+	if x != nil {
+		return x.WaitUntil
+	}
+	return WaitUntil_WAIT_UNTIL_UNSPECIFIED
+}
+
+func (x *WaitForNavigationRequest) GetTimeoutMs() uint32 {
+	if x != nil {
+		return x.TimeoutMs
+	}
+	return 0
+}
+
+type WaitForNavigationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WaitForNavigationResponse) Reset() {
+	*x = WaitForNavigationResponse{}
+	mi := &file_proto_browser_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WaitForNavigationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WaitForNavigationResponse) ProtoMessage() {}
+
+func (x *WaitForNavigationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WaitForNavigationResponse.ProtoReflect.Descriptor instead.
+func (*WaitForNavigationResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{5}
 }
 
 type CloseSessionRequest struct {
@@ -277,7 +443,7 @@ type CloseSessionRequest struct {
 
 func (x *CloseSessionRequest) Reset() {
 	*x = CloseSessionRequest{}
-	mi := &file_browser_proto_msgTypes[4]
+	mi := &file_proto_browser_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -289,7 +455,7 @@ func (x *CloseSessionRequest) String() string {
 func (*CloseSessionRequest) ProtoMessage() {}
 
 func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[4]
+	mi := &file_proto_browser_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -302,7 +468,7 @@ func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseSessionRequest.ProtoReflect.Descriptor instead.
 func (*CloseSessionRequest) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{4}
+	return file_proto_browser_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CloseSessionRequest) GetSessionId() string {
@@ -320,7 +486,7 @@ type CloseSessionResponse struct {
 
 func (x *CloseSessionResponse) Reset() {
 	*x = CloseSessionResponse{}
-	mi := &file_browser_proto_msgTypes[5]
+	mi := &file_proto_browser_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -332,7 +498,7 @@ func (x *CloseSessionResponse) String() string {
 func (*CloseSessionResponse) ProtoMessage() {}
 
 func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[5]
+	mi := &file_proto_browser_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -345,346 +511,14 @@ func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseSessionResponse.ProtoReflect.Descriptor instead.
 func (*CloseSessionResponse) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{5}
+	return file_proto_browser_proto_rawDescGZIP(), []int{7}
 }
 
-type OpenRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Browser          string                 `protobuf:"bytes,1,opt,name=browser,proto3" json:"browser,omitempty"`
-	BrowserProfileId string                 `protobuf:"bytes,2,opt,name=browser_profile_id,json=browserProfileId,proto3" json:"browser_profile_id,omitempty"`
-	AppId            string                 `protobuf:"bytes,3,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	ExecutionId      string                 `protobuf:"bytes,4,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
+var File_proto_browser_proto protoreflect.FileDescriptor
 
-func (x *OpenRequest) Reset() {
-	*x = OpenRequest{}
-	mi := &file_browser_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OpenRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OpenRequest) ProtoMessage() {}
-
-func (x *OpenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OpenRequest.ProtoReflect.Descriptor instead.
-func (*OpenRequest) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *OpenRequest) GetBrowser() string {
-	if x != nil {
-		return x.Browser
-	}
-	return ""
-}
-
-func (x *OpenRequest) GetBrowserProfileId() string {
-	if x != nil {
-		return x.BrowserProfileId
-	}
-	return ""
-}
-
-func (x *OpenRequest) GetAppId() string {
-	if x != nil {
-		return x.AppId
-	}
-	return ""
-}
-
-func (x *OpenRequest) GetExecutionId() string {
-	if x != nil {
-		return x.ExecutionId
-	}
-	return ""
-}
-
-type OpenResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OpenResponse) Reset() {
-	*x = OpenResponse{}
-	mi := &file_browser_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OpenResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OpenResponse) ProtoMessage() {}
-
-func (x *OpenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OpenResponse.ProtoReflect.Descriptor instead.
-func (*OpenResponse) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *OpenResponse) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-type RunRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Command       []byte                 `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RunRequest) Reset() {
-	*x = RunRequest{}
-	mi := &file_browser_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RunRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RunRequest) ProtoMessage() {}
-
-func (x *RunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RunRequest.ProtoReflect.Descriptor instead.
-func (*RunRequest) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *RunRequest) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-func (x *RunRequest) GetCommand() []byte {
-	if x != nil {
-		return x.Command
-	}
-	return nil
-}
-
-type RunResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Result        []byte                 `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RunResponse) Reset() {
-	*x = RunResponse{}
-	mi := &file_browser_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RunResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RunResponse) ProtoMessage() {}
-
-func (x *RunResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RunResponse.ProtoReflect.Descriptor instead.
-func (*RunResponse) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *RunResponse) GetResult() []byte {
-	if x != nil {
-		return x.Result
-	}
-	return nil
-}
-
-type CloseRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CloseRequest) Reset() {
-	*x = CloseRequest{}
-	mi := &file_browser_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CloseRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CloseRequest) ProtoMessage() {}
-
-func (x *CloseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CloseRequest.ProtoReflect.Descriptor instead.
-func (*CloseRequest) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *CloseRequest) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-type CloseResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CloseResponse) Reset() {
-	*x = CloseResponse{}
-	mi := &file_browser_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CloseResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CloseResponse) ProtoMessage() {}
-
-func (x *CloseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CloseResponse.ProtoReflect.Descriptor instead.
-func (*CloseResponse) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{11}
-}
-
-type DisplayChunk struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DisplayChunk) Reset() {
-	*x = DisplayChunk{}
-	mi := &file_browser_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DisplayChunk) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DisplayChunk) ProtoMessage() {}
-
-func (x *DisplayChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_browser_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DisplayChunk.ProtoReflect.Descriptor instead.
-func (*DisplayChunk) Descriptor() ([]byte, []int) {
-	return file_browser_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *DisplayChunk) GetData() []byte {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-var File_browser_proto protoreflect.FileDescriptor
-
-const file_browser_proto_rawDesc = "" +
+const file_proto_browser_proto_rawDesc = "" +
 	"\n" +
-	"\rbrowser.proto\x12\x11neurun.browser.v1\"\\\n" +
+	"\x13proto/browser.proto\x12\x11neurun.browser.v1\"\\\n" +
 	"\x12OpenSessionRequest\x12\x18\n" +
 	"\abrowser\x18\x01 \x01(\tR\abrowser\x12,\n" +
 	"\x12browser_profile_id\x18\x02 \x01(\tR\x10browserProfileId\"\xd2\x01\n" +
@@ -696,118 +530,104 @@ const file_browser_proto_rawDesc = "" +
 	"\abrowser\x18\x05 \x01(\tR\abrowser\x12\x16\n" +
 	"\x06status\x18\x06 \x01(\tR\x06status\x12\x1d\n" +
 	"\n" +
-	"started_at\x18\a \x01(\x03R\tstartedAt\"I\n" +
-	"\x0eExecuteRequest\x12\x1d\n" +
+	"started_at\x18\a \x01(\x03R\tstartedAt\"m\n" +
+	"\x0fNavigateRequest\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x18\n" +
-	"\acommand\x18\x02 \x01(\fR\acommand\")\n" +
-	"\x0fExecuteResponse\x12\x16\n" +
-	"\x06result\x18\x01 \x01(\fR\x06result\"4\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12\x1d\n" +
+	"\areferer\x18\x03 \x01(\tH\x00R\areferer\x88\x01\x01B\n" +
+	"\n" +
+	"\b_referer\"\x12\n" +
+	"\x10NavigateResponse\"\x95\x01\n" +
+	"\x18WaitForNavigationRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12;\n" +
+	"\n" +
+	"wait_until\x18\x02 \x01(\x0e2\x1c.neurun.browser.v1.WaitUntilR\twaitUntil\x12\x1d\n" +
+	"\n" +
+	"timeout_ms\x18\x03 \x01(\rR\ttimeoutMs\"\x1b\n" +
+	"\x19WaitForNavigationResponse\"4\n" +
 	"\x13CloseSessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"\x16\n" +
-	"\x14CloseSessionResponse\"\x8f\x01\n" +
-	"\vOpenRequest\x12\x18\n" +
-	"\abrowser\x18\x01 \x01(\tR\abrowser\x12,\n" +
-	"\x12browser_profile_id\x18\x02 \x01(\tR\x10browserProfileId\x12\x15\n" +
-	"\x06app_id\x18\x03 \x01(\tR\x05appId\x12!\n" +
-	"\fexecution_id\x18\x04 \x01(\tR\vexecutionId\"-\n" +
-	"\fOpenResponse\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"E\n" +
-	"\n" +
-	"RunRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x18\n" +
-	"\acommand\x18\x02 \x01(\fR\acommand\"%\n" +
-	"\vRunResponse\x12\x16\n" +
-	"\x06result\x18\x01 \x01(\fR\x06result\"-\n" +
-	"\fCloseRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"\x0f\n" +
-	"\rCloseResponse\"\"\n" +
-	"\fDisplayChunk\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data2\x8e\x02\n" +
+	"\x14CloseSessionResponse*\xb7\x01\n" +
+	"\tWaitUntil\x12\x1a\n" +
+	"\x16WAIT_UNTIL_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11WAIT_UNTIL_COMMIT\x10\x01\x12!\n" +
+	"\x1dWAIT_UNTIL_DOM_CONTENT_LOADED\x10\x02\x12\x13\n" +
+	"\x0fWAIT_UNTIL_LOAD\x10\x03\x12\"\n" +
+	"\x1eWAIT_UNTIL_NETWORK_ALMOST_IDLE\x10\x04\x12\x1b\n" +
+	"\x17WAIT_UNTIL_NETWORK_IDLE\x10\x052\x81\x03\n" +
 	"\aBrowser\x12P\n" +
-	"\vOpenSession\x12%.neurun.browser.v1.OpenSessionRequest\x1a\x1a.neurun.browser.v1.Session\x12P\n" +
-	"\aExecute\x12!.neurun.browser.v1.ExecuteRequest\x1a\".neurun.browser.v1.ExecuteResponse\x12_\n" +
-	"\fCloseSession\x12&.neurun.browser.v1.CloseSessionRequest\x1a'.neurun.browser.v1.CloseSessionResponse2\xc2\x02\n" +
-	"\x0eBrowserService\x12G\n" +
-	"\x04Open\x12\x1e.neurun.browser.v1.OpenRequest\x1a\x1f.neurun.browser.v1.OpenResponse\x12D\n" +
-	"\x03Run\x12\x1d.neurun.browser.v1.RunRequest\x1a\x1e.neurun.browser.v1.RunResponse\x12J\n" +
-	"\x05Close\x12\x1f.neurun.browser.v1.CloseRequest\x1a .neurun.browser.v1.CloseResponse\x12U\n" +
-	"\rStreamDisplay\x12\x1f.neurun.browser.v1.DisplayChunk\x1a\x1f.neurun.browser.v1.DisplayChunk(\x010\x01B:Z8github.com/neurun-io/neurun/internal/browserpb;browserpbb\x06proto3"
+	"\vOpenSession\x12%.neurun.browser.v1.OpenSessionRequest\x1a\x1a.neurun.browser.v1.Session\x12S\n" +
+	"\bNavigate\x12\".neurun.browser.v1.NavigateRequest\x1a#.neurun.browser.v1.NavigateResponse\x12n\n" +
+	"\x11WaitForNavigation\x12+.neurun.browser.v1.WaitForNavigationRequest\x1a,.neurun.browser.v1.WaitForNavigationResponse\x12_\n" +
+	"\fCloseSession\x12&.neurun.browser.v1.CloseSessionRequest\x1a'.neurun.browser.v1.CloseSessionResponseB:Z8github.com/neurun-io/neurun/internal/browserpb;browserpbb\x06proto3"
 
 var (
-	file_browser_proto_rawDescOnce sync.Once
-	file_browser_proto_rawDescData []byte
+	file_proto_browser_proto_rawDescOnce sync.Once
+	file_proto_browser_proto_rawDescData []byte
 )
 
-func file_browser_proto_rawDescGZIP() []byte {
-	file_browser_proto_rawDescOnce.Do(func() {
-		file_browser_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_browser_proto_rawDesc), len(file_browser_proto_rawDesc)))
+func file_proto_browser_proto_rawDescGZIP() []byte {
+	file_proto_browser_proto_rawDescOnce.Do(func() {
+		file_proto_browser_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_browser_proto_rawDesc), len(file_proto_browser_proto_rawDesc)))
 	})
-	return file_browser_proto_rawDescData
+	return file_proto_browser_proto_rawDescData
 }
 
-var file_browser_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
-var file_browser_proto_goTypes = []any{
-	(*OpenSessionRequest)(nil),   // 0: neurun.browser.v1.OpenSessionRequest
-	(*Session)(nil),              // 1: neurun.browser.v1.Session
-	(*ExecuteRequest)(nil),       // 2: neurun.browser.v1.ExecuteRequest
-	(*ExecuteResponse)(nil),      // 3: neurun.browser.v1.ExecuteResponse
-	(*CloseSessionRequest)(nil),  // 4: neurun.browser.v1.CloseSessionRequest
-	(*CloseSessionResponse)(nil), // 5: neurun.browser.v1.CloseSessionResponse
-	(*OpenRequest)(nil),          // 6: neurun.browser.v1.OpenRequest
-	(*OpenResponse)(nil),         // 7: neurun.browser.v1.OpenResponse
-	(*RunRequest)(nil),           // 8: neurun.browser.v1.RunRequest
-	(*RunResponse)(nil),          // 9: neurun.browser.v1.RunResponse
-	(*CloseRequest)(nil),         // 10: neurun.browser.v1.CloseRequest
-	(*CloseResponse)(nil),        // 11: neurun.browser.v1.CloseResponse
-	(*DisplayChunk)(nil),         // 12: neurun.browser.v1.DisplayChunk
+var file_proto_browser_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_browser_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_proto_browser_proto_goTypes = []any{
+	(WaitUntil)(0),                    // 0: neurun.browser.v1.WaitUntil
+	(*OpenSessionRequest)(nil),        // 1: neurun.browser.v1.OpenSessionRequest
+	(*Session)(nil),                   // 2: neurun.browser.v1.Session
+	(*NavigateRequest)(nil),           // 3: neurun.browser.v1.NavigateRequest
+	(*NavigateResponse)(nil),          // 4: neurun.browser.v1.NavigateResponse
+	(*WaitForNavigationRequest)(nil),  // 5: neurun.browser.v1.WaitForNavigationRequest
+	(*WaitForNavigationResponse)(nil), // 6: neurun.browser.v1.WaitForNavigationResponse
+	(*CloseSessionRequest)(nil),       // 7: neurun.browser.v1.CloseSessionRequest
+	(*CloseSessionResponse)(nil),      // 8: neurun.browser.v1.CloseSessionResponse
 }
-var file_browser_proto_depIdxs = []int32{
-	0,  // 0: neurun.browser.v1.Browser.OpenSession:input_type -> neurun.browser.v1.OpenSessionRequest
-	2,  // 1: neurun.browser.v1.Browser.Execute:input_type -> neurun.browser.v1.ExecuteRequest
-	4,  // 2: neurun.browser.v1.Browser.CloseSession:input_type -> neurun.browser.v1.CloseSessionRequest
-	6,  // 3: neurun.browser.v1.BrowserService.Open:input_type -> neurun.browser.v1.OpenRequest
-	8,  // 4: neurun.browser.v1.BrowserService.Run:input_type -> neurun.browser.v1.RunRequest
-	10, // 5: neurun.browser.v1.BrowserService.Close:input_type -> neurun.browser.v1.CloseRequest
-	12, // 6: neurun.browser.v1.BrowserService.StreamDisplay:input_type -> neurun.browser.v1.DisplayChunk
-	1,  // 7: neurun.browser.v1.Browser.OpenSession:output_type -> neurun.browser.v1.Session
-	3,  // 8: neurun.browser.v1.Browser.Execute:output_type -> neurun.browser.v1.ExecuteResponse
-	5,  // 9: neurun.browser.v1.Browser.CloseSession:output_type -> neurun.browser.v1.CloseSessionResponse
-	7,  // 10: neurun.browser.v1.BrowserService.Open:output_type -> neurun.browser.v1.OpenResponse
-	9,  // 11: neurun.browser.v1.BrowserService.Run:output_type -> neurun.browser.v1.RunResponse
-	11, // 12: neurun.browser.v1.BrowserService.Close:output_type -> neurun.browser.v1.CloseResponse
-	12, // 13: neurun.browser.v1.BrowserService.StreamDisplay:output_type -> neurun.browser.v1.DisplayChunk
-	7,  // [7:14] is the sub-list for method output_type
-	0,  // [0:7] is the sub-list for method input_type
-	0,  // [0:0] is the sub-list for extension type_name
-	0,  // [0:0] is the sub-list for extension extendee
-	0,  // [0:0] is the sub-list for field type_name
+var file_proto_browser_proto_depIdxs = []int32{
+	0, // 0: neurun.browser.v1.WaitForNavigationRequest.wait_until:type_name -> neurun.browser.v1.WaitUntil
+	1, // 1: neurun.browser.v1.Browser.OpenSession:input_type -> neurun.browser.v1.OpenSessionRequest
+	3, // 2: neurun.browser.v1.Browser.Navigate:input_type -> neurun.browser.v1.NavigateRequest
+	5, // 3: neurun.browser.v1.Browser.WaitForNavigation:input_type -> neurun.browser.v1.WaitForNavigationRequest
+	7, // 4: neurun.browser.v1.Browser.CloseSession:input_type -> neurun.browser.v1.CloseSessionRequest
+	2, // 5: neurun.browser.v1.Browser.OpenSession:output_type -> neurun.browser.v1.Session
+	4, // 6: neurun.browser.v1.Browser.Navigate:output_type -> neurun.browser.v1.NavigateResponse
+	6, // 7: neurun.browser.v1.Browser.WaitForNavigation:output_type -> neurun.browser.v1.WaitForNavigationResponse
+	8, // 8: neurun.browser.v1.Browser.CloseSession:output_type -> neurun.browser.v1.CloseSessionResponse
+	5, // [5:9] is the sub-list for method output_type
+	1, // [1:5] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_browser_proto_init() }
-func file_browser_proto_init() {
-	if File_browser_proto != nil {
+func init() { file_proto_browser_proto_init() }
+func file_proto_browser_proto_init() {
+	if File_proto_browser_proto != nil {
 		return
 	}
+	file_proto_browser_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_browser_proto_rawDesc), len(file_browser_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   13,
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_browser_proto_rawDesc), len(file_proto_browser_proto_rawDesc)),
+			NumEnums:      1,
+			NumMessages:   8,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   1,
 		},
-		GoTypes:           file_browser_proto_goTypes,
-		DependencyIndexes: file_browser_proto_depIdxs,
-		MessageInfos:      file_browser_proto_msgTypes,
+		GoTypes:           file_proto_browser_proto_goTypes,
+		DependencyIndexes: file_proto_browser_proto_depIdxs,
+		EnumInfos:         file_proto_browser_proto_enumTypes,
+		MessageInfos:      file_proto_browser_proto_msgTypes,
 	}.Build()
-	File_browser_proto = out.File
-	file_browser_proto_goTypes = nil
-	file_browser_proto_depIdxs = nil
+	File_proto_browser_proto = out.File
+	file_proto_browser_proto_goTypes = nil
+	file_proto_browser_proto_depIdxs = nil
 }

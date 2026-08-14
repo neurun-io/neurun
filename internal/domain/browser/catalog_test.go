@@ -2,7 +2,7 @@ package browser
 
 import (
 	"errors"
-	"slices"
+	"strings"
 	"testing"
 )
 
@@ -14,7 +14,7 @@ func TestCatalogDecodes(t *testing.T) {
 		t.Fatalf("IdentityCatalog: %v", err)
 	}
 	if len(catalog.OperatingSystems) == 0 || len(catalog.Browsers) == 0 ||
-		len(catalog.Screens) == 0 || len(catalog.GPUs) == 0 || len(catalog.Geos) == 0 {
+		len(catalog.Screens) == 0 || len(catalog.Geos) == 0 {
 		t.Fatal("catalog is missing a section")
 	}
 }
@@ -30,20 +30,26 @@ func TestCatalogOffersOnlyValidValues(t *testing.T) {
 		if !entry.OS.Valid() {
 			t.Errorf("os %q is invalid", entry.OS)
 		}
-		if len(entry.Brands) == 0 {
+		if len(entry.Browsers) == 0 {
 			t.Errorf("os %q offers no browser", entry.OS)
 		}
-		// A phone OS carries neither platform nor releases: the handset does.
+		// A phone OS carries no platform, releases or cards: the handset does.
 		if entry.FormFactor == "desktop" &&
-			(entry.NavigatorPlatform == "" || len(entry.Versions) == 0) {
+			(entry.NavigatorPlatform == "" || len(entry.Versions) == 0 ||
+				len(entry.GPUs) == 0) {
 			t.Errorf("os %q is incomplete", entry.OS)
 		}
 		if entry.FormFactor == "mobile" && len(devicesFor(catalog, entry.OS)) == 0 {
 			t.Errorf("os %q has no devices to carry it", entry.OS)
 		}
-		for _, brand := range entry.Brands {
-			if !brand.Valid() {
-				t.Errorf("os %q offers invalid brand %q", entry.OS, brand)
+		for _, claimed := range entry.Browsers {
+			if !claimed.Valid() {
+				t.Errorf("os %q offers invalid browser %q", entry.OS, claimed)
+			}
+		}
+		for _, gpu := range entry.GPUs {
+			if gpu.Vendor == "" || gpu.WebGLRenderer == "" || gpu.WebGLVendor == "" {
+				t.Errorf("os %q has an incomplete gpu", entry.OS)
 			}
 		}
 		for _, version := range entry.Versions {
@@ -54,8 +60,8 @@ func TestCatalogOffersOnlyValidValues(t *testing.T) {
 	}
 
 	for _, entry := range catalog.Browsers {
-		if !entry.Brand.Valid() || len(entry.Versions) == 0 {
-			t.Errorf("browser %q is invalid", entry.Brand)
+		if !entry.Browser.Valid() || len(entry.Versions) == 0 {
+			t.Errorf("browser %q is invalid", entry.Browser)
 		}
 	}
 
@@ -84,7 +90,7 @@ func TestCatalogDevicesAreComplete(t *testing.T) {
 		if len(device.Models) == 0 || len(device.Versions) == 0 ||
 			len(device.NavigatorPlatforms) == 0 || len(device.GPUs) == 0 ||
 			len(device.HardwareConcurrency) == 0 || len(device.Memory) == 0 ||
-			len(device.Brands) == 0 {
+			len(device.Browsers) == 0 {
 			t.Errorf("device %q is incomplete", device.Name)
 			continue
 		}
@@ -113,32 +119,26 @@ func TestCatalogDevicesAreComplete(t *testing.T) {
 	}
 }
 
-// A GPU is only coherent on the platform that reports it: ANGLE over Direct3D
-// is Windows, and Safari reports its own pair whatever card is underneath.
-func TestCatalogBindsGPUsToTheirPlatform(t *testing.T) {
+// Nesting a card under its system is only worth anything if the renderer string
+// agrees: ANGLE over Direct3D exists on Windows and nowhere else, and "… OpenGL
+// Engine" is what a Mac says. A card filed under the wrong system is the
+// contradiction the catalogue exists to prevent.
+func TestCatalogFilesGPUsUnderThePlatformThatReportsThem(t *testing.T) {
 	t.Parallel()
 
 	catalog, _ := IdentityCatalog()
-	brands := map[OS]map[Brand]bool{}
-	for _, entry := range catalog.OperatingSystems {
-		brands[entry.OS] = map[Brand]bool{}
-		for _, brand := range entry.Brands {
-			brands[entry.OS][brand] = true
-		}
-	}
 
-	for _, gpu := range catalog.GPUs {
-		if !gpu.OS.Valid() {
-			t.Errorf("gpu %q names invalid os %q", gpu.WebGLRenderer, gpu.OS)
-			continue
-		}
-		if gpu.Vendor == "" || gpu.WebGLRenderer == "" || gpu.WebGLVendor == "" {
-			t.Errorf("gpu %q is incomplete", gpu.WebGLRenderer)
-		}
-		for _, brand := range gpu.Brands {
-			if !brands[gpu.OS][brand] {
-				t.Errorf("gpu %q offers %q, which does not run on %q",
-					gpu.WebGLRenderer, brand, gpu.OS)
+	for _, system := range catalog.OperatingSystems {
+		for _, gpu := range system.GPUs {
+			// ANGLE wraps whatever backend it found, including OpenGL, so the Mac
+			// shape is the unwrapped string: "… OpenGL Engine" on its own.
+			angled := strings.HasPrefix(gpu.WebGLRenderer, "ANGLE (")
+			if strings.Contains(gpu.WebGLRenderer, "Direct3D") && system.OS != OSWindows {
+				t.Errorf("%q is Direct3D but filed under %q", gpu.WebGLRenderer, system.OS)
+			}
+			if !angled && strings.HasSuffix(gpu.WebGLRenderer, "OpenGL Engine") &&
+				system.OS != OSMacintosh {
+				t.Errorf("%q is a Mac string but filed under %q", gpu.WebGLRenderer, system.OS)
 			}
 		}
 	}
@@ -154,17 +154,17 @@ func TestCatalogAssemblesAValidIdentity(t *testing.T) {
 	geo := catalog.Geos[0]
 
 	for _, system := range catalog.OperatingSystems {
-		for _, brand := range system.Brands {
-			identity, err := assemble(catalog, system, brand)
+		for _, claimed := range system.Browsers {
+			identity, err := assemble(catalog, system, claimed)
 			if err != nil {
-				t.Errorf("%s on %s: %v", brand, system.OS, err)
+				t.Errorf("%s on %s: %v", claimed, system.OS, err)
 				continue
 			}
 			identity.Geo = geo.Code
 			identity.Language = geo.Languages
 			identity.Timezone = geo.Timezone
 			if err := identity.Validate(); err != nil {
-				t.Errorf("%s on %s: %v", brand, system.OS, err)
+				t.Errorf("%s on %s: %v", claimed, system.OS, err)
 			}
 		}
 	}
@@ -172,10 +172,10 @@ func TestCatalogAssemblesAValidIdentity(t *testing.T) {
 
 // assemble builds the identity the form would: from the OS on a desktop, and
 // from a handset on mobile, where one device fixes screen, GPU and memory.
-func assemble(catalog Catalog, system CatalogOS, brand Brand) (Identity, error) {
+func assemble(catalog Catalog, system CatalogOS, claimed Browser) (Identity, error) {
 	identity := Identity{
 		OS:             system.OS,
-		Brand:          brand,
+		Browser:        claimed,
 		BrowserVersion: []uint32{1, 0, 0, 0},
 	}
 
@@ -206,10 +206,10 @@ func assemble(catalog Catalog, system CatalogOS, brand Brand) (Identity, error) 
 		return identity, nil
 	}
 
-	gpu, ok := firstGPU(catalog, system.OS, brand)
-	if !ok {
+	if len(system.GPUs) == 0 {
 		return identity, errors.New("no gpu")
 	}
+	gpu := system.GPUs[0]
 	version := system.Versions[0]
 	screen := catalog.Screens[0]
 	ratio := catalog.DensityPixelRatios[0]
@@ -248,11 +248,3 @@ func devicesFor(catalog Catalog, system OS) []CatalogDevice {
 	return found
 }
 
-func firstGPU(catalog Catalog, system OS, brand Brand) (CatalogGPU, bool) {
-	for _, gpu := range catalog.GPUs {
-		if gpu.OS == system && slices.Contains(gpu.Brands, brand) {
-			return gpu, true
-		}
-	}
-	return CatalogGPU{}, false
-}

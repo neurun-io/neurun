@@ -86,7 +86,7 @@ describe("UnbuiltRoute", () => {
 });
 
 describe("ProfileForm", () => {
-  it("starts plain, and fills an identity from the catalogue when asked", async () => {
+  it("hides the identity until asked, then fills it from the catalogue", async () => {
     const submitted: ProfileValues[] = [];
     render(
       <Providers>
@@ -98,9 +98,8 @@ describe("ProfileForm", () => {
       </Providers>,
     );
 
-    // A profile is a plain browser until somebody says otherwise, so none of the
-    // persona fields are on screen yet.
-    expect(screen.getByText("Plain browser")).toBeInTheDocument();
+    // Every profile wears one; this form just does not open with it on screen.
+    expect(screen.getByText("Hidden")).toBeInTheDocument();
     expect(screen.queryByLabelText("WebGL vendor")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "shopper" } });
@@ -131,7 +130,7 @@ describe("ProfileForm", () => {
       os: "Windows",
       os_version: "11",
       platform: { navigator_platform: "Win32", version: "15.0.0" },
-      brand: "chrome",
+      browser: "chrome",
       browser_version: [139, 0, 6889, 109],
       language: ["en-US", "en"],
       timezone: "America/New_York",

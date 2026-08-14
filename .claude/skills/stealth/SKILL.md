@@ -34,14 +34,14 @@ Two rules govern everything here.
 
 | Choosing | Fixes |
 | --- | --- |
-| Operating system | `navigator.platform`, bitness, architecture, which brands exist, which releases exist, which GPUs can report, desktop vs mobile |
+| Operating system | `navigator.platform`, bitness, architecture, which browsers exist, which releases exist, which GPUs can report, desktop vs mobile |
 | Release | the UA-CH platform version — a **different string**: Win 11 → `15.0.0`, Win 10 → `10.0.0`, Win 8 and 7 → `0.0.0`, macOS 14 → `14.6`, Android 13 → `13.0.0` |
-| Brand | its version list, its WebGL pair, and which JS APIs exist at all |
+| Browser | its version list, and which JS APIs exist at all. `chrome` or `safari` — Neurun offers no others, and the field is `browser`, on the identity |
 | Handset (mobile) | screen, ratio, GPU, cores, memory, `Sec-CH-UA-Model`, release list — they shipped in one box |
 | Screen + ratio | the physical resolution. Derived, never typed twice |
 | Country | the language list and the IANA timezone |
 
-→ `references/binding-graph.md` for the full rules, the OS × brand matrix and the
+→ `references/binding-graph.md` for the full rules, the OS × browser matrix and the
 UA shapes each pair produces.
 
 → `references/applying-an-identity.md` for what happens at launch, in order:
@@ -92,12 +92,12 @@ profiles.
 | --- | --- |
 | Typing a value the catalogue already lists | Select it. A hand-typed release or GPU is how a profile stops matching any real machine |
 | Using the release as the platform version | They are different strings. Win 11 reports `15.0.0`; Win 7 and 8 both report `0.0.0` |
-| Offering Safari on Windows, or Edge on Linux | `build_user_agent` errors on unsupported pairs — the profile is refused at launch |
+| Offering Safari on Windows | `build_user_agent` errors on unsupported pairs — the profile is refused at launch. Safari is a Mac and iOS answer |
 | A Direct3D renderer on macOS | ANGLE over Direct3D exists only on Windows. Bind the GPU list to the OS |
 | `Adreno 740` | Real strings carry the trademark: `ANGLE (Qualcomm, Adreno (TM) 740, OpenGL ES 3.2)` |
 | `deviceMemory: 16` | The browser rounds to a power of two and caps at 8. Only 1, 2, 4, 8 appear |
 | Client hints on Safari or on any iOS browser | iOS is WebKit throughout — no `navigator.userAgentData`, no `deviceMemory` |
 | Editing OS, GPU, screen or cores "slightly" | Those fields seed the hardware fingerprint. Changing one mints a new persona |
 | PATCHing a profile without re-sending the proxy | The API never returns it, so an omitted proxy is a cleared proxy |
-| Storing an identity on a Firefox profile | rustenium-identity drives Chrome only; it is stored and applied to nothing |
+| Reading `browser` as what launches | It is what the profile *claims*. rustenium-identity drives Chrome only, so `safari` is a Chrome wearing Safari |
 | Randomising the canvas per run | Instability is a tell. The noise is seeded from the identity on purpose |
