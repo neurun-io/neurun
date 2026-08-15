@@ -55,6 +55,16 @@ export default function AppPage() {
                   </Link>
                 ),
               },
+              {
+                label: "Active build",
+                value: app.active_build_id ? (
+                  <Link className="font-mono underline" href={`/builds/${app.active_build_id}`}>
+                    {app.active_build_id}
+                  </Link>
+                ) : (
+                  "Newest ready"
+                ),
+              },
               { label: "Created", value: <Timestamp value={app.created_at} /> },
               { label: "Updated", value: <Timestamp value={app.updated_at} /> },
             ]}
@@ -78,7 +88,7 @@ export default function AppPage() {
                   <TableRow>
                     <TableHead>Status</TableHead>
                     <TableHead>Deployment</TableHead>
-                    <TableHead>Entrypoint</TableHead>
+                    <TableHead>Commit</TableHead>
                     <TableHead>Updated</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -91,7 +101,9 @@ export default function AppPage() {
                           {deployment.id}
                         </Link>
                       </TableCell>
-                      <TableCell className="font-mono">{deployment.entrypoint}</TableCell>
+                      <TableCell className="font-mono">
+                        {deployment.commit_sha ? deployment.commit_sha.slice(0, 7) : "—"}
+                      </TableCell>
                       <TableCell><Timestamp value={deployment.updated_at} /></TableCell>
                     </TableRow>
                   ))}

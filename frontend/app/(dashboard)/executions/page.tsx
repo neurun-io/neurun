@@ -41,7 +41,7 @@ export default function ExecutionsPage() {
               <TableRow>
                 <TableHead>Status</TableHead>
                 <TableHead>Execution</TableHead>
-                <TableHead>Deployment</TableHead>
+                <TableHead>App</TableHead>
                 <TableHead>Build</TableHead>
                 <TableHead>Created</TableHead>
               </TableRow>
@@ -60,9 +60,9 @@ export default function ExecutionsPage() {
                   <TableCell>
                     <Link
                       className="font-mono underline"
-                      href={`/deployments/${execution.deployment_id}`}
+                      href={`/apps/${execution.app_id}`}
                     >
-                      {execution.deployment_id}
+                      {execution.app_id}
                     </Link>
                   </TableCell>
                   <TableCell>

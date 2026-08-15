@@ -78,10 +78,9 @@ func (builder *NodeBuilder) Build(ctx context.Context, request Request) (Result,
 		!info.Mode().IsRegular() {
 		return Result{}, errors.New("builder: package.json was not found at the source root")
 	}
-	entry, _, _ := strings.Cut(request.EntryPoint, ":")
-	entryPath := filepath.Join(sourceDir, filepath.FromSlash(entry))
-	if info, err := os.Lstat(entryPath); err != nil || !info.Mode().IsRegular() {
-		return Result{}, fmt.Errorf("builder: entrypoint file %q was not found", entry)
+	entryPath, err := locateEntry(sourceDir)
+	if err != nil {
+		return Result{}, err
 	}
 
 	cache := request.CacheDirectory
@@ -135,6 +134,26 @@ func (builder *NodeBuilder) Build(ctx context.Context, request Request) (Result,
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)
 	}
 	return Result{Layers: []Layer{{Name: build.LayerCode, Path: codePath}}}, nil
+}
+
+// nodeEntries are the files a Node app is bundled from, in the order they are
+// looked for. Nothing names one: what the bundle exports is the SDK's business.
+var nodeEntries = []string{
+	"src/handler.ts", "src/handler.js", "src/index.ts", "src/index.js",
+	"index.ts", "index.js",
+}
+
+func locateEntry(sourceDir string) (string, error) {
+	for _, candidate := range nodeEntries {
+		path := filepath.Join(sourceDir, filepath.FromSlash(candidate))
+		if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf(
+		"builder: none of %s was found at the source root",
+		strings.Join(nodeEntries, ", "),
+	)
 }
 
 // hasDependencies reports whether the manifest asks for anything, so a handler

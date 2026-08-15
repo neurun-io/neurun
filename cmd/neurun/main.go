@@ -269,7 +269,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure project service: %w", err)
 	}
-	appService, err := service.NewAppService(projects, apps, nil, nil)
+	appService, err := service.NewAppService(projects, apps, builds, nil, nil)
 	if err != nil {
 		return fmt.Errorf("configure app service: %w", err)
 	}
@@ -290,7 +290,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("configure deployment service: %w", err)
 	}
 	executionService, err := service.NewExecutionService(
-		executions, deployments,
+		executions, builds,
 		service.ExecutionOptions{MaxInputBytes: cfg.MaxRunInputBytes},
 	)
 	if err != nil {
@@ -430,7 +430,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		build.RuntimeGo:     binaryRunner,
 	}
 	executor, err := worker.New(
-		executions, deployments, files, runners,
+		executions, builds, files, runners,
 		worker.Options{
 			PollInterval: cfg.WorkerPollInterval, RunTimeout: cfg.RunTimeout,
 			MaxResultBytes: cfg.MaxRunResultBytes, MaxLogBytes: cfg.MaxRunLogBytes,

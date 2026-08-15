@@ -38,7 +38,8 @@ func (server *Server) listExecutions(ctx *gin.Context) {
 	records, err := server.executions.List(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID,
 		strings.TrimSpace(ctx.Query("project_id")),
-		strings.TrimSpace(ctx.Query("deployment_id")),
+		strings.TrimSpace(ctx.Query("app_id")),
+		strings.TrimSpace(ctx.Query("build_id")),
 		limit,
 	)
 	if err != nil {

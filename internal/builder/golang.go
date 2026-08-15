@@ -64,16 +64,11 @@ func (builder *GoBuilder) Build(ctx context.Context, request Request) (Result, e
 		return Result{}, errors.New("builder: go.mod was not found at the source root")
 	}
 
-	// The entrypoint is the main package to build, defaulting to the module root.
-	target := request.EntryPoint
-	if target == "" {
-		target = "."
-	}
 	binary := filepath.Join(request.WorkDirectory, CompiledBinaryName)
 	// -mod=readonly refuses to edit go.mod, so a build compiles what the commit
 	// pinned; -trimpath keeps build paths out of the binary.
 	compile := exec.CommandContext(
-		ctx, builder.golang, "build", "-mod=readonly", "-trimpath", "-o", binary, target,
+		ctx, builder.golang, "build", "-mod=readonly", "-trimpath", "-o", binary, ".",
 	)
 	compile.Dir = sourceDir
 	cache := request.CacheDirectory

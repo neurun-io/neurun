@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/domain/deployment"
 	"github.com/neurun-io/neurun/internal/domain/execution"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/ids"
@@ -23,7 +22,7 @@ type ExecutionOptions struct {
 
 type ExecutionService struct {
 	executions    *database.ExecutionRepository
-	deployments   *database.DeploymentRepository
+	builds        *database.BuildRepository
 	maxInputBytes int64
 	now           func() time.Time
 	newID         func(string) (string, error)
@@ -31,11 +30,11 @@ type ExecutionService struct {
 
 func NewExecutionService(
 	executions *database.ExecutionRepository,
-	deployments *database.DeploymentRepository,
+	builds *database.BuildRepository,
 	options ExecutionOptions,
 ) (*ExecutionService, error) {
 	switch {
-	case executions == nil || deployments == nil:
+	case executions == nil || builds == nil:
 		return nil, errors.New("execution service requires its repositories")
 	case options.MaxInputBytes < 0:
 		return nil, errors.New("maximum execution input bytes cannot be negative")
@@ -50,14 +49,14 @@ func NewExecutionService(
 		options.NewID = ids.New
 	}
 	return &ExecutionService{
-		executions: executions, deployments: deployments,
+		executions: executions, builds: builds,
 		maxInputBytes: options.MaxInputBytes,
 		now:           options.Now, newID: options.NewID,
 	}, nil
 }
 
-// Create queues an invocation of an app against one of its builds, and pins it
-// there — a later deployment will not move it.
+// Create queues an invocation of the build the app is on, and pins it there —
+// a later deployment will not move it.
 func (service *ExecutionService) Create(
 	ctx context.Context,
 	organizationID string,
@@ -71,10 +70,10 @@ func (service *ExecutionService) Create(
 	if err != nil {
 		return execution.Execution{}, err
 	}
-	// The deployment that made the build carries the project, and is what an
-	// execution runs: the caller names an app and, at most, which build of it.
-	record, err := service.deployments.ReadyForApp(
-		ctx, organizationID, request.AppID, request.BuildID,
+	// The caller names an app; which of its builds runs is the app's own answer,
+	// and the project comes back with it.
+	produced, projectID, err := service.builds.ActiveForApp(
+		ctx, organizationID, request.AppID,
 	)
 	if err != nil {
 		return execution.Execution{}, err
@@ -84,7 +83,7 @@ func (service *ExecutionService) Create(
 		return execution.Execution{}, err
 	}
 	queued, err := execution.New(
-		id, record.ProjectID, record.ID, record.Build.ID, input,
+		id, projectID, produced.AppID, produced.ID, input,
 		service.now().UTC().Round(0),
 	)
 	if err != nil {
@@ -107,48 +106,36 @@ func (service *ExecutionService) Get(
 	return service.executions.GetByID(ctx, organizationID, executionID)
 }
 
-// List returns executions across the principal's project, or those of one
-// deployment. Filtering by deployment confirms ownership first, so a foreign
-// identifier reads as not found rather than as an empty list.
+// List returns executions across the principal's project, or those of one app
+// or one build.
 func (service *ExecutionService) List(
 	ctx context.Context,
 	organizationID string,
 	projectID string,
-	deploymentID string,
+	appID string,
+	buildID string,
 	limit int,
 ) ([]execution.Execution, error) {
 	if err := validateLimit(limit); err != nil {
 		return nil, err
 	}
-	if projectID != "" {
-		if err := ids.Validate("project_id", projectID); err != nil {
+	for field, value := range map[string]string{
+		"project_id": projectID, "app_id": appID, "build_id": buildID,
+	} {
+		if value == "" {
+			continue
+		}
+		if err := ids.Validate(field, value); err != nil {
 			return nil, fmt.Errorf("%w: %v", execution.ErrInvalid, err)
 		}
 	}
-	if deploymentID != "" {
-		if _, err := service.deployments.GetByID(
-			ctx, organizationID, deploymentID,
-		); err != nil {
-			return nil, err
-		}
-	}
-	return service.executions.List(ctx, organizationID, projectID, deploymentID, limit)
-}
-
-func (service *ExecutionService) ListForDeployment(
-	ctx context.Context,
-	organizationID string,
-	deploymentID string,
-	limit int,
-) ([]execution.Execution, error) {
-	if deploymentID == "" {
-		return nil, fmt.Errorf("%w: deployment_id is required", execution.ErrInvalid)
-	}
-	return service.List(ctx, organizationID, "", deploymentID, limit)
+	return service.executions.List(
+		ctx, organizationID, projectID, appID, buildID, limit,
+	)
 }
 
 // Rerun repeats a finished execution against the build it was pinned to, which
-// must still be ready.
+// must still exist.
 func (service *ExecutionService) Rerun(
 	ctx context.Context,
 	organizationID string,
@@ -159,15 +146,10 @@ func (service *ExecutionService) Rerun(
 	if err != nil {
 		return execution.Execution{}, err
 	}
-	record, err := service.deployments.GetByID(ctx, organizationID, original.DeploymentID)
-	if err != nil {
+	if _, err := service.builds.Get(
+		ctx, organizationID, original.BuildID,
+	); err != nil {
 		return execution.Execution{}, err
-	}
-	if record.Status != deployment.StatusReady || record.Build == nil ||
-		record.Build.ID != original.BuildID {
-		return execution.Execution{}, fmt.Errorf(
-			"%w: pinned build %s", deployment.ErrNotReady, original.BuildID,
-		)
 	}
 	id, err := service.allocateID()
 	if err != nil {

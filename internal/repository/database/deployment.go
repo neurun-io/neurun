@@ -10,18 +10,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
 const deploymentSelect = `SELECT d.id, a.project_id, d.app_id, d.runtime,
-	d.entrypoint, d.status, d.source, COALESCE(d.commit_sha, ''),
-	COALESCE(d.git_ref, ''), COALESCE(d.build_id, ''), d.failure, d.logs,
+	d.status, COALESCE(d.commit_sha, ''),
+	COALESCE(d.git_ref, ''), d.failure, d.logs,
 	d.started_at, d.finished_at, d.created_at, d.updated_at
 FROM deployments d JOIN apps a ON a.id = d.app_id`
 
 // DeploymentRepository stores deployments. The build a deployment points at is
-// read back through the build repository, which owns that table; blob bytes
-// stay in the artifact store, and only the handle reaches the source column.
+// read back through the build repository, which owns that table.
 type DeploymentRepository struct {
 	pool   *pgxpool.Pool
 	builds *BuildRepository
@@ -72,11 +72,8 @@ func saveDeployment(
 	); err != nil {
 		return err
 	}
-	source, err := json.Marshal(record.Source)
-	if err != nil {
-		return fmt.Errorf("encode deployment source metadata: %w", err)
-	}
 	var failureJSON []byte
+	var err error
 	if record.Failure != nil {
 		if failureJSON, err = json.Marshal(record.Failure); err != nil {
 			return fmt.Errorf("encode deployment failure: %w", err)
@@ -85,19 +82,16 @@ func saveDeployment(
 	tag, err := tx.Exec(
 		ctx,
 		`INSERT INTO deployments
-		 (id, app_id, runtime, entrypoint, status, source,
-		  commit_sha, git_ref, build_id, failure, logs,
+		 (id, app_id, runtime, status,
+		  commit_sha, git_ref, failure, logs,
 		  started_at, finished_at, created_at, updated_at, version)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-		         $12, $13, $14, $15, 1)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+		         $9, $10, $11, $12, 1)
 		 ON CONFLICT (id) DO UPDATE SET
 		     runtime = EXCLUDED.runtime,
-		     entrypoint = EXCLUDED.entrypoint,
 		     status = EXCLUDED.status,
-		     source = EXCLUDED.source,
 		     commit_sha = EXCLUDED.commit_sha,
 		     git_ref = EXCLUDED.git_ref,
-		     build_id = EXCLUDED.build_id,
 		     failure = EXCLUDED.failure,
 		     logs = EXCLUDED.logs,
 		     started_at = EXCLUDED.started_at,
@@ -108,10 +102,9 @@ func saveDeployment(
 		 WHERE deployments.app_id = EXCLUDED.app_id
 		   AND (deployments.status IN ('queued', 'building', 'publishing')
 		        OR deployments.status = EXCLUDED.status)`,
-		record.ID, record.AppID, record.Runtime,
-		record.EntryPoint, record.Status, source,
+		record.ID, record.AppID, record.Runtime, record.Status,
 		nullableString(record.CommitSHA), nullableString(record.GitRef),
-		nullableString(buildID(record)), failureJSON, record.Logs,
+		failureJSON, record.Logs,
 		record.StartedAt, record.FinishedAt,
 		record.CreatedAt, record.UpdatedAt,
 	)
@@ -119,13 +112,6 @@ func saveDeployment(
 		return fmt.Errorf("save deployment: %w", err)
 	}
 	return requireOneRow(tag, "deployment changed concurrently")
-}
-
-func buildID(record deployment.Deployment) string {
-	if record.Build == nil {
-		return ""
-	}
-	return record.Build.ID
 }
 
 // GetByIDUnscoped crosses organizations and exists for the worker, which acts
@@ -199,8 +185,7 @@ func loadDeployment(
 		return deployment.Deployment{}, err
 	}
 	var record deployment.Deployment
-	var sourceJSON, failureJSON []byte
-	var produced string
+	var failureJSON []byte
 	err := tx.QueryRow(
 		ctx,
 		deploymentSelect+`
@@ -208,8 +193,8 @@ func loadDeployment(
 		deploymentID, organizationID,
 	).Scan(
 		&record.ID, &record.ProjectID, &record.AppID, &record.Runtime,
-		&record.EntryPoint, &record.Status, &sourceJSON,
-		&record.CommitSHA, &record.GitRef, &produced, &failureJSON, &record.Logs,
+		&record.Status,
+		&record.CommitSHA, &record.GitRef, &failureJSON, &record.Logs,
 		&record.StartedAt, &record.FinishedAt,
 		&record.CreatedAt, &record.UpdatedAt,
 	)
@@ -221,9 +206,6 @@ func loadDeployment(
 	if err != nil {
 		return deployment.Deployment{}, fmt.Errorf("read deployment: %w", err)
 	}
-	if err := json.Unmarshal(sourceJSON, &record.Source); err != nil {
-		return deployment.Deployment{}, fmt.Errorf("decode deployment source: %w", err)
-	}
 	// Decoding through the pointer leaves Failure nil for a JSON null, which is
 	// how a row with no failure is written.
 	if len(failureJSON) > 0 {
@@ -232,12 +214,13 @@ func loadDeployment(
 		}
 	}
 	// Read outside the transaction on purpose: a build is written once and never
-	// changes, so there is nothing for a concurrent write to disagree about.
-	if produced != "" {
-		output, err := builds.GetByID(ctx, produced)
-		if err != nil {
-			return deployment.Deployment{}, err
-		}
+	// changes, so there is nothing for a concurrent write to disagree about. A
+	// deployment that produced none simply has no row here.
+	output, err := builds.ByDeployment(ctx, record.ID)
+	if err != nil && !errors.Is(err, build.ErrNotFound) {
+		return deployment.Deployment{}, err
+	}
+	if err == nil {
 		record.Build = &output
 	}
 	if err := record.Validate(); err != nil {
@@ -339,41 +322,3 @@ func (repository *DeploymentRepository) RecoverBuilding(
 	return recovered, err
 }
 
-// ReadyForApp returns the deployment behind one of an app's builds: the one it
-// named, or the app's newest ready deployment when it named none.
-func (repository *DeploymentRepository) ReadyForApp(
-	ctx context.Context,
-	organizationID string,
-	appID string,
-	buildID string,
-) (deployment.Deployment, error) {
-	if err := deployment.ValidateIdentifier("app_id", appID); err != nil {
-		return deployment.Deployment{}, err
-	}
-	if buildID != "" {
-		if err := deployment.ValidateIdentifier("build_id", buildID); err != nil {
-			return deployment.Deployment{}, err
-		}
-	}
-	var found string
-	err := repository.pool.QueryRow(
-		ctx,
-		`SELECT d.id FROM deployments d
-		 JOIN apps a ON a.id = d.app_id
-		 JOIN projects p ON p.id = a.project_id
-		 WHERE p.organization_id = $1 AND d.app_id = $2
-		   AND d.status = 'ready' AND d.build_id IS NOT NULL
-		   AND ($3 = '' OR d.build_id = $3)
-		 ORDER BY d.created_at DESC, d.id DESC LIMIT 1`,
-		organizationID, appID, buildID,
-	).Scan(&found)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return deployment.Deployment{}, fmt.Errorf(
-			"%w: app %s has no ready build", deployment.ErrNotReady, appID,
-		)
-	}
-	if err != nil {
-		return deployment.Deployment{}, fmt.Errorf("read ready deployment: %w", err)
-	}
-	return repository.GetByID(ctx, organizationID, found)
-}

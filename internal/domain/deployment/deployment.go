@@ -65,15 +65,13 @@ type Failure struct {
 }
 
 type Deployment struct {
-	ID         string         `json:"id"`
-	ProjectID  string         `json:"project_id"`
-	AppID      string         `json:"app_id"`
-	Runtime    build.Runtime  `json:"runtime"`
-	EntryPoint string         `json:"entrypoint"`
-	Status     Status         `json:"status"`
-	Source     build.Artifact `json:"source"`
-	// CommitSHA and GitRef are set when the source came from GitHub. The SHA is
-	// what actually built; the ref is what the caller asked for.
+	ID        string        `json:"id"`
+	ProjectID string        `json:"project_id"`
+	AppID     string        `json:"app_id"`
+	Runtime   build.Runtime `json:"runtime"`
+	Status    Status        `json:"status"`
+	// CommitSHA and GitRef say which bytes were built. The SHA is what actually
+	// built; the ref is what the caller asked for.
 	CommitSHA string `json:"commit_sha,omitempty"`
 	GitRef    string `json:"git_ref,omitempty"`
 	// Build is the output, nil until there is one. Failure is why there is not.
@@ -86,31 +84,24 @@ type Deployment struct {
 	UpdatedAt  time.Time    `json:"updated_at"`
 }
 
-// FromGit records where an uploaded archive came from, once it has been fetched
-// and stored like any other source.
+// FromGit records which commit the archive was fetched from.
 func (record *Deployment) FromGit(commitSHA, ref string) {
 	record.CommitSHA = strings.TrimSpace(commitSHA)
 	record.GitRef = strings.TrimSpace(ref)
 }
 
-// New assembles a queued deployment around its stored source artifact.
+// New assembles a queued deployment, ready for the source it is about to build.
 func New(
 	deploymentID string,
 	projectID string,
 	appID string,
 	runtime build.Runtime,
-	entryPoint string,
-	source build.Artifact,
 	now time.Time,
 ) (Deployment, error) {
-	normalized, err := build.NormalizeEntryPoint(runtime, entryPoint)
-	if err != nil {
-		return Deployment{}, err
-	}
 	record := Deployment{
 		ID: deploymentID, ProjectID: projectID, AppID: appID,
-		Runtime: runtime, EntryPoint: normalized, Status: StatusQueued,
-		Source: source, CreatedAt: now, UpdatedAt: now,
+		Runtime: runtime, Status: StatusQueued,
+		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := record.Validate(); err != nil {
 		return Deployment{}, err
@@ -126,9 +117,6 @@ func (record *Deployment) Advance(now time.Time) error {
 		return fmt.Errorf(
 			"%w: deployment %s cannot advance from %s", ErrInvalid, record.ID, record.Status,
 		)
-	}
-	if now.IsZero() || now.Before(record.CreatedAt) {
-		return fmt.Errorf("%w: deployment stage time is invalid", ErrInvalid)
 	}
 	if following == StatusBuilding {
 		started := now

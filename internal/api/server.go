@@ -206,6 +206,7 @@ func (server *Server) routes() *gin.Engine {
 	v1.POST("/apps", server.scoped(ScopeAppsWrite), server.createApp)
 	v1.GET("/apps/:app_id", server.scoped(ScopeAppsRead), server.getApp)
 	v1.PATCH("/apps/:app_id", server.scoped(ScopeAppsWrite), server.updateApp)
+	v1.PUT("/apps/:app_id/active-build", server.scoped(ScopeAppsWrite), server.activateBuild)
 	v1.DELETE("/apps/:app_id", server.scoped(ScopeAppsWrite), server.deleteApp)
 
 	v1.GET("/github/installation", server.scoped(ScopeAppsRead), server.getInstallation)

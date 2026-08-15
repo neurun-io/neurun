@@ -4,19 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	appdomain "github.com/neurun-io/neurun/internal/domain/app"
+	builddomain "github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/ids"
 	"github.com/neurun-io/neurun/internal/repository/database"
 )
 
 // AppService owns the apps under a project. It reaches the project repository
-// only to refuse an app whose project does not exist.
+// only to refuse an app whose project does not exist, and the build repository
+// only to refuse a build that is not the app's.
 type AppService struct {
 	projects *database.ProjectRepository
 	apps     *database.AppRepository
+	builds   *database.BuildRepository
 	now      func() time.Time
 	newID    func(string) (string, error)
 }
@@ -24,10 +28,11 @@ type AppService struct {
 func NewAppService(
 	projects *database.ProjectRepository,
 	apps *database.AppRepository,
+	builds *database.BuildRepository,
 	now func() time.Time,
 	newID func(string) (string, error),
 ) (*AppService, error) {
-	if projects == nil || apps == nil {
+	if projects == nil || apps == nil || builds == nil {
 		return nil, errors.New("app service requires its repositories")
 	}
 	if now == nil {
@@ -36,7 +41,10 @@ func NewAppService(
 	if newID == nil {
 		newID = ids.New
 	}
-	return &AppService{projects: projects, apps: apps, now: now, newID: newID}, nil
+	return &AppService{
+		projects: projects, apps: apps, builds: builds,
+		now: now, newID: newID,
+	}, nil
 }
 
 func (service *AppService) Create(
@@ -109,6 +117,37 @@ func (service *AppService) Update(
 		return appdomain.App{}, err
 	}
 	if err := record.Rename(*request.Name, service.now().UTC().Round(0)); err != nil {
+		return appdomain.App{}, err
+	}
+	return service.apps.Update(ctx, organizationID, record)
+}
+
+// ActivateBuild pins the build the app runs, or releases the pin when buildID
+// is empty. The build has to be one of this app's — pinning another app's would
+// only fail at the next run.
+func (service *AppService) ActivateBuild(
+	ctx context.Context,
+	organizationID string,
+	appID string,
+	buildID string,
+) (appdomain.App, error) {
+	record, err := service.apps.GetByID(ctx, organizationID, appID)
+	if err != nil {
+		return appdomain.App{}, err
+	}
+	buildID = strings.TrimSpace(buildID)
+	if buildID != "" {
+		produced, err := service.builds.Get(ctx, organizationID, buildID)
+		if err != nil {
+			return appdomain.App{}, err
+		}
+		if produced.AppID != appID {
+			return appdomain.App{}, fmt.Errorf(
+				"%w: build %s belongs to another app", builddomain.ErrNotFound, buildID,
+			)
+		}
+	}
+	if err := record.ActivateBuild(buildID, service.now().UTC().Round(0)); err != nil {
 		return appdomain.App{}, err
 	}
 	return service.apps.Update(ctx, organizationID, record)

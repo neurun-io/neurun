@@ -25,10 +25,9 @@ type Artifact struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// StorageKeyFor addresses an artifact by what owns it: a build's layers sit
-// under the build, a deployment's source under the deployment.
-func StorageKeyFor(ownerID, artifactID string) string {
-	return ownerID + "/" + artifactID + ".zip"
+// StorageKeyFor addresses a layer by the build that made it.
+func StorageKeyFor(buildID, artifactID string) string {
+	return buildID + "/" + artifactID + ".zip"
 }
 
 func ValidateArtifact(record Artifact) error {

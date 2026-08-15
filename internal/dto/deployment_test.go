@@ -22,21 +22,15 @@ func TestResponsesNeverCarryTheStorageHandle(t *testing.T) {
 	codeDigest := strings.Repeat("b", 64)
 	now := time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC)
 	finished := now.Add(time.Second)
-	sourceKey := "objects/sha256/aa/" + sourceDigest
 	codeKey := "objects/sha256/bb/" + codeDigest
 
 	record := deployment.Deployment{
 		ID: "dep_fixture", ProjectID: "prj_fixture", AppID: "app_fixture",
-		Runtime: build.RuntimePython, EntryPoint: "main.py:handler",
-		Status: deployment.StatusReady,
-		Source: build.Artifact{
-			ID: "art_source", Name: "source",
-			SizeBytes: 12, SHA256: sourceDigest,
-			StorageKey: sourceKey, CreatedAt: now,
-		},
+		Runtime: build.RuntimePython,
+		Status:  deployment.StatusReady,
 		Build: &build.Build{
-			ID: "bld_fixture", Runtime: build.RuntimePython,
-			EntryPoint: "main.py:handler", SourceSHA256: sourceDigest,
+			ID: "bld_fixture", AppID: "app_fixture", DeploymentID: "dep_fixture",
+			Runtime: build.RuntimePython, SourceSHA256: sourceDigest,
 			Artifacts: []build.Artifact{{
 				ID: "art_code", Name: build.LayerCode,
 				SizeBytes: 24, SHA256: codeDigest,
@@ -52,12 +46,12 @@ func TestResponsesNeverCarryTheStorageHandle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{"storage_key", sourceKey, codeKey} {
+	for _, forbidden := range []string{"storage_key", codeKey} {
 		if bytes.Contains(encoded, []byte(forbidden)) {
 			t.Fatalf("response leaked %q: %s", forbidden, encoded)
 		}
 	}
-	// The digest is public — it is how a caller verifies what it uploaded.
+	// The digest is public — it is how a caller verifies what was built.
 	if !bytes.Contains(encoded, []byte(sourceDigest)) {
 		t.Fatalf("response dropped the source digest: %s", encoded)
 	}

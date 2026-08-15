@@ -64,12 +64,13 @@ func (failure Failure) Validate() error {
 	return nil
 }
 
-// Execution references its deployment and build by identifier only. It carries
-// no deployment structure, so a rebuild cannot alter a finished record.
+// Execution references the app it ran and the build it ran, by identifier
+// only. It carries no build structure, so a later deployment cannot alter a
+// finished record.
 type Execution struct {
 	ID                 string          `json:"id"`
 	ProjectID          string          `json:"project_id"`
-	DeploymentID       string          `json:"deployment_id"`
+	AppID              string          `json:"app_id"`
 	BuildID            string          `json:"build_id"`
 	Status             Status          `json:"status"`
 	Input              json.RawMessage `json:"input"`
@@ -86,13 +87,13 @@ type Execution struct {
 func New(
 	id string,
 	projectID string,
-	deploymentID string,
+	appID string,
 	buildID string,
 	input json.RawMessage,
 	now time.Time,
 ) (Execution, error) {
 	record := Execution{
-		ID: id, ProjectID: projectID, DeploymentID: deploymentID,
+		ID: id, ProjectID: projectID, AppID: appID,
 		BuildID: buildID, Status: StatusQueued,
 		Input: append(json.RawMessage(nil), input...), CreatedAt: now,
 	}
@@ -112,7 +113,7 @@ func (record Execution) Rerun(id string, now time.Time) (Execution, error) {
 	}
 	rerun := Execution{
 		ID: id, ProjectID: record.ProjectID,
-		DeploymentID: record.DeploymentID, BuildID: record.BuildID,
+		AppID: record.AppID, BuildID: record.BuildID,
 		Status: StatusQueued,
 		Input:  append(json.RawMessage(nil), record.Input...),
 		// The original may itself be a rerun. Pointing at it rather than the
@@ -175,7 +176,7 @@ func (record Execution) Validate() error {
 	fields := [][2]string{
 		{"project_id", record.ProjectID},
 		{"execution_id", record.ID},
-		{"deployment_id", record.DeploymentID},
+		{"app_id", record.AppID},
 		{"build_id", record.BuildID},
 	}
 	if record.RerunOfExecutionID != "" {
@@ -239,7 +240,7 @@ func (record Execution) ValidateTransitionTo(next Execution) error {
 	}
 	if record.ID != next.ID ||
 		record.ProjectID != next.ProjectID ||
-		record.DeploymentID != next.DeploymentID ||
+		record.AppID != next.AppID ||
 		record.BuildID != next.BuildID ||
 		record.RerunOfExecutionID != next.RerunOfExecutionID ||
 		!record.CreatedAt.Equal(next.CreatedAt) ||

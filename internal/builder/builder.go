@@ -13,7 +13,6 @@ import (
 
 type Request struct {
 	Runtime           build.Runtime
-	EntryPoint        string
 	SourceArchivePath string
 	// WorkDirectory is scratch for one build and is deleted after it.
 	WorkDirectory string

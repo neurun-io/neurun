@@ -7,18 +7,17 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/execution"
 )
 
-// CreateExecutionRequest runs an app. BuildID picks one of its builds; absent
-// takes the latest the app has ready, which is what a caller means by "run it".
+// CreateExecutionRequest runs an app. Which build runs is the app's own
+// answer: its active build, or the newest it has.
 type CreateExecutionRequest struct {
-	AppID   string          `json:"app_id"`
-	BuildID string          `json:"build_id"`
-	Input   json.RawMessage `json:"input"`
+	AppID string          `json:"app_id"`
+	Input json.RawMessage `json:"input"`
 }
 
 type ExecutionResponse struct {
 	ID                 string             `json:"id"`
 	ProjectID          string             `json:"project_id"`
-	DeploymentID       string             `json:"deployment_id"`
+	AppID              string             `json:"app_id"`
 	BuildID            string             `json:"build_id"`
 	Status             execution.Status   `json:"status"`
 	Input              json.RawMessage    `json:"input"`
@@ -34,7 +33,8 @@ type ExecutionResponse struct {
 func NewExecutionResponse(record execution.Execution) ExecutionResponse {
 	return ExecutionResponse{
 		ID: record.ID, ProjectID: record.ProjectID,
-		DeploymentID: record.DeploymentID, BuildID: record.BuildID,
+		AppID:   record.AppID,
+		BuildID: record.BuildID,
 		Status: record.Status, Input: record.Input, Output: record.Output,
 		Failure: record.Failure, Logs: record.Logs,
 		CreatedAt: record.CreatedAt, StartedAt: record.StartedAt,

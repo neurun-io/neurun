@@ -11,18 +11,15 @@ import (
 
 var fixtureTime = time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC)
 
+// sourceDigest is what the deployment service hashes off the archive it
+// spooled, and hands to the build it starts.
+var sourceDigest = strings.Repeat("a", 64)
+
 func queuedFixture(t *testing.T) Deployment {
 	t.Helper()
-	digest := strings.Repeat("a", 64)
 	record, err := New(
 		"dep_fixture", "prj_fixture", "app_fixture",
-		build.RuntimePython, "main.py:handler",
-		build.Artifact{
-			ID: "art_source", Name: "source",
-			SizeBytes: 12, SHA256: digest,
-			StorageKey: "objects/sha256/aa/" + digest, CreatedAt: fixtureTime,
-		},
-		fixtureTime,
+		build.RuntimePython, fixtureTime,
 	)
 	if err != nil {
 		t.Fatalf("build fixture: %v", err)
@@ -43,8 +40,8 @@ func codeLayer() []build.Artifact {
 func sealed(t *testing.T, record Deployment, buildID string, now time.Time) build.Build {
 	t.Helper()
 	produced, err := build.New(
-		buildID, record.Runtime, record.EntryPoint,
-		record.Source.SHA256, codeLayer(), now,
+		buildID, record.AppID, record.ID, record.Runtime,
+		sourceDigest, codeLayer(), now,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -95,8 +92,9 @@ func TestStagesCarryTheDeploymentToItsBuild(t *testing.T) {
 	}
 	// The build carries what it takes to run the artifacts, and nothing about
 	// how the deployment went.
-	if record.Build.SourceSHA256 != record.Source.SHA256 ||
-		record.Build.EntryPoint != record.EntryPoint {
+	if record.Build.SourceSHA256 != sourceDigest ||
+		record.Build.AppID != record.AppID ||
+		record.Build.DeploymentID != record.ID {
 		t.Fatalf("build = %#v", record.Build)
 	}
 }

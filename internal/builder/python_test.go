@@ -28,21 +28,6 @@ func TestPythonBuilderProducesStableCodeLayer(t *testing.T) {
 	}
 }
 
-func TestPythonBuilderRejectsMissingEntrypoint(t *testing.T) {
-	python := pythonForTest(t)
-	root := t.TempDir()
-	source := filepath.Join(root, "source.zip")
-	writeZIP(t, source, map[string]string{"other.py": "value = 1\n"})
-	builder, err := NewPython(PythonOptions{PythonExecutable: python})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = builder.Build(context.Background(), Request{Runtime: build.RuntimePython, EntryPoint: "main.py:handler", SourceArchivePath: source, WorkDirectory: filepath.Join(root, "work")})
-	if err == nil {
-		t.Fatal("expected missing entrypoint error")
-	}
-}
-
 func buildFixture(t *testing.T, python string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -56,7 +41,7 @@ func buildFixture(t *testing.T, python string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := builder.Build(context.Background(), Request{Runtime: build.RuntimePython, EntryPoint: "main.py:handler", SourceArchivePath: source, WorkDirectory: work})
+	result, err := builder.Build(context.Background(), Request{Runtime: build.RuntimePython, SourceArchivePath: source, WorkDirectory: work})
 	if err != nil {
 		t.Fatal(err)
 	}

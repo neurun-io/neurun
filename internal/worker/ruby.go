@@ -60,7 +60,7 @@ func (runner *RubyRunner) Execute(
 	}
 	command := exec.CommandContext(
 		ctx, runner.executable, "--disable-gems", bootstrapPath,
-		request.CodeDirectory, request.InstallDirectory, request.Entrypoint,
+		request.CodeDirectory, request.InstallDirectory, rubyEntry,
 		inputPath, resultPath, strconv.FormatInt(request.MaxResultBytes, 10),
 	)
 	configureProcessTree(command)
@@ -98,6 +98,10 @@ func (runner *RubyRunner) Execute(
 
 // rubyBootstrap loads the handler file and calls the named method. A top-level
 // def becomes a private method on Object, so the call goes through send.
+// rubyEntry is what the bootstrap loads and calls. Nothing configures it: it
+// stands in until the SDK reports what it registered.
+const rubyEntry = "main.rb:handler"
+
 const rubyBootstrap = `
 require "json"
 

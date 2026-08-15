@@ -1,7 +1,9 @@
+-- An execution runs one of an app's builds. How that build came to exist is
+-- the build's own business.
 CREATE TABLE executions (
     id                     text PRIMARY KEY,
-    deployment_id          text NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
-    build_id               text NOT NULL REFERENCES builds(id),
+    app_id                 text NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+    build_id               text NOT NULL REFERENCES builds(id) ON DELETE CASCADE,
     status                 text NOT NULL,
     input                  jsonb NOT NULL,
     output                 jsonb,
@@ -18,7 +20,9 @@ CREATE TABLE executions (
     CONSTRAINT executions_logs_bounded CHECK (octet_length(logs) <= 262144)
 );
 
-CREATE INDEX executions_deployment_created
-    ON executions(deployment_id, created_at DESC, id DESC);
+CREATE INDEX executions_app_created
+    ON executions(app_id, created_at DESC, id DESC);
+CREATE INDEX executions_build_created
+    ON executions(build_id, created_at DESC, id DESC);
 CREATE INDEX executions_queue
     ON executions(status, created_at, id);

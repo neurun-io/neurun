@@ -67,11 +67,9 @@ func (runner *NodeRunner) Execute(
 			"%w: build contains no %s", ErrHandlerFailed, BundleName,
 		)
 	}
-	_, handler, _ := strings.Cut(request.Entrypoint, ":")
-
 	command := exec.CommandContext(
 		ctx, runner.executable, bootstrapPath,
-		bundle, handler, inputPath, resultPath,
+		bundle, nodeHandler, inputPath, resultPath,
 		strconv.FormatInt(request.MaxResultBytes, 10),
 	)
 	configureProcessTree(command)
@@ -110,6 +108,10 @@ func (runner *NodeRunner) Execute(
 // nodeBootstrap requires the bundle and calls the named export. A returned
 // promise is awaited, so an async handler needs no ceremony — the same
 // affordance the Python bootstrap gives a coroutine.
+// nodeHandler is the export the bundle is called through. Nothing configures
+// it: it stands in until the SDK reports what it registered.
+const nodeHandler = "handler"
+
 const nodeBootstrap = `
 const fs = require("node:fs");
 

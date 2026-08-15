@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/neurun-io/neurun/internal/domain/build"
-	"github.com/neurun-io/neurun/internal/domain/deployment"
 	"github.com/neurun-io/neurun/internal/domain/execution"
 	"github.com/neurun-io/neurun/internal/files"
 	"github.com/neurun-io/neurun/internal/repository/database"
@@ -24,7 +23,6 @@ import (
 type ExecuteRequest struct {
 	CodeDirectory    string
 	InstallDirectory string
-	Entrypoint       string
 	// CallbackAddress is the control plane's loopback gRPC address, and
 	// ExecutionToken is what proves a call on it belongs to this execution.
 	CallbackAddress string
@@ -71,16 +69,16 @@ type ExecutionTokens interface {
 }
 
 type Worker struct {
-	executions  *database.ExecutionRepository
-	deployments *database.DeploymentRepository
-	blobs       file.Repository
-	runners     map[build.Runtime]Runner
-	options     Options
+	executions *database.ExecutionRepository
+	builds     *database.BuildRepository
+	blobs      file.Repository
+	runners    map[build.Runtime]Runner
+	options    Options
 }
 
 func New(
 	executions *database.ExecutionRepository,
-	deployments *database.DeploymentRepository,
+	builds *database.BuildRepository,
 	blobs file.Repository,
 	runners map[build.Runtime]Runner,
 	options Options,
@@ -88,8 +86,8 @@ func New(
 	switch {
 	case executions == nil:
 		return nil, errors.New("worker: execution repository is required")
-	case deployments == nil:
-		return nil, errors.New("worker: deployment repository is required")
+	case builds == nil:
+		return nil, errors.New("worker: build repository is required")
 	case blobs == nil:
 		return nil, errors.New("worker: artifact store is required")
 	case len(runners) == 0:
@@ -126,7 +124,7 @@ func New(
 		options.Now = time.Now
 	}
 	return &Worker{
-		executions: executions, deployments: deployments,
+		executions: executions, builds: builds,
 		blobs: blobs, runners: runners, options: options,
 	}, nil
 }
@@ -202,22 +200,9 @@ func (worker *Worker) execute(
 	ctx context.Context,
 	record execution.Execution,
 ) (json.RawMessage, string, *execution.Failure) {
-	found, err := worker.deployments.GetByIDUnscoped(ctx, record.DeploymentID)
+	produced, err := worker.builds.GetByID(ctx, record.BuildID)
 	if err != nil {
-		return nil, "", newFailure("deployment_unavailable", err)
-	}
-	produced := found.Build
-	if produced == nil || produced.ID != record.BuildID ||
-		found.Status != deployment.StatusReady {
-		return nil, "", newFailure(
-			"build_unavailable", errors.New("pinned build is not ready"),
-		)
-	}
-	if produced.Runtime != build.RuntimePython {
-		return nil, "", newFailure(
-			"runtime_unsupported",
-			fmt.Errorf("runtime %q is not supported", produced.Runtime),
-		)
+		return nil, "", newFailure("build_unavailable", err)
 	}
 	work, err := os.MkdirTemp("", "neurun-worker-*")
 	if err != nil {
@@ -262,7 +247,7 @@ func (worker *Worker) execute(
 	// run: the handler simply has no browser support.
 	var token string
 	if worker.options.Tokens != nil && worker.options.CallbackAddress != "" {
-		token, err = worker.options.Tokens.Mint(ctx, record.ID, found.AppID)
+		token, err = worker.options.Tokens.Mint(ctx, record.ID, produced.AppID)
 		if err != nil {
 			slog.Warn("execution token was not issued",
 				"execution", record.ID, "error", err)
@@ -280,8 +265,8 @@ func (worker *Worker) execute(
 	result, err := runner.Execute(runCtx, ExecuteRequest{
 		CodeDirectory:    filepath.Join(work, build.LayerCode),
 		InstallDirectory: filepath.Join(work, build.LayerInstall),
-		Entrypoint:       produced.EntryPoint, Input: record.Input,
-		CallbackAddress: worker.options.CallbackAddress,
+		Input:            record.Input,
+		CallbackAddress:  worker.options.CallbackAddress,
 		ExecutionToken:  token,
 		MaxResultBytes:  worker.options.MaxResultBytes,
 		MaxLogBytes:     worker.options.MaxLogBytes,

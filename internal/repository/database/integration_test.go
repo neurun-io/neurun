@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -83,7 +84,7 @@ func seedOrganization(
 		`INSERT INTO users (id, email, password_hash, disabled, created_at, updated_at)
 		 VALUES ($1, $2, $3, false, $4, $4)`,
 		userID, suffix+"@example.com",
-		"$2a$10$abcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyz012345", now,
+		"$2a$10$abcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyz01234", now,
 	)
 	if err != nil {
 		t.Fatalf("seed user: %v", err)
@@ -156,13 +157,7 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 	sourceDigest := strings.Repeat("a", 64)
 	codeDigest := strings.Repeat("c", 64)
 	record, err := deployment.New(
-		"dep_it", project.ID, app.ID, build.RuntimePython, "main.py:handler",
-		build.Artifact{
-			ID: "art_src", Name: "source",
-			SizeBytes: 10, SHA256: sourceDigest,
-			StorageKey: "objects/sha256/aa/" + sourceDigest, CreatedAt: now,
-		},
-		now,
+		"dep_it", project.ID, app.ID, build.RuntimePython, now,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -177,7 +172,7 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 		t.Fatalf("save building: %v", err)
 	}
 	produced, err := build.New(
-		"bld_it", record.Runtime, record.EntryPoint, record.Source.SHA256,
+		"bld_it", record.AppID, record.ID, record.Runtime, sourceDigest,
 		[]build.Artifact{{
 			ID: "art_code", Name: build.LayerCode,
 			SizeBytes: 20, SHA256: codeDigest,
@@ -207,9 +202,8 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 	}
 	// The private blob handle has to survive the JSON column round trip, or the
 	// worker could not open the artifact it needs.
-	if loaded.Source.StorageKey != record.Source.StorageKey ||
-		loaded.Build.Artifacts[0].StorageKey != "objects/sha256/cc/"+codeDigest {
-		t.Fatalf("storage handles lost in round trip: %#v", loaded.Source)
+	if loaded.Build.Artifacts[0].StorageKey != "objects/sha256/cc/"+codeDigest {
+		t.Fatalf("storage handles lost in round trip: %#v", loaded.Build.Artifacts)
 	}
 	if loaded.Failure != nil {
 		t.Fatalf("absent failure read back as %#v", loaded.Failure)
@@ -217,7 +211,7 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 
 	reloaded := *loaded.Build
 	queued, err := execution.New(
-		"exe_it", project.ID, loaded.ID, reloaded.ID,
+		"exe_it", project.ID, loaded.AppID, reloaded.ID,
 		json.RawMessage(`{"hello":"world"}`), now.Add(3*time.Second),
 	)
 	if err != nil {
@@ -257,8 +251,14 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read execution: %v", err)
 	}
+	// Compacted before comparing: the column is jsonb, which re-serializes what
+	// it stored rather than handing back the bytes it was given.
+	var output bytes.Buffer
+	if err := json.Compact(&output, final.Output); err != nil {
+		t.Fatal(err)
+	}
 	if final.Status != execution.StatusSucceeded ||
-		string(final.Output) != `{"ok":true}` || final.Logs != "log line\n" {
+		output.String() != `{"ok":true}` || final.Logs != "log line\n" {
 		t.Fatalf("final execution = %#v", final)
 	}
 }
@@ -293,15 +293,8 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	digest := strings.Repeat("d", 64)
 	record, err := deployment.New(
-		"dep_rec", project.ID, app.ID, build.RuntimePython, "main.py:handler",
-		build.Artifact{
-			ID: "art_rec", Name: "source",
-			SizeBytes: 10, SHA256: digest,
-			StorageKey: "objects/sha256/dd/" + digest, CreatedAt: now,
-		},
-		now,
+		"dep_rec", project.ID, app.ID, build.RuntimePython, now,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -339,22 +332,20 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 	}
 	ready.StorageKey = "objects/sha256/ee/" + ready.SHA256
 	fresh, err := deployment.New(
-		"dep_rec2", project.ID, app.ID, build.RuntimePython, "main.py:handler",
-		build.Artifact{
-			ID: "art_rec2", Name: "source",
-			SizeBytes: 10,
-			SHA256:    strings.Repeat("f", 64), CreatedAt: now,
-		}, now,
+		"dep_rec2", project.ID, app.ID, build.RuntimePython, now,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh.Source.StorageKey = "objects/sha256/ff/" + fresh.Source.SHA256
 	if err := fresh.Advance(now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
+	// The build references the deployment that made it, so that row comes first.
+	if err := deployments.Save(ctx, fresh); err != nil {
+		t.Fatal(err)
+	}
 	sealed, err := build.New(
-		"bld_rec2", fresh.Runtime, fresh.EntryPoint, fresh.Source.SHA256,
+		"bld_rec2", fresh.AppID, fresh.ID, fresh.Runtime, strings.Repeat("f", 64),
 		[]build.Artifact{ready}, now.Add(2*time.Second),
 	)
 	if err != nil {
@@ -370,7 +361,7 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	running, err := execution.New("exe_running", project.ID, fresh.ID, "bld_rec2",
+	running, err := execution.New("exe_running", project.ID, fresh.AppID, "bld_rec2",
 		json.RawMessage(`1`), now.Add(3*time.Second))
 	if err != nil {
 		t.Fatal(err)
@@ -381,7 +372,7 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 	if _, err := executions.ClaimQueued(ctx, now.Add(4*time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	stillQueued, err := execution.New("exe_queued", project.ID, fresh.ID, "bld_rec2",
+	stillQueued, err := execution.New("exe_queued", project.ID, fresh.AppID, "bld_rec2",
 		json.RawMessage(`2`), now.Add(5*time.Second))
 	if err != nil {
 		t.Fatal(err)

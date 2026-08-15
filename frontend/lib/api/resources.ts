@@ -31,24 +31,19 @@ const artifactSchema = z.looseObject({
 });
 const buildSchema = z.looseObject({
   id: z.string(),
+  app_id: z.string(),
+  deployment_id: z.string(),
   runtime: z.enum(["python", "rust", "go", "ruby", "node"]),
-  entrypoint: z.string(),
   source_sha256: z.string(),
   artifacts: z.array(artifactSchema),
   created_at: timestampSchema,
-});
-const producedBuildSchema = buildSchema.extend({
-  deployment_id: z.string().optional(),
-  app_id: z.string().optional(),
 });
 const deploymentSchema = z.looseObject({
   id: z.string(),
   project_id: z.string(),
   app_id: z.string(),
   runtime: z.enum(["python", "rust", "go", "ruby", "node"]),
-  entrypoint: z.string(),
   status: z.enum(["queued", "building", "publishing", "ready", "failed"]),
-  source: artifactSchema,
   commit_sha: z.string().optional(),
   git_ref: z.string().optional(),
   build: buildSchema.nullish(),
@@ -62,7 +57,7 @@ const deploymentSchema = z.looseObject({
 const executionSchema = z.looseObject({
   id: z.string(),
   project_id: z.string(),
-  deployment_id: z.string(),
+  app_id: z.string(),
   build_id: z.string(),
   status: z.enum(["queued", "running", "succeeded", "failed"]),
   input: z.unknown(),
@@ -86,6 +81,7 @@ const appSchema = z.looseObject({
   name: z.string(),
   repository: z.string().optional(),
   production_ref: z.string().optional(),
+  active_build_id: z.string().optional(),
   created_at: timestampSchema,
   updated_at: timestampSchema,
 });
@@ -253,6 +249,18 @@ export function connectRepository(id: string, repository: string, productionRef:
   );
 }
 
+/** An empty build releases the app back to its newest ready one. */
+export function activateBuild(id: string, buildId: string) {
+  return request<NeurunApp>(
+    {
+      method: "PUT",
+      path: `/v1/apps/${segment(id)}/active-build`,
+      body: { build_id: buildId },
+    },
+    appSchema as never,
+  );
+}
+
 export function listBrowserSessions(signal?: AbortSignal) {
   return request<{ browser_sessions: BrowserSession[] }>(
     { path: "/v1/browser-sessions", signal },
@@ -340,29 +348,29 @@ export function retryDeployment(id: string) {
   );
 }
 
-export function listBuilds(deploymentId?: string, signal?: AbortSignal) {
+export function listBuilds(appId?: string, signal?: AbortSignal) {
   return request<{ builds: Build[] }>(
     {
       path: "/v1/builds",
-      query: { deployment_id: deploymentId, limit: 200 },
+      query: { app_id: appId, limit: 200 },
       signal,
     },
-    z.looseObject({ builds: z.array(producedBuildSchema) }) as never,
+    z.looseObject({ builds: z.array(buildSchema) }) as never,
   );
 }
 
 export function getBuild(id: string, signal?: AbortSignal) {
   return request<Build>(
     { path: `/v1/builds/${segment(id)}`, signal },
-    producedBuildSchema as never,
+    buildSchema as never,
   );
 }
 
-export function listExecutions(deploymentId?: string, signal?: AbortSignal) {
+export function listExecutions(appId?: string, signal?: AbortSignal) {
   return request<{ executions: Execution[] }>(
     {
       path: "/v1/executions",
-      query: { deployment_id: deploymentId, limit: 200 },
+      query: { app_id: appId, limit: 200 },
       signal,
     },
     z.looseObject({ executions: z.array(executionSchema) }) as never,
@@ -376,13 +384,13 @@ export function getExecution(id: string, signal?: AbortSignal) {
   );
 }
 
-/** Runs an app. An absent buildId takes the latest build the app has ready. */
-export function createExecution(appId: string, input: unknown, buildId?: string) {
+/** Runs an app on the build it is active on. */
+export function createExecution(appId: string, input: unknown) {
   return request<Execution>(
     {
       method: "POST",
       path: "/v1/executions",
-      body: { app_id: appId, build_id: buildId, input },
+      body: { app_id: appId, input },
     },
     executionSchema as never,
   );

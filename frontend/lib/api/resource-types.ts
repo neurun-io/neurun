@@ -22,6 +22,8 @@ export interface NeurunApp {
   repository?: string;
   /** The ref whose pushes deploy. Absent follows the default branch. */
   production_ref?: string;
+  /** The build the app runs. Absent runs the newest one it has ready. */
+  active_build_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -74,17 +76,15 @@ export interface Failure {
   message: string;
 }
 
-/** What a deployment produced. How it went belongs to the deployment. */
+/** A runnable app. How it came to exist belongs to the deployment. */
 export interface Build {
   id: string;
+  app_id: string;
+  deployment_id: string;
   runtime: Runtime;
-  entrypoint: string;
   source_sha256: string;
   artifacts: Artifact[];
   created_at: string;
-  /** Set when a build is served on its own rather than under its deployment. */
-  deployment_id?: string;
-  app_id?: string;
 }
 
 export interface Deployment {
@@ -92,9 +92,7 @@ export interface Deployment {
   project_id: string;
   app_id: string;
   runtime: Runtime;
-  entrypoint: string;
   status: DeploymentStatus;
-  source: Artifact;
   commit_sha?: string;
   git_ref?: string;
   build?: Build | null;
@@ -110,7 +108,7 @@ export interface Deployment {
 export interface Execution {
   id: string;
   project_id: string;
-  deployment_id: string;
+  app_id: string;
   build_id: string;
   status: ExecutionStatus;
   input: unknown;

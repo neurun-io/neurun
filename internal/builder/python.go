@@ -55,9 +55,6 @@ func (builder *PythonBuilder) Build(ctx context.Context, request Request) (Resul
 	if _, err := files.ExtractZIPFile(request.SourceArchivePath, sourceDir, builder.limits); err != nil {
 		return Result{}, fmt.Errorf("builder: extract source: %w", err)
 	}
-	if err := validateEntrypoint(sourceDir, request.EntryPoint); err != nil {
-		return Result{}, err
-	}
 	compile := exec.CommandContext(ctx, builder.python, "-m", "compileall", "-q", sourceDir)
 	compile.Env = append(os.Environ(), "PYTHONPYCACHEPREFIX="+filepath.Join(request.WorkDirectory, "pycache"))
 	if err := request.run("compile Python source", compile); err != nil {
@@ -110,30 +107,6 @@ func (builder *PythonBuilder) Build(ctx context.Context, request Request) (Resul
 	}
 	result.Layers = append(result.Layers, Layer{Name: build.LayerInstall, Path: installPath})
 	return result, nil
-}
-
-func validateEntrypoint(sourceDir, entrypoint string) error {
-	subject, handler, ok := strings.Cut(entrypoint, ":")
-	if !ok || subject == "" || handler == "" {
-		return errors.New("builder: entrypoint must use module_or_file:handler")
-	}
-	var candidates []string
-	if strings.HasSuffix(subject, ".py") || strings.Contains(subject, "/") {
-		candidates = []string{filepath.FromSlash(subject)}
-	} else {
-		modulePath := filepath.FromSlash(strings.ReplaceAll(subject, ".", "/"))
-		candidates = []string{modulePath + ".py", filepath.Join(modulePath, "__init__.py")}
-	}
-	for _, candidate := range candidates {
-		info, err := os.Lstat(filepath.Join(sourceDir, candidate))
-		if err == nil && info.Mode().IsRegular() {
-			return nil
-		}
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("builder: inspect entrypoint: %w", err)
-		}
-	}
-	return fmt.Errorf("builder: entrypoint module %q was not found", subject)
 }
 
 func zipDirectory(root, target string) error {

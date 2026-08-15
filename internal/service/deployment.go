@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -133,7 +132,9 @@ func (service *DeploymentService) Create(
 			"%w: source ZIP is required", deployment.ErrInvalid,
 		)
 	}
-	sourcePath, _, cleanup, err := spoolSource(
+	// Spooled, never stored: the archive is the commit's own bytes, which GitHub
+	// still has. The build reads this file and removes it when it finishes.
+	source, digest, cleanup, err := spoolSource(
 		ctx, request.Source, service.maxSourceBytes,
 	)
 	if err != nil {
@@ -145,25 +146,20 @@ func (service *DeploymentService) Create(
 		}
 		return deployment.Deployment{}, fmt.Errorf("stage deployment source: %w", err)
 	}
-	defer cleanup()
+	scheduled := false
+	defer func() {
+		if !scheduled {
+			cleanup()
+		}
+	}()
 
 	deploymentID, err := service.allocateID("dep")
 	if err != nil {
 		return deployment.Deployment{}, err
 	}
-	source, err := service.store(
-		ctx, deploymentID,
-		builder.Layer{Name: "source", Path: sourcePath},
-		service.maxSourceBytes,
-	)
-	if err != nil {
-		return deployment.Deployment{}, fmt.Errorf("store deployment source: %w", err)
-	}
-
 	now := service.now().UTC().Round(0)
 	record, err := deployment.New(
-		deploymentID, app.ProjectID, app.ID,
-		request.Runtime, request.EntryPoint, source, now,
+		deploymentID, app.ProjectID, app.ID, request.Runtime, now,
 	)
 	if err != nil {
 		return deployment.Deployment{}, err
@@ -172,15 +168,22 @@ func (service *DeploymentService) Create(
 	if err := service.deployments.Save(ctx, record); err != nil {
 		return deployment.Deployment{}, fmt.Errorf("persist queued deployment: %w", err)
 	}
-	service.schedule(record)
+	service.schedule(record, source, digest.SHA256)
+	scheduled = true
 	return deployment.CloneDeployment(record), nil
 }
 
 // schedule builds on a context of its own, so cancelling the caller cannot
 // abandon a deployment mid-toolchain.
-func (service *DeploymentService) schedule(record deployment.Deployment) {
+func (service *DeploymentService) schedule(
+	record deployment.Deployment,
+	sourcePath string,
+	sourceSHA256 string,
+) {
 	go func() {
-		if _, err := service.runBuild(context.Background(), record); err != nil {
+		if _, err := service.runBuild(
+			context.Background(), record, sourcePath, sourceSHA256,
+		); err != nil {
 			slog.Error(
 				"deployment build failed",
 				"deployment", record.ID, "app", record.AppID, "error", err,
@@ -235,9 +238,13 @@ func (service *DeploymentService) RecoverInterruptedBuilds(
 func (service *DeploymentService) runBuild(
 	ctx context.Context,
 	record deployment.Deployment,
+	sourcePath string,
+	sourceSHA256 string,
 ) (deployment.Deployment, error) {
 	service.buildMu.Lock()
 	defer service.buildMu.Unlock()
+	// The archive was spooled for this build and nothing else reads it.
+	defer os.Remove(sourcePath)
 
 	// Unscoped on purpose: this re-reads a row the caller already reached
 	// through an organization-scoped path, to pick up a concurrent write.
@@ -255,8 +262,7 @@ func (service *DeploymentService) runBuild(
 	}
 	defer os.RemoveAll(workDirectory)
 
-	sourcePath := filepath.Join(workDirectory, "source.zip")
-	if err := service.materialize(buildCtx, record.Source, sourcePath); err != nil {
+	if _, err := os.Stat(sourcePath); err != nil {
 		return service.fail(ctx, record, "source_unavailable", err)
 	}
 	toolchain, ok := service.builders[record.Runtime]
@@ -294,7 +300,7 @@ func (service *DeploymentService) runBuild(
 	}
 	stream := service.follow(ctx, &record)
 	result, buildErr := toolchain.Build(buildCtx, builder.Request{
-		Runtime: record.Runtime, EntryPoint: record.EntryPoint,
+		Runtime:           record.Runtime,
 		SourceArchivePath: sourcePath, WorkDirectory: workDirectory,
 		CacheDirectory: cacheDirectory, Logs: stream,
 	})
@@ -329,8 +335,8 @@ func (service *DeploymentService) runBuild(
 		artifacts = append(artifacts, stored)
 	}
 	produced, err := build.New(
-		buildID, record.Runtime, record.EntryPoint,
-		record.Source.SHA256, artifacts, service.now().UTC().Round(0),
+		buildID, record.AppID, record.ID, record.Runtime,
+		sourceSHA256, artifacts, service.now().UTC().Round(0),
 	)
 	if err != nil {
 		return deployment.Deployment{}, err
@@ -346,7 +352,7 @@ func (service *DeploymentService) runBuild(
 	if err := service.deployments.Save(ctx, record); err != nil {
 		return deployment.Deployment{}, fmt.Errorf("persist completed deployment: %w", err)
 	}
-	return deployment.CloneDeployment(record), nil
+	return record, nil
 }
 
 // logFlush is how far behind the toolchain a reader is allowed to be. A build
@@ -462,51 +468,17 @@ func (service *DeploymentService) fail(
 		saveCtx = context.WithoutCancel(orBackground(ctx))
 	}
 	if err := service.deployments.Save(saveCtx, record); err != nil {
-		return deployment.CloneDeployment(record), fmt.Errorf(
-			"persist failed deployment: %w", err,
-		)
+		return record, fmt.Errorf("persist failed deployment: %w", err)
 	}
-	return deployment.CloneDeployment(record), nil
+	return record, nil
 }
 
-func (service *DeploymentService) materialize(
-	ctx context.Context,
-	stored build.Artifact,
-	targetPath string,
-) error {
-	reader, info, err := service.files.Open(ctx, stored.StorageKey)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	if info.SHA256() != stored.SHA256 || info.SizeBytes() != stored.SizeBytes {
-		return errors.New("stored artifact bytes do not match deployment metadata")
-	}
-	target, err := os.OpenFile(targetPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	result, copyErr := files.CopyAndHashContext(ctx, target, reader, stored.SizeBytes)
-	closeErr := target.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if result.SHA256 != stored.SHA256 || result.SizeBytes != stored.SizeBytes {
-		return errors.New("materialized artifact bytes do not match deployment metadata")
-	}
-	return nil
-}
-
-// store puts one ZIP under whatever owns it — a build's layers under the
-// build, a deployment's source under the deployment — and returns the handle.
-// The store hashes what it writes, so the digest describes what actually
-// landed rather than what was staged.
+// store puts one built layer under the build that made it, and returns the
+// handle. The store hashes what it writes, so the digest describes what
+// actually landed rather than what was staged.
 func (service *DeploymentService) store(
 	ctx context.Context,
-	ownerID string,
+	buildID string,
 	layer builder.Layer,
 	maximumBytes int64,
 ) (build.Artifact, error) {
@@ -527,7 +499,7 @@ func (service *DeploymentService) store(
 	}
 	defer source.Close()
 
-	storageKey := build.StorageKeyFor(ownerID, artifactID)
+	storageKey := build.StorageKeyFor(buildID, artifactID)
 	stored, err := service.files.Put(ctx, storageKey, source, maximumBytes)
 	if err != nil {
 		return build.Artifact{}, err
@@ -548,19 +520,6 @@ func (service *DeploymentService) allocateID(prefix string) (string, error) {
 		return "", err
 	}
 	return value, nil
-}
-
-func normalizeSourceName(raw string) (string, error) {
-	portable := strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/")
-	name := path.Base(portable)
-	if name == "" || name == "." || name == "/" {
-		name = "source.zip"
-	}
-	if len(name) > 255 || strings.ContainsRune(name, '\x00') ||
-		!strings.EqualFold(path.Ext(name), ".zip") {
-		return "", fmt.Errorf("%w: source must be a ZIP archive", deployment.ErrInvalid)
-	}
-	return name, nil
 }
 
 // spoolSource streams the upload to a private temporary file, hashing as it

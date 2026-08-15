@@ -29,6 +29,5 @@ automatically — the side effects of the first attempt already happened.
 
 ## Fields
 
-`id`, `project_id`, `deployment_id`, `number`, `status`, `runtime`,
-`entrypoint`, `source_sha256`, `artifacts`, `failure`, `started_at`,
-`finished_at`.
+`id`, `app_id`, `deployment_id`, `runtime`, `source_sha256`, `artifacts`,
+`created_at`.

@@ -62,7 +62,7 @@ func (runner *PythonRunner) Execute(ctx context.Context, request ExecuteRequest)
 	if err := os.WriteFile(bootstrapPath, []byte(pythonBootstrap), 0o600); err != nil {
 		return ExecuteResult{}, err
 	}
-	command := exec.CommandContext(ctx, runner.executable, "-I", bootstrapPath, request.CodeDirectory, request.InstallDirectory, request.Entrypoint, inputPath, resultPath, strconv.FormatInt(request.MaxResultBytes, 10))
+	command := exec.CommandContext(ctx, runner.executable, "-I", bootstrapPath, request.CodeDirectory, request.InstallDirectory, pythonEntry, inputPath, resultPath, strconv.FormatInt(request.MaxResultBytes, 10))
 	configureProcessTree(command)
 	command.Dir = work
 	command.Env = append(pythonEnvironment(runner.browser), callbackEnvironment(request)...)
@@ -164,6 +164,10 @@ func failureMessage(err error, logs string) string {
 	}
 	return logs
 }
+
+// pythonEntry is what the bootstrap imports and calls. Nothing configures it:
+// it stands in until the SDK reports what it registered.
+const pythonEntry = "main.py:handler"
 
 const pythonBootstrap = `
 import asyncio

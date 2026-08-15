@@ -523,6 +523,38 @@ paths:
         "403": {$ref: "#/components/responses/Problem"}
         "404": {$ref: "#/components/responses/Problem"}
         "409": {$ref: "#/components/responses/Problem"}
+  /v1/apps/{app_id}/active-build:
+    parameters:
+      - name: app_id
+        in: path
+        required: true
+        schema: {type: string}
+    put:
+      operationId: activateBuild
+      description: >-
+        Choose the build the app runs. It stays chosen: a later deployment
+        builds, but does not take over. An empty build releases the choice, and
+        the app runs the newest build it has ready again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [build_id]
+              properties:
+                build_id:
+                  type: string
+                  description: One of the app's ready builds, or empty to release.
+      responses:
+        "200":
+          description: App updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/App"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
   /v1/github/installation:
     get:
       operationId: getInstallation
@@ -886,6 +918,9 @@ paths:
         Every build the organization's deployments produced, newest first.
       parameters:
         - $ref: "#/components/parameters/Limit"
+        - name: app_id
+          in: query
+          schema: {type: string}
         - name: deployment_id
           in: query
           schema: {type: string}
@@ -977,7 +1012,10 @@ paths:
       operationId: listExecutions
       parameters:
         - $ref: "#/components/parameters/Limit"
-        - name: deployment_id
+        - name: app_id
+          in: query
+          schema: {type: string}
+        - name: build_id
           in: query
           schema: {type: string}
       responses:
@@ -995,9 +1033,9 @@ paths:
     post:
       operationId: createExecution
       description: >-
-        Run an app. build_id picks one of its builds; absent takes the latest
-        the app has ready. The execution is pinned to that build and stays
-        there, whatever is deployed afterwards.
+        Run an app. Which build runs is the app's own answer — its active
+        build, or the newest it has. The execution is pinned to that build and
+        stays there, whatever is deployed afterwards.
       requestBody:
         required: true
         content:
@@ -1008,7 +1046,6 @@ paths:
               required: [app_id, input]
               properties:
                 app_id: {type: string}
-                build_id: {type: string}
                 input: {}
       responses:
         "202":
@@ -1111,6 +1148,10 @@ components:
         production_ref:
           type: string
           description: The ref whose pushes deploy. Absent follows the default branch.
+        active_build_id:
+          type: string
+          description: >-
+            The build the app runs. Absent runs the newest build it has ready.
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
     Repository:
@@ -1532,37 +1573,34 @@ components:
         message: {type: string}
     Build:
       description: >-
-        What a deployment produced: the artifacts, and what identifies them. A
-        build carries no status and no failure — the deployment that ran it
-        does, and a deployment that produced nothing has no build at all.
+        A runnable app: whose it is, what produced it, and the artifacts that
+        run. A build carries no status and no failure — the deployment that ran
+        it does, and a deployment that produced nothing has no build at all.
       type: object
-      required: [id, runtime, entrypoint, source_sha256, artifacts, created_at]
+      required: [id, app_id, deployment_id, runtime, source_sha256, artifacts, created_at]
       properties:
         id: {type: string}
+        app_id: {type: string}
+        deployment_id: {type: string}
         runtime: {type: string, enum: [python, rust, go, ruby, node]}
-        entrypoint: {type: string}
         source_sha256: {type: string}
         artifacts:
           type: array
           items: {$ref: "#/components/schemas/Artifact"}
         created_at: {type: string, format: date-time}
-        deployment_id: {type: string}
-        app_id: {type: string}
     Deployment:
       description: >-
-        One attempt to turn a source archive into a build. Statuses run
-        queued → building → publishing → ready or failed; logs carry what the
-        toolchain printed and arrive while it is still running.
+        One attempt to turn a commit into a build. Statuses run queued →
+        building → publishing → ready or failed; logs carry what the toolchain
+        printed and arrive while it is still running.
       type: object
-      required: [id, project_id, app_id, runtime, entrypoint, status, source, logs, created_at, updated_at]
+      required: [id, project_id, app_id, runtime, status, logs, created_at, updated_at]
       properties:
         id: {type: string}
         project_id: {type: string}
         app_id: {type: string}
         runtime: {type: string, enum: [python, rust, go, ruby, node]}
-        entrypoint: {type: string}
         status: {type: string, enum: [queued, building, publishing, ready, failed]}
-        source: {$ref: "#/components/schemas/Artifact"}
         commit_sha: {type: string}
         git_ref: {type: string}
         build:
@@ -1584,11 +1622,11 @@ components:
         updated_at: {type: string, format: date-time}
     Execution:
       type: object
-      required: [id, project_id, deployment_id, build_id, status, input, logs, created_at]
+      required: [id, project_id, app_id, build_id, status, input, logs, created_at]
       properties:
         id: {type: string}
         project_id: {type: string}
-        deployment_id: {type: string}
+        app_id: {type: string}
         build_id: {type: string}
         status: {type: string, enum: [queued, running, succeeded, failed]}
         input: {}

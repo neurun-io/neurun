@@ -71,11 +71,9 @@ func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result,
 
 	// --locked refuses to update Cargo.lock, so a build compiles the dependency
 	// versions the commit pinned rather than whatever resolves today.
-	arguments := []string{"build", "--release", "--locked"}
-	if request.EntryPoint != "" {
-		arguments = append(arguments, "--bin", request.EntryPoint)
-	}
-	compile := exec.CommandContext(ctx, builder.cargo, arguments...)
+	compile := exec.CommandContext(
+		ctx, builder.cargo, "build", "--release", "--locked",
+	)
 	compile.Dir = sourceDir
 	cache := request.CacheDirectory
 	if cache == "" {
@@ -95,7 +93,7 @@ func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result,
 	}
 
 	releaseDir := filepath.Join(cache, "target", "release")
-	binary, err := locateBinary(releaseDir, request.EntryPoint)
+	binary, err := locateBinary(releaseDir, "")
 	if err != nil {
 		return Result{}, err
 	}

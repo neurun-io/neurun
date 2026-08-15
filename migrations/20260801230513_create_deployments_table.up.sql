@@ -1,17 +1,14 @@
--- A deployment is the act of turning one source archive into a build: how far
--- it got, what the toolchain printed on the way, and what it produced. It
--- points at its build, which exists only once there is one — a deployment that
--- failed before the toolchain ran leaves build_id null and says why in failure.
+-- A deployment is the act of turning one commit into a build: how far it got
+-- and what the toolchain printed on the way. What it produced is the build that
+-- names it, and a deployment that failed before the toolchain ran produced
+-- none. The source it built is not kept: commit_sha is where those bytes are.
 CREATE TABLE deployments (
     id          text PRIMARY KEY,
     app_id      text NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
     runtime     text NOT NULL,
-    entrypoint  text NOT NULL,
     status      text NOT NULL,
-    source      jsonb NOT NULL,
     commit_sha  text,
     git_ref     text,
-    build_id    text REFERENCES builds(id) ON DELETE SET NULL,
     failure     jsonb,
     logs        text NOT NULL DEFAULT '',
     started_at  timestamptz,
@@ -34,4 +31,3 @@ CREATE TABLE deployments (
 
 CREATE INDEX deployments_app_created
     ON deployments(app_id, created_at DESC, id DESC);
-CREATE INDEX deployments_build ON deployments(build_id);

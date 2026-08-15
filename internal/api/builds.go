@@ -16,19 +16,14 @@ func (server *Server) listBuilds(ctx *gin.Context) {
 	}
 	records, err := server.builds.List(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID,
+		strings.TrimSpace(ctx.Query("app_id")),
 		strings.TrimSpace(ctx.Query("deployment_id")), limit,
 	)
 	if err != nil {
 		writeError(ctx, err)
 		return
 	}
-	responses := make([]dto.BuildResponse, len(records))
-	for index, record := range records {
-		responses[index] = dto.NewProducedResponse(
-			record.Build, record.DeploymentID, record.AppID,
-		)
-	}
-	ctx.JSON(http.StatusOK, gin.H{"builds": responses})
+	ctx.JSON(http.StatusOK, gin.H{"builds": dto.NewBuildResponses(records)})
 }
 
 func (server *Server) getBuild(ctx *gin.Context) {
@@ -39,7 +34,5 @@ func (server *Server) getBuild(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, dto.NewProducedResponse(
-		record.Build, record.DeploymentID, record.AppID,
-	))
+	ctx.JSON(http.StatusOK, dto.NewBuildResponse(record))
 }

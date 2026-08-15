@@ -30,8 +30,9 @@ export const app: App = {
 
 export const readyBuild: Build = {
   id: BUILD_ID,
+  app_id: APP_ID,
+  deployment_id: DEPLOYMENT_ID,
   runtime: "python",
-  entrypoint: "main.py:handler",
   source_sha256: SOURCE_SHA256,
   artifacts: [
     {
@@ -50,15 +51,7 @@ export const readyDeployment: Deployment = {
   project_id: PROJECT_ID,
   app_id: APP_ID,
   runtime: "python",
-  entrypoint: "main.py:handler",
   status: "ready",
-  source: {
-    id: "art_01HXQ8F2SRC",
-    name: "source",
-    size_bytes: 2048,
-    sha256: SOURCE_SHA256,
-    created_at: "2026-07-29T10:00:00Z",
-  },
   build: readyBuild,
   logs: "$ compile Python source\n",
   started_at: "2026-07-29T10:00:01Z",
@@ -70,7 +63,7 @@ export const readyDeployment: Deployment = {
 export const queuedExecution: Execution = {
   id: EXECUTION_ID,
   project_id: PROJECT_ID,
-  deployment_id: DEPLOYMENT_ID,
+  app_id: APP_ID,
   build_id: BUILD_ID,
   status: "queued",
   input: { url: "https://example.com" },

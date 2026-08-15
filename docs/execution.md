@@ -45,6 +45,6 @@ instead, and are unbuilt.
 
 ## Fields
 
-`id`, `project_id`, `deployment_id`, `build_id`, `status`, `input`, `output`,
+`id`, `project_id`, `app_id`, `build_id`, `status`, `input`, `output`,
 `failure`, `logs`, `created_at`, `started_at`, `finished_at`,
 `rerun_of_execution_id`.

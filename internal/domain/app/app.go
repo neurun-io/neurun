@@ -27,8 +27,10 @@ type App struct {
 	Name      string `json:"name"`
 	// Repository is owner/name on GitHub, empty when the app is deployed by
 	// upload instead.
-	Repository    string    `json:"repository,omitempty"`
-	ProductionRef string    `json:"production_ref,omitempty"`
+	Repository    string `json:"repository,omitempty"`
+	ProductionRef string `json:"production_ref,omitempty"`
+	// ActiveBuildID is the build the app runs. Empty runs its newest ready one.
+	ActiveBuildID string    `json:"active_build_id,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -84,6 +86,14 @@ func (record App) TracksRef(ref, defaultBranch string) bool {
 		ref == "refs/tags/"+tracked
 }
 
+// ActivateBuild pins the build the app runs. An empty build releases the pin,
+// and the app follows its newest ready build again.
+func (record *App) ActivateBuild(buildID string, now time.Time) error {
+	record.ActiveBuildID = strings.TrimSpace(buildID)
+	record.touch(now)
+	return record.Validate()
+}
+
 func (record *App) Rename(name string, now time.Time) error {
 	normalized, err := NormalizeName(name)
 	if err != nil {
@@ -121,6 +131,11 @@ func (record App) Validate() error {
 	}
 	if record.ProductionRef != "" && record.Repository == "" {
 		return fmt.Errorf("%w: a production ref needs a repository", ErrInvalid)
+	}
+	if record.ActiveBuildID != "" {
+		if err := ValidateIdentifier("active_build_id", record.ActiveBuildID); err != nil {
+			return err
+		}
 	}
 	return nil
 }

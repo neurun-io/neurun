@@ -19,12 +19,18 @@ type UpdateAppRequest struct {
 	Name *string `json:"name"`
 }
 
+// ActivateBuildRequest names the build an app runs. An empty build releases it.
+type ActivateBuildRequest struct {
+	BuildID string `json:"build_id"`
+}
+
 type AppResponse struct {
 	ID            string    `json:"id"`
 	ProjectID     string    `json:"project_id"`
 	Name          string    `json:"name"`
 	Repository    string    `json:"repository,omitempty"`
 	ProductionRef string    `json:"production_ref,omitempty"`
+	ActiveBuildID string    `json:"active_build_id,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -33,7 +39,8 @@ func NewAppResponse(record appdomain.App) AppResponse {
 	return AppResponse{
 		ID: record.ID, ProjectID: record.ProjectID, Name: record.Name,
 		Repository: record.Repository, ProductionRef: record.ProductionRef,
-		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+		ActiveBuildID: record.ActiveBuildID,
+		CreatedAt:     record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }
 

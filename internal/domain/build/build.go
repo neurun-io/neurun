@@ -14,6 +14,9 @@ import (
 var (
 	ErrInvalid  = errors.New("invalid build")
 	ErrNotFound = errors.New("build not found")
+	// ErrNotReady is an app with nothing to run: no build has finished, or the
+	// one that was named has not.
+	ErrNotReady = errors.New("build is not ready")
 )
 
 // Build is what one deployment produced: the layers it made, each named for
@@ -21,9 +24,12 @@ var (
 // resolves dependencies separately adds an install layer, and a toolchain that
 // grows a third only has to name it.
 type Build struct {
-	ID           string     `json:"id"`
+	ID    string `json:"id"`
+	AppID string `json:"app_id"`
+	// DeploymentID is the act that produced it, kept so a build can be traced
+	// back without asking every deployment what it made.
+	DeploymentID string     `json:"deployment_id"`
 	Runtime      Runtime    `json:"runtime"`
-	EntryPoint   string     `json:"entrypoint"`
 	SourceSHA256 string     `json:"source_sha256"`
 	Artifacts    []Artifact `json:"artifacts"`
 	CreatedAt    time.Time  `json:"created_at"`
@@ -32,14 +38,16 @@ type Build struct {
 // New seals what a deployment built into the build it points at.
 func New(
 	buildID string,
+	appID string,
+	deploymentID string,
 	runtime Runtime,
-	entryPoint string,
 	sourceSHA256 string,
 	artifacts []Artifact,
 	now time.Time,
 ) (Build, error) {
 	record := Build{
-		ID: buildID, Runtime: runtime, EntryPoint: entryPoint,
+		ID: buildID, AppID: appID, DeploymentID: deploymentID,
+		Runtime:      runtime,
 		SourceSHA256: sourceSHA256,
 		Artifacts:    append([]Artifact(nil), artifacts...),
 		CreatedAt:    now,
@@ -64,6 +72,12 @@ func (record Build) Layer(name string) (Artifact, bool) {
 // deployment that made it is the deployment's business.
 func (record Build) Validate() error {
 	if err := ValidateIdentifier("build_id", record.ID); err != nil {
+		return err
+	}
+	if err := ValidateIdentifier("app_id", record.AppID); err != nil {
+		return err
+	}
+	if err := ValidateIdentifier("deployment_id", record.DeploymentID); err != nil {
 		return err
 	}
 	if !record.Runtime.Valid() {

@@ -23,12 +23,13 @@ is enforced on every write.
 Source is never uploaded. A deployment is created by a push to the production
 ref of an app's connected repository, or by `POST /v1/github/deployments` with
 an `app_id` and an optional `ref`. The app must already exist and be connected.
-The entrypoint defaults to `main.py:handler` and is normalized before storage.
 
 Creation is synchronous: the request builds the source and returns the finished
-deployment, ready or failed.
+deployment, ready or failed. The archive it built is a temporary file, deleted
+when the build ends: `commit_sha` is where those bytes come from.
 
 ## Fields
 
-`id`, `project_id`, `app_id`, `runtime` (`python`), `entrypoint`, `status`,
-`source` (an [artifact](artifact.md)), `builds`, `created_at`, `updated_at`.
+`id`, `project_id`, `app_id`, `runtime`, `status`, `commit_sha`, `git_ref`,
+`build`, `failure`, `logs`, `started_at`, `finished_at`, `created_at`,
+`updated_at`.

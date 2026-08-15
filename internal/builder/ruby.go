@@ -59,12 +59,6 @@ func (builder *RubyBuilder) Build(ctx context.Context, request Request) (Result,
 	); err != nil {
 		return Result{}, fmt.Errorf("builder: extract source: %w", err)
 	}
-	file, _, _ := strings.Cut(request.EntryPoint, ":")
-	if info, err := os.Lstat(filepath.Join(sourceDir, filepath.FromSlash(file))); err != nil ||
-		!info.Mode().IsRegular() {
-		return Result{}, fmt.Errorf("builder: entrypoint file %q was not found", file)
-	}
-
 	codePath := filepath.Join(request.WorkDirectory, "code-layer.zip")
 	if err := zipDirectory(sourceDir, codePath); err != nil {
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)

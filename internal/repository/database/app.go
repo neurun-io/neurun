@@ -12,7 +12,8 @@ import (
 )
 
 const appColumns = `id, project_id, name, COALESCE(repository, ''),
-	COALESCE(production_ref, ''), created_at, updated_at`
+	COALESCE(production_ref, ''), COALESCE(active_build_id, ''),
+	created_at, updated_at`
 
 type AppRepository struct {
 	pool *pgxpool.Pool
@@ -29,7 +30,7 @@ func scanApp(row pgx.CollectableRow) (appdomain.App, error) {
 	var record appdomain.App
 	if err := row.Scan(
 		&record.ID, &record.ProjectID, &record.Name,
-		&record.Repository, &record.ProductionRef,
+		&record.Repository, &record.ProductionRef, &record.ActiveBuildID,
 		&record.CreatedAt, &record.UpdatedAt,
 	); err != nil {
 		return appdomain.App{}, err
@@ -204,12 +205,13 @@ func (repository *AppRepository) Update(
 	rows, err := repository.pool.Query(
 		ctx,
 		`UPDATE apps SET name = $2, updated_at = $3,
-		     repository = $6, production_ref = $7
+		     repository = $6, production_ref = $7, active_build_id = $8
 		 WHERE id = $1 AND created_at = $4 AND`+
 			fmt.Sprintf(inOrganization, "$5")+
 			` RETURNING `+appColumns,
 		record.ID, record.Name, record.UpdatedAt, record.CreatedAt, organizationID,
 		nullableString(record.Repository), nullableString(record.ProductionRef),
+		nullableString(record.ActiveBuildID),
 	)
 	if err != nil {
 		return appdomain.App{}, fmt.Errorf(

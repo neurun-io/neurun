@@ -13,12 +13,11 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/execution"
 )
 
-const executionSelect = `SELECT e.id, a.project_id, e.deployment_id, e.build_id,
+const executionSelect = `SELECT e.id, a.project_id, e.app_id, e.build_id,
 	e.status, e.input, e.output, e.failure, e.logs, e.created_at, e.started_at,
 	e.finished_at, e.rerun_of_execution_id, e.version
 FROM executions e
-JOIN deployments d ON d.id = e.deployment_id
-JOIN apps a ON a.id = d.app_id`
+JOIN apps a ON a.id = e.app_id`
 
 type ExecutionRepository struct {
 	pool *pgxpool.Pool
@@ -44,7 +43,7 @@ func scanExecution(row pgx.CollectableRow) (executionRow, error) {
 	var rerunOf *string
 	err := row.Scan(
 		&result.record.ID, &result.record.ProjectID,
-		&result.record.DeploymentID, &result.record.BuildID,
+		&result.record.AppID, &result.record.BuildID,
 		&result.record.Status, &inputJSON, &outputJSON, &failureJSON,
 		&result.record.Logs, &result.record.CreatedAt,
 		&result.record.StartedAt, &result.record.FinishedAt,
@@ -86,11 +85,11 @@ func (repository *ExecutionRepository) Create(
 	_, err := repository.pool.Exec(
 		ctx,
 		`INSERT INTO executions
-		 (id, deployment_id, build_id, status, input, output,
+		 (id, app_id, build_id, status, input, output,
 		  failure, logs, created_at, started_at, finished_at,
 		  rerun_of_execution_id, version)
 		 VALUES ($1, $2, $3, $4, $5, NULL, NULL, '', $6, NULL, NULL, $7, 1)`,
-		record.ID, record.DeploymentID, record.BuildID,
+		record.ID, record.AppID, record.BuildID,
 		record.Status, []byte(record.Input), record.CreatedAt,
 		nullableString(record.RerunOfExecutionID),
 	)
@@ -131,7 +130,8 @@ func (repository *ExecutionRepository) List(
 	ctx context.Context,
 	organizationID string,
 	projectID string,
-	deploymentID string,
+	appID string,
+	buildID string,
 	limit int,
 ) ([]execution.Execution, error) {
 	rows, err := repository.pool.Query(
@@ -139,10 +139,11 @@ func (repository *ExecutionRepository) List(
 		executionSelect+`
 		 JOIN projects p ON p.id = a.project_id
 		 WHERE ($1 = '' OR a.project_id = $1)
-		 AND ($2 = '' OR e.deployment_id = $2)
-		 AND p.organization_id = $4
-		 ORDER BY e.created_at DESC, e.id DESC LIMIT $3`,
-		projectID, deploymentID, postgresLimit(limit), organizationID,
+		 AND ($2 = '' OR e.app_id = $2)
+		 AND ($3 = '' OR e.build_id = $3)
+		 AND p.organization_id = $5
+		 ORDER BY e.created_at DESC, e.id DESC LIMIT $4`,
+		projectID, appID, buildID, postgresLimit(limit), organizationID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list executions: %w", err)
@@ -324,12 +325,12 @@ func updateExecution(
 	tag, err := tx.Exec(
 		ctx,
 		`UPDATE executions SET
-		     deployment_id = $2, build_id = $3, status = $4,
+		     app_id = $2, build_id = $3, status = $4,
 		     input = $5, output = $6, failure = $7, logs = $8,
 		     created_at = $9, started_at = $10, finished_at = $11,
 		     rerun_of_execution_id = $12, version = version + 1
 		 WHERE id = $1 AND version = $13 AND status = $14`,
-		record.ID, record.DeploymentID, record.BuildID,
+		record.ID, record.AppID, record.BuildID,
 		record.Status, []byte(record.Input), output, failureJSON, record.Logs,
 		record.CreatedAt, record.StartedAt, record.FinishedAt,
 		nullableString(record.RerunOfExecutionID), currentVersion, expectedStatus,

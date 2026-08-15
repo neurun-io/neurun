@@ -366,7 +366,6 @@ func (service *GitHubService) build(
 	return service.deployments.Create(ctx, organizationID, dto.CreateDeploymentRequest{
 		AppID:      app.ID,
 		Runtime:    runtime,
-		SourceName: fmt.Sprintf("%s-%s.zip", parsed.Name, commit[:7]),
 		Source:     file,
 		CommitSHA:  commit,
 		GitRef:     ref,

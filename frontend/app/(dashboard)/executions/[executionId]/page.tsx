@@ -66,10 +66,10 @@ export default function ExecutionPage() {
             columns={2}
             rows={[
               {
-                label: "Deployment",
+                label: "App",
                 value: (
-                  <Link className="underline" href={`/deployments/${execution.deployment_id}`}>
-                    {execution.deployment_id}
+                  <Link className="underline" href={`/apps/${execution.app_id}`}>
+                    {execution.app_id}
                   </Link>
                 ),
               },

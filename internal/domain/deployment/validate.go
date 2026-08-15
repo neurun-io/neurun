@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/ids"
 )
 
@@ -29,19 +28,12 @@ func (record Deployment) Validate() error {
 	if !record.Runtime.Valid() {
 		return fmt.Errorf("%w: deployment runtime is invalid", ErrInvalid)
 	}
-	normalized, err := build.NormalizeEntryPoint(record.Runtime, record.EntryPoint)
-	if err != nil || normalized != record.EntryPoint {
-		return fmt.Errorf("%w: deployment entrypoint is not normalized", ErrInvalid)
-	}
 	if !record.Status.Valid() {
 		return fmt.Errorf("%w: deployment status is invalid", ErrInvalid)
 	}
 	if record.CreatedAt.IsZero() || record.UpdatedAt.IsZero() ||
 		record.UpdatedAt.Before(record.CreatedAt) {
 		return fmt.Errorf("%w: deployment timestamps are invalid", ErrInvalid)
-	}
-	if err := build.ValidateArtifact(record.Source); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	if len(record.Logs) > MaxLogBytes {
 		return fmt.Errorf("%w: deployment logs exceed the cap", ErrInvalid)
@@ -104,9 +96,7 @@ func validateOutcome(record Deployment) error {
 	if err := record.Build.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	if record.Build.Runtime != record.Runtime ||
-		record.Build.EntryPoint != record.EntryPoint ||
-		record.Build.SourceSHA256 != record.Source.SHA256 {
+	if record.Build.Runtime != record.Runtime {
 		return fmt.Errorf("%w: build metadata is inconsistent", ErrInvalid)
 	}
 	if record.Build.CreatedAt.Before(record.CreatedAt) {

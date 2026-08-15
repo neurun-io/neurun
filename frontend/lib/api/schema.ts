@@ -344,6 +344,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{app_id}/active-build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Choose the build the app runs. It stays chosen: a later deployment builds, but does not take over. An empty build releases the choice, and the app runs the newest build it has ready again. */
+        put: operations["activateBuild"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/github/installation": {
         parameters: {
             query?: never;
@@ -647,7 +666,7 @@ export interface paths {
         };
         get: operations["listExecutions"];
         put?: never;
-        /** @description Run an app. build_id picks one of its builds; absent takes the latest the app has ready. The execution is pinned to that build and stays there, whatever is deployed afterwards. */
+        /** @description Run an app. Which build runs is the app's own answer — its active build, or the newest it has. The execution is pinned to that build and stays there, whatever is deployed afterwards. */
         post: operations["createExecution"];
         delete?: never;
         options?: never;
@@ -725,6 +744,8 @@ export interface components {
             repository?: string;
             /** @description The ref whose pushes deploy. Absent follows the default branch. */
             production_ref?: string;
+            /** @description The build the app runs. Absent runs the newest build it has ready. */
+            active_build_id?: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1006,30 +1027,27 @@ export interface components {
             code: string;
             message: string;
         };
-        /** @description What a deployment produced: the artifacts, and what identifies them. A build carries no status and no failure — the deployment that ran it does, and a deployment that produced nothing has no build at all. */
+        /** @description A runnable app: whose it is, what produced it, and the artifacts that run. A build carries no status and no failure — the deployment that ran it does, and a deployment that produced nothing has no build at all. */
         Build: {
             id: string;
+            app_id: string;
+            deployment_id: string;
             /** @enum {string} */
             runtime: "python" | "rust" | "go" | "ruby" | "node";
-            entrypoint: string;
             source_sha256: string;
             artifacts: components["schemas"]["Artifact"][];
             /** Format: date-time */
             created_at: string;
-            deployment_id?: string;
-            app_id?: string;
         };
-        /** @description One attempt to turn a source archive into a build. Statuses run queued → building → publishing → ready or failed; logs carry what the toolchain printed and arrive while it is still running. */
+        /** @description One attempt to turn a commit into a build. Statuses run queued → building → publishing → ready or failed; logs carry what the toolchain printed and arrive while it is still running. */
         Deployment: {
             id: string;
             project_id: string;
             app_id: string;
             /** @enum {string} */
             runtime: "python" | "rust" | "go" | "ruby" | "node";
-            entrypoint: string;
             /** @enum {string} */
             status: "queued" | "building" | "publishing" | "ready" | "failed";
-            source: components["schemas"]["Artifact"];
             commit_sha?: string;
             git_ref?: string;
             build?: components["schemas"]["Build"] | null;
@@ -1047,7 +1065,7 @@ export interface components {
         Execution: {
             id: string;
             project_id: string;
-            deployment_id: string;
+            app_id: string;
             build_id: string;
             /** @enum {string} */
             status: "queued" | "running" | "succeeded" | "failed";
@@ -1793,6 +1811,37 @@ export interface operations {
             409: components["responses"]["Problem"];
         };
     };
+    activateBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description One of the app's ready builds, or empty to release. */
+                    build_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description App updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
     getInstallation: {
         parameters: {
             query?: never;
@@ -2301,6 +2350,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: components["parameters"]["Limit"];
+                app_id?: string;
                 deployment_id?: string;
             };
             header?: never;
@@ -2427,7 +2477,8 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: components["parameters"]["Limit"];
-                deployment_id?: string;
+                app_id?: string;
+                build_id?: string;
             };
             header?: never;
             path?: never;
@@ -2459,7 +2510,6 @@ export interface operations {
             content: {
                 "application/json": {
                     app_id: string;
-                    build_id?: string;
                     input: unknown;
                 };
             };

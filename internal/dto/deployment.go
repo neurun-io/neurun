@@ -16,12 +16,11 @@ import (
 )
 
 type CreateDeploymentRequest struct {
-	AppID      string
-	Runtime    build.Runtime
-	EntryPoint string
-	SourceName string
-	Source     io.Reader
-	// Set when the source was fetched from GitHub rather than uploaded.
+	AppID   string
+	Runtime build.Runtime
+	// Source is the archive to build. It is read once, into a temporary file the
+	// build owns, and never stored.
+	Source    io.Reader
 	CommitSHA string
 	GitRef    string
 }
@@ -31,9 +30,7 @@ type DeploymentResponse struct {
 	ProjectID  string            `json:"project_id"`
 	AppID      string            `json:"app_id"`
 	Runtime    build.Runtime     `json:"runtime"`
-	EntryPoint string            `json:"entrypoint"`
 	Status     deployment.Status `json:"status"`
-	Source     ArtifactResponse  `json:"source"`
 	CommitSHA  string            `json:"commit_sha,omitempty"`
 	GitRef     string            `json:"git_ref,omitempty"`
 	// Build is what it produced, absent until it has. Logs are what the
@@ -55,8 +52,8 @@ func NewDeploymentResponse(record deployment.Deployment) DeploymentResponse {
 	}
 	return DeploymentResponse{
 		ID: record.ID, ProjectID: record.ProjectID, AppID: record.AppID,
-		Runtime: record.Runtime, EntryPoint: record.EntryPoint,
-		Status: record.Status, Source: NewArtifactResponse(record.Source),
+		Runtime:   record.Runtime,
+		Status:    record.Status,
 		CommitSHA: record.CommitSHA, GitRef: record.GitRef,
 		Build: produced, Failure: record.Failure, Logs: record.Logs,
 		StartedAt: record.StartedAt, FinishedAt: record.FinishedAt,

@@ -71,6 +71,24 @@ func (server *Server) updateApp(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, dto.NewAppResponse(record))
 }
 
+// activateBuild pins the build the app runs, or releases the pin when the build
+// is empty.
+func (server *Server) activateBuild(ctx *gin.Context) {
+	var body dto.ActivateBuildRequest
+	if !server.bindJSON(ctx, &body) {
+		return
+	}
+	record, err := server.apps.ActivateBuild(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID,
+		ctx.Param("app_id"), body.BuildID,
+	)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, dto.NewAppResponse(record))
+}
+
 // deleteApp destroys an app and the deployments, builds and executions under it.
 func (server *Server) deleteApp(ctx *gin.Context) {
 	if err := server.apps.Delete(

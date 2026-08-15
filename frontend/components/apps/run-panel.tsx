@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Play } from "lucide-react";
 import { toast } from "sonner";
 
@@ -10,25 +11,17 @@ import { Panel } from "@/components/neurun/panel";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useBuildsQuery, useCreateExecutionMutation } from "@/lib/api/queries";
+import { useAppQuery, useCreateExecutionMutation } from "@/lib/api/queries";
 
-/** Runs the app: its latest build, or one picked from what it has produced. */
+/** Runs the app on the build it is active on. */
 export function RunPanel({ appId }: { appId: string }) {
-  const builds = useBuildsQuery();
+  const app = useAppQuery(appId);
   const create = useCreateExecutionMutation();
   const router = useRouter();
   const [input, setInput] = useState("{}");
-  const [buildId, setBuildId] = useState("latest");
   const [parseError, setParseError] = useState<string | null>(null);
 
-  const available = (builds.data?.builds ?? []).filter((build) => build.app_id === appId);
+  const active = app.data?.active_build_id;
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -41,7 +34,7 @@ export function RunPanel({ appId }: { appId: string }) {
       return;
     }
     create.mutate(
-      { appId, input: parsed, buildId: buildId === "latest" ? undefined : buildId },
+      { appId, input: parsed },
       {
         onSuccess: (execution) => {
           toast.success(`Queued ${execution.id}`);
@@ -55,22 +48,6 @@ export function RunPanel({ appId }: { appId: string }) {
     <Panel label="Run">
       <form onSubmit={submit} className="space-y-3">
         <div className="space-y-1.5">
-          <Label htmlFor="run-build">Build</Label>
-          <Select value={buildId} onValueChange={setBuildId}>
-            <SelectTrigger id="run-build" className="font-mono">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="latest">Latest ready</SelectItem>
-              {available.map((build) => (
-                <SelectItem key={build.id} value={build.id} className="font-mono">
-                  {build.id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
           <Label htmlFor="run-input">JSON input</Label>
           <Textarea
             id="run-input"
@@ -81,10 +58,21 @@ export function RunPanel({ appId }: { appId: string }) {
         </div>
         {parseError ? <p className="text-sm text-destructive">{parseError}</p> : null}
         {create.isError ? <InlineError error={create.error} /> : null}
-        <Button disabled={create.isPending}>
-          <Play aria-hidden className="size-3.5" strokeWidth={1.5} />
-          {create.isPending ? "Queuing…" : "Run"}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button disabled={create.isPending}>
+            <Play aria-hidden className="size-3.5" strokeWidth={1.5} />
+            {create.isPending ? "Queuing…" : "Run"}
+          </Button>
+          <span className="nr-label">
+            {active ? (
+              <Link className="font-mono underline" href={`/builds/${active}`}>
+                {active}
+              </Link>
+            ) : (
+              "Newest build"
+            )}
+          </span>
+        </div>
       </form>
     </Panel>
   );
