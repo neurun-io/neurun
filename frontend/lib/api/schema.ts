@@ -403,7 +403,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Build a ref of the app's connected repository. An absent ref uses the app's production ref. A push to that ref does the same thing without this call. */
+        /** @description Queue a ref of the app's connected repository. An absent ref uses the app's production ref. A push to that ref does the same thing without this call. The deployment comes back queued — follow it for its status and its logs; the build runs on its own. */
         post: operations["deployRef"];
         delete?: never;
         options?: never;
@@ -1931,8 +1931,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Deployment built. */
-            201: {
+            /** @description Deployment queued. */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

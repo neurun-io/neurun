@@ -184,9 +184,23 @@ func (service *DeploymentService) Create(
 	}
 	record.FromGit(request.CommitSHA, request.GitRef)
 	if err := service.deployments.Save(ctx, record); err != nil {
-		return deployment.Deployment{}, fmt.Errorf("persist uploaded deployment: %w", err)
+		return deployment.Deployment{}, fmt.Errorf("persist queued deployment: %w", err)
 	}
-	return service.runBuild(ctx, record)
+	service.schedule(record)
+	return deployment.CloneDeployment(record), nil
+}
+
+// schedule builds on a context of its own, so cancelling the caller cannot
+// abandon a deployment mid-toolchain.
+func (service *DeploymentService) schedule(record deployment.Deployment) {
+	go func() {
+		if _, err := service.runBuild(context.Background(), record); err != nil {
+			slog.Error(
+				"deployment build failed",
+				"deployment", record.ID, "app", record.AppID, "error", err,
+			)
+		}
+	}()
 }
 
 func (service *DeploymentService) Get(

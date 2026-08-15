@@ -612,9 +612,10 @@ paths:
     post:
       operationId: deployRef
       description: >-
-        Build a ref of the app's connected repository. An absent ref uses the
+        Queue a ref of the app's connected repository. An absent ref uses the
         app's production ref. A push to that ref does the same thing without
-        this call.
+        this call. The deployment comes back queued — follow it for its status
+        and its logs; the build runs on its own.
       requestBody:
         required: true
         content:
@@ -627,8 +628,8 @@ paths:
                 app_id: {type: string}
                 ref: {type: string}
       responses:
-        "201":
-          description: Deployment built.
+        "202":
+          description: Deployment queued.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Deployment"}

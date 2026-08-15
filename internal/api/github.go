@@ -20,9 +20,9 @@ const (
 	// GitHub caps a delivery at 25MB, but a push event carries at most twenty
 	// commits and never approaches that.
 	maximumWebhookBytes = int64(5_242_880)
-	// A ceiling on a deploy that outlived its delivery, so a wedged build
+	// A ceiling on a delivery that outlived its request, so a wedged fetch
 	// cannot leave a goroutine running for the life of the process.
-	webhookDeployTimeout = 30 * time.Minute
+	webhookDeployTimeout = 10 * time.Minute
 )
 
 // recordInstallation stores the installation GitHub redirects back with after
@@ -115,7 +115,7 @@ func (server *Server) connectRepository(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, dto.NewAppResponse(record))
 }
 
-// deployRef builds a commit from the app's connected repository. An absent ref
+// deployRef queues a commit from the app's connected repository. An absent ref
 // uses the app's production ref.
 func (server *Server) deployRef(ctx *gin.Context) {
 	var body dto.DeployRefRequest
@@ -134,7 +134,7 @@ func (server *Server) deployRef(ctx *gin.Context) {
 		writeError(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusCreated, dto.NewDeploymentResponse(record))
+	ctx.JSON(http.StatusAccepted, dto.NewDeploymentResponse(record))
 }
 
 // gitHubWebhook takes a delivery from GitHub. It carries neither a session nor
@@ -164,10 +164,9 @@ func (server *Server) gitHubWebhook(ctx *gin.Context) {
 		return
 	}
 
-	// A build runs for minutes and GitHub abandons a delivery after ten
-	// seconds, so the deploy outlives the request that started it. Detaching
-	// the context rather than reusing it keeps the build from being cancelled
-	// the moment this handler returns.
+	// Fetching each app's source takes longer than the ten seconds GitHub gives
+	// a delivery, so it outlives the request. Builds are queued from there and
+	// run on their own.
 	deployCtx, cancel := context.WithTimeout(
 		context.WithoutCancel(ctx.Request.Context()), webhookDeployTimeout,
 	)
