@@ -24,7 +24,7 @@ var knownScopes = []string{
 	"*", "users:read", "users:write", "api_keys:read", "api_keys:write",
 	"projects:read", "projects:write", "apps:read", "apps:write",
 	"deployments:read", "deployments:write",
-	"builds:read", "executions:read", "executions:write",
+	"executions:read", "executions:write",
 }
 
 // User is a global identity. What it may do lives in an organization

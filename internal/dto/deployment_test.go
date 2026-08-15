@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
@@ -26,25 +27,24 @@ func TestResponsesNeverCarryTheStorageHandle(t *testing.T) {
 
 	record := deployment.Deployment{
 		ID: "dep_fixture", ProjectID: "prj_fixture", AppID: "app_fixture",
-		Runtime: deployment.RuntimePython, EntryPoint: "main.py:handler",
+		Runtime: build.RuntimePython, EntryPoint: "main.py:handler",
 		Status: deployment.StatusReady,
-		Source: deployment.Artifact{
-			ID: "art_source", Kind: deployment.ArtifactSource, Name: "source.zip",
+		Source: build.Artifact{
+			ID: "art_source", Kind: build.ArtifactSource, Name: "source.zip",
 			MediaType: "application/zip", SizeBytes: 12, SHA256: sourceDigest,
 			StorageKey: sourceKey, CreatedAt: now,
 		},
-		Builds: []deployment.Build{{
-			ID: "bld_fixture", ProjectID: "prj_fixture",
-			DeploymentID: "dep_fixture", Number: 1,
-			Status: deployment.StatusReady, Runtime: deployment.RuntimePython,
+		Build: &build.Build{
+			ID: "bld_fixture", Runtime: build.RuntimePython,
 			EntryPoint: "main.py:handler", SourceSHA256: sourceDigest,
-			Artifacts: []deployment.Artifact{{
-				ID: "art_code", Kind: deployment.ArtifactCodeLayer, Name: "code.zip",
+			Artifacts: []build.Artifact{{
+				ID: "art_code", Kind: build.ArtifactCodeLayer, Name: "code.zip",
 				MediaType: "application/zip", SizeBytes: 24, SHA256: codeDigest,
 				StorageKey: codeKey, CreatedAt: now,
 			}},
-			StartedAt: now, FinishedAt: &finished,
-		}},
+			CreatedAt: finished,
+		},
+		StartedAt: &now, FinishedAt: &finished,
 		CreatedAt: now, UpdatedAt: finished,
 	}
 
@@ -72,7 +72,7 @@ func TestResponsesNeverCarryTheStorageHandle(t *testing.T) {
 		t.Fatal("domain record no longer carries storage_key; this guard is now testing nothing")
 	}
 
-	if encoded, err = json.Marshal(NewBuildResponse(record.Builds[0])); err != nil {
+	if encoded, err = json.Marshal(NewBuildResponse(*record.Build)); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(encoded, []byte(codeKey)) {

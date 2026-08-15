@@ -45,14 +45,14 @@ func (role Role) Scopes() []string {
 		return []string{
 			"projects:read", "apps:read", "apps:write",
 			"deployments:read", "deployments:write",
-			"builds:read", "executions:read", "executions:write",
+			"executions:read", "executions:write",
 			"browser_profiles:read", "browser_profiles:write",
 		}
 	case RoleViewer:
 		// No browser_profiles:write, which is also what gates reading a
 		// profile's cookies in the clear.
 		return []string{
-			"projects:read", "apps:read", "deployments:read", "builds:read",
+			"projects:read", "apps:read", "deployments:read",
 			"executions:read", "users:read", "api_keys:read",
 			"browser_profiles:read",
 		}

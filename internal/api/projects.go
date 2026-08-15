@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -14,7 +13,7 @@ func (server *Server) listProjects(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	records, err := server.deployments.ListProjects(
+	records, err := server.projects.List(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID, limit,
 	)
 	if err != nil {
@@ -29,7 +28,7 @@ func (server *Server) createProject(ctx *gin.Context) {
 	if !server.bindJSON(ctx, &body) {
 		return
 	}
-	record, err := server.deployments.CreateProject(
+	record, err := server.projects.Create(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID, body.Name,
 	)
 	if err != nil {
@@ -40,7 +39,7 @@ func (server *Server) createProject(ctx *gin.Context) {
 }
 
 func (server *Server) getProject(ctx *gin.Context) {
-	record, err := server.deployments.GetProject(
+	record, err := server.projects.Get(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("project_id"),
 	)
 	if err != nil {
@@ -55,7 +54,7 @@ func (server *Server) updateProject(ctx *gin.Context) {
 	if !server.bindJSON(ctx, &body) {
 		return
 	}
-	record, err := server.deployments.UpdateProject(
+	record, err := server.projects.Update(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("project_id"), body,
 	)
 	if err != nil {
@@ -69,109 +68,11 @@ func (server *Server) updateProject(ctx *gin.Context) {
 // execution beneath it. Users and API keys are not touched — they belong to the
 // install, not to a project.
 func (server *Server) deleteProject(ctx *gin.Context) {
-	projectID := ctx.Param("project_id")
-	if err := server.deployments.DeleteProject(ctx.Request.Context(), principalOf(ctx).OrganizationID, projectID); err != nil {
+	if err := server.projects.Delete(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("project_id"),
+	); err != nil {
 		writeError(ctx, err)
 		return
 	}
 	ctx.Status(http.StatusNoContent)
-}
-
-func (server *Server) listApps(ctx *gin.Context) {
-	limit, ok := server.pageLimit(ctx)
-	if !ok {
-		return
-	}
-	records, err := server.deployments.ListApps(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID,
-		strings.TrimSpace(ctx.Query("project_id")),
-		ctx.Query("name"), limit,
-	)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	ctx.JSON(http.StatusOK, gin.H{"apps": dto.NewAppResponses(records)})
-}
-
-func (server *Server) createApp(ctx *gin.Context) {
-	var body dto.CreateAppRequest
-	if !server.bindJSON(ctx, &body) {
-		return
-	}
-	// An app is only ever created from a repository, so creation goes through
-	// the integration that can prove the installation reads it.
-	record, err := server.gitHub.CreateApp(ctx.Request.Context(), principalOf(ctx).OrganizationID, body)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	ctx.JSON(http.StatusCreated, dto.NewAppResponse(record))
-}
-
-func (server *Server) getApp(ctx *gin.Context) {
-	record, err := server.deployments.GetApp(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("app_id"),
-	)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	ctx.JSON(http.StatusOK, dto.NewAppResponse(record))
-}
-
-func (server *Server) updateApp(ctx *gin.Context) {
-	var body dto.UpdateAppRequest
-	if !server.bindJSON(ctx, &body) {
-		return
-	}
-	if body.Name == nil {
-		invalidRequest(ctx, "app update must include name")
-		return
-	}
-	record, err := server.deployments.UpdateApp(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("app_id"), body,
-	)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	ctx.JSON(http.StatusOK, dto.NewAppResponse(record))
-}
-
-// deleteApp destroys an app and the deployments, builds and executions under it.
-func (server *Server) deleteApp(ctx *gin.Context) {
-	appID := ctx.Param("app_id")
-	if err := server.deployments.DeleteApp(ctx.Request.Context(), principalOf(ctx).OrganizationID, appID); err != nil {
-		writeError(ctx, err)
-		return
-	}
-	ctx.Status(http.StatusNoContent)
-}
-
-func (server *Server) listBuilds(ctx *gin.Context) {
-	limit, ok := server.pageLimit(ctx)
-	if !ok {
-		return
-	}
-	records, err := server.deployments.ListBuilds(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID,
-		strings.TrimSpace(ctx.Query("deployment_id")), limit,
-	)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	ctx.JSON(http.StatusOK, gin.H{"builds": dto.NewBuildResponses(records)})
-}
-
-func (server *Server) getBuild(ctx *gin.Context) {
-	record, err := server.deployments.GetBuild(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("build_id"),
-	)
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	ctx.JSON(http.StatusOK, dto.NewBuildResponse(record))
 }

@@ -11,19 +11,19 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/session"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/ids"
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/database"
 )
 
 type AccountService struct {
-	users *repository.UserRepository
-	keys  *repository.APIKeyRepository
+	users *database.UserRepository
+	keys  *database.APIKeyRepository
 	now   func() time.Time
 	newID func(string) (string, error)
 }
 
 func NewAccountService(
-	users *repository.UserRepository,
-	keys *repository.APIKeyRepository,
+	users *database.UserRepository,
+	keys *database.APIKeyRepository,
 	now func() time.Time,
 	newID func(string) (string, error),
 ) (*AccountService, error) {

@@ -155,7 +155,7 @@ curl -sS -X POST $NEURUN_URL/v1/github/deployments \\
 
 HTTP/1.1 201 Created
 # {"id":"dep_01HXQ8F2K9","status":"ready",
-#  "builds":[{"id":"bld_9F3AC41","number":1,"status":"ready"}]}`}</Snippet>
+#  "build":{"id":"bld_9F3AC41","runtime":"python"}}`}</Snippet>
 
         <H2 id="run">Run it</H2>
         <P>
@@ -197,9 +197,9 @@ HTTP/1.1 201 Created
     source: "content/collections/neurun/apps.mdx",
     toc: [
       { id: "app", label: "The app must exist first" },
-      { id: "source", label: "One commit, many builds" },
+      { id: "source", label: "One deployment, one build" },
       { id: "entrypoint", label: "Runtime and entrypoint" },
-      { id: "status", label: "Status mirrors the newest build" },
+      { id: "status", label: "Status is the deployment's own" },
       { id: "delete", label: "Deleting cascades" },
     ],
     body: (
@@ -219,11 +219,11 @@ HTTP/1.1 201 Created
           ]}
         />
 
-        <H2 id="source">One commit, many builds</H2>
+        <H2 id="source">One deployment, one build</H2>
         <P>
-          The fetched source never changes. Rebuilding produces a new build, never new source — so a
-          deployment that failed on a missing dependency and then succeeded after the toolchain was
-          fixed keeps both attempts under one record rather than becoming two unrelated ones.
+          A deployment is one attempt at one commit, and a build is what came out of it. An attempt
+          that failed has a <C>failure</C> and no build at all — deploy the commit again and you get
+          a second deployment, not a second build under the first.
         </P>
         <Snippet filename="shell">{`# every deployment for one app, newest first
 curl -sS "$NEURUN_URL/v1/deployments?app_id=app_7QK2M0X4&limit=20" \\
@@ -268,66 +268,47 @@ curl -sS "$NEURUN_URL/v1/deployments?app_id=app_7QK2M0X4&limit=20" \\
     label: "Builds",
     group: "Deploy",
     title: "Builds",
-    lead: "One attempt at turning a deployment's source into runnable artifacts. Numbered, immutable, and either ready or failed.",
+    lead: "What a deployment produced: the artifacts, and what identifies them. Immutable, and only ever the result of an attempt that got there.",
     tags: ["v1", "stable"],
     source: "content/collections/neurun/builds.mdx",
     toc: [
-      { id: "states", label: "States" },
-      { id: "numbering", label: "Numbering" },
-      { id: "artifacts", label: "What a build produces" },
-      { id: "interrupted", label: "Interrupted builds" },
+      { id: "output", label: "A build is an output" },
+      { id: "artifacts", label: "What a build contains" },
+      { id: "pinning", label: "Executions pin to one" },
     ],
     body: (
       <>
-        <H2 id="states">States</H2>
+        <H2 id="output">A build is an output</H2>
         <P>
-          A build only ever moves out of <C>building</C>, and only once. Finishing a finished build is
-          refused, because an execution may already be pinned to it.
-        </P>
-        <Rows
-          items={[
-            { term: "building", body: "Running. No finish time, no failure." },
-            {
-              term: "ready",
-              body: "Produced artifacts, including a code layer. Executions may pin to it.",
-            },
-            { term: "failed", body: "Carries a structured failure — a code and a message, not a wall of log text." },
-          ]}
-        />
-
-        <H2 id="numbering">Numbering</H2>
-        <P>
-          Builds are numbered from 1 within their deployment and stay contiguous. The server assigns
-          the next number rather than trusting a caller, so build 4 is always the fourth attempt at
-          that source.
+          A build carries no status and no failure. How the attempt went belongs to the deployment
+          that ran it — its stages, its toolchain output, and the reason it stopped. A deployment
+          that failed before producing artifacts has no build at all, so the presence of one is
+          itself the statement that it worked.
         </P>
 
-        <H2 id="artifacts">What a build produces</H2>
+        <H2 id="artifacts">What a build contains</H2>
         <P>
           A code layer always, and an install layer when the source has a non-empty{" "}
-          <C>requirements.txt</C>. Both are artifacts, addressed by digest, and both are recorded on
-          the build that made them.
+          <C>requirements.txt</C>. Both are artifacts, addressed by digest. Alongside them the build
+          records what runs them: the runtime, the entrypoint, and the digest of the source it was
+          made from.
         </P>
-        <Snippet language="json" filename="GET /v1/builds/bld_9F3AC41">{`{
+        <Snippet language="json" filename="deployment.build">{`{
   "id": "bld_9F3AC41",
-  "deployment_id": "dep_01HXQ8F2K9",
-  "number": 1,
-  "status": "ready",
   "runtime": "python",
   "entrypoint": "main.py:handler",
   "source_sha256": "9f3a…c41",
   "artifacts": [
-    {"kind": "code"},
-    {"kind": "install"}
+    {"kind": "code_layer"},
+    {"kind": "install_layer"}
   ]
 }`}</Snippet>
 
-        <H2 id="interrupted">Interrupted builds</H2>
+        <H2 id="pinning">Executions pin to one</H2>
         <P>
-          If the process dies mid-build the row is left <C>building</C>. On the next start, recovery
-          marks it <C>failed</C> with <C>build_interrupted</C>. It is never retried automatically —
-          the side effects of the first attempt already happened, and repeating them silently is how
-          you get two of something you meant to have one of.
+          An execution names the build it ran against and keeps it. Deploying again produces a new
+          deployment with a new build; nothing an older execution was pinned to ever changes
+          underneath it.
         </P>
       </>
     ),

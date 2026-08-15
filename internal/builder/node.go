@@ -11,8 +11,8 @@ import (
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
 
-	"github.com/neurun-io/neurun/internal/artifact"
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/build"
+	"github.com/neurun-io/neurun/internal/files"
 )
 
 // BundleName is the single file a Node build ships. Like the compiled runtimes,
@@ -38,7 +38,7 @@ type NodeOptions struct {
 // server's and an image without it is not a class of failure.
 type NodeBuilder struct {
 	npm    string
-	limits artifact.ArchiveLimits
+	limits files.ArchiveLimits
 }
 
 func NewNode(options NodeOptions) (*NodeBuilder, error) {
@@ -50,7 +50,7 @@ func NewNode(options NodeOptions) (*NodeBuilder, error) {
 	}
 	return &NodeBuilder{
 		npm: options.NPMExecutable,
-		limits: artifact.ArchiveLimits{
+		limits: files.ArchiveLimits{
 			MaxEntries:       options.MaxArchiveEntries,
 			MaxExpandedBytes: options.MaxArchiveExpandedBytes,
 		},
@@ -58,7 +58,7 @@ func NewNode(options NodeOptions) (*NodeBuilder, error) {
 }
 
 func (builder *NodeBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != deployment.RuntimeNode {
+	if request.Runtime != build.RuntimeNode {
 		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
 	}
 	if ctx == nil {
@@ -69,7 +69,7 @@ func (builder *NodeBuilder) Build(ctx context.Context, request Request) (Result,
 		return Result{}, errors.New("builder: source archive and work directory are required")
 	}
 	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := artifact.ExtractZIPFile(
+	if _, err := files.ExtractZIPFile(
 		request.SourceArchivePath, sourceDir, builder.limits,
 	); err != nil {
 		return Result{}, fmt.Errorf("builder: extract source: %w", err)
@@ -100,8 +100,8 @@ func (builder *NodeBuilder) Build(ctx context.Context, request Request) (Result,
 			"npm_config_cache="+filepath.Join(cache, "npm"),
 			"npm_config_update_notifier=false",
 		)
-		if output, err := install.CombinedOutput(); err != nil {
-			return Result{}, commandError("install Node dependencies", output, err)
+		if err := request.run("install Node dependencies", install); err != nil {
+			return Result{}, err
 		}
 	} else if hasDependencies(sourceDir) {
 		return Result{}, errors.New(
@@ -135,7 +135,7 @@ func (builder *NodeBuilder) Build(ctx context.Context, request Request) (Result,
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)
 	}
 	return Result{Artifacts: []Output{{
-		Kind:      deployment.ArtifactCodeLayer,
+		Kind:      build.ArtifactCodeLayer,
 		Name:      "code-layer.zip",
 		MediaType: "application/zip",
 		Path:      codePath,

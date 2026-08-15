@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/neurun-io/neurun/internal/artifact"
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/build"
+	"github.com/neurun-io/neurun/internal/files"
 )
 
 type RubyOptions struct {
@@ -23,7 +23,7 @@ type RubyOptions struct {
 // the code layer is what the handler is, the install layer is what it loads.
 type RubyBuilder struct {
 	bundle string
-	limits artifact.ArchiveLimits
+	limits files.ArchiveLimits
 }
 
 func NewRuby(options RubyOptions) (*RubyBuilder, error) {
@@ -35,7 +35,7 @@ func NewRuby(options RubyOptions) (*RubyBuilder, error) {
 	}
 	return &RubyBuilder{
 		bundle: options.BundleExecutable,
-		limits: artifact.ArchiveLimits{
+		limits: files.ArchiveLimits{
 			MaxEntries:       options.MaxArchiveEntries,
 			MaxExpandedBytes: options.MaxArchiveExpandedBytes,
 		},
@@ -43,7 +43,7 @@ func NewRuby(options RubyOptions) (*RubyBuilder, error) {
 }
 
 func (builder *RubyBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != deployment.RuntimeRuby {
+	if request.Runtime != build.RuntimeRuby {
 		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
 	}
 	if ctx == nil {
@@ -54,7 +54,7 @@ func (builder *RubyBuilder) Build(ctx context.Context, request Request) (Result,
 		return Result{}, errors.New("builder: source archive and work directory are required")
 	}
 	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := artifact.ExtractZIPFile(
+	if _, err := files.ExtractZIPFile(
 		request.SourceArchivePath, sourceDir, builder.limits,
 	); err != nil {
 		return Result{}, fmt.Errorf("builder: extract source: %w", err)
@@ -70,7 +70,7 @@ func (builder *RubyBuilder) Build(ctx context.Context, request Request) (Result,
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)
 	}
 	result := Result{Artifacts: []Output{{
-		Kind:      deployment.ArtifactCodeLayer,
+		Kind:      build.ArtifactCodeLayer,
 		Name:      "code-layer.zip",
 		MediaType: "application/zip",
 		Path:      codePath,
@@ -101,15 +101,15 @@ func (builder *RubyBuilder) Build(ctx context.Context, request Request) (Result,
 		"GEM_SPEC_CACHE="+filepath.Join(cache, "gem-spec"),
 		"BUNDLE_USER_CACHE="+filepath.Join(cache, "bundle"),
 	)
-	if output, err := install.CombinedOutput(); err != nil {
-		return Result{}, commandError("install Ruby gems", output, err)
+	if err := request.run("install Ruby gems", install); err != nil {
+		return Result{}, err
 	}
 	installPath := filepath.Join(request.WorkDirectory, "install-layer.zip")
 	if err := zipDirectory(installDir, installPath); err != nil {
 		return Result{}, fmt.Errorf("builder: package install layer: %w", err)
 	}
 	result.Artifacts = append(result.Artifacts, Output{
-		Kind:      deployment.ArtifactInstallLayer,
+		Kind:      build.ArtifactInstallLayer,
 		Name:      "install-layer.zip",
 		MediaType: "application/zip",
 		Path:      installPath,

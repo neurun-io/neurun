@@ -111,24 +111,36 @@ export default function DeploymentPage() {
             </Button>
           </form>
         </Panel>
-        <Panel label="Builds">
-          {deployment.builds.length === 0 ? (
-            <p className="text-fg-muted">No builds.</p>
-          ) : (
+        <Panel label="Output">
+          {deployment.build ? (
             <div className="space-y-2">
-              {deployment.builds.map((build) => (
-                <Link
-                  key={build.id}
-                  href={`/builds/${build.id}`}
-                  className="flex items-center justify-between border-b border-line py-2 last:border-0"
+              <p className="font-mono text-sm">{deployment.build.id}</p>
+              {deployment.build.artifacts.map((artifact) => (
+                <div
+                  key={artifact.id}
+                  className="flex items-center justify-between border-b border-line py-2 font-mono text-sm last:border-0"
                 >
-                  <span className="font-mono">
-                    {build.id} · #{build.number}
-                  </span>
-                  <StatusBadge status={build.status} />
-                </Link>
+                  <span>{artifact.name}</span>
+                  <span className="text-fg-muted">{artifact.kind}</span>
+                </div>
               ))}
             </div>
+          ) : deployment.failure ? (
+            <p className="text-sm text-fg-secondary">
+              <span className="font-mono text-fg-muted">{deployment.failure.code}</span>{" "}
+              {deployment.failure.message}
+            </p>
+          ) : (
+            <p className="text-fg-muted">Nothing built yet.</p>
+          )}
+        </Panel>
+        <Panel label="Log">
+          {deployment.logs ? (
+            <pre className="max-h-96 overflow-auto font-mono text-micro whitespace-pre-wrap text-fg-secondary">
+              {deployment.logs}
+            </pre>
+          ) : (
+            <p className="text-fg-muted">No output yet.</p>
           )}
         </Panel>
         <Panel label="Source metadata">

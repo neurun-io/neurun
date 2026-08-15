@@ -550,40 +550,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/builds": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listBuilds"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/builds/{build_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                build_id: string;
-            };
-            cookie?: never;
-        };
-        get: operations["getBuild"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/deployments": {
         parameters: {
             query?: never;
@@ -1004,24 +970,18 @@ export interface components {
             code: string;
             message: string;
         };
+        /** @description What a deployment produced: the artifacts, and what identifies them. A build carries no status and no failure — the deployment that ran it does, and a deployment that produced nothing has no build at all. */
         Build: {
             id: string;
-            project_id: string;
-            deployment_id: string;
-            number: number;
-            /** @enum {string} */
-            status: "building" | "ready" | "failed";
             /** @enum {string} */
             runtime: "python" | "rust" | "go" | "ruby" | "node";
             entrypoint: string;
             source_sha256: string;
             artifacts: components["schemas"]["Artifact"][];
-            failure?: components["schemas"]["Failure"] | null;
             /** Format: date-time */
-            started_at: string;
-            /** Format: date-time */
-            finished_at?: string | null;
+            created_at: string;
         };
+        /** @description One attempt to turn a source archive into a build. Statuses run queued → building → publishing → ready or failed; logs carry what the toolchain printed and arrive while it is still running. */
         Deployment: {
             id: string;
             project_id: string;
@@ -1030,9 +990,17 @@ export interface components {
             runtime: "python" | "rust" | "go" | "ruby" | "node";
             entrypoint: string;
             /** @enum {string} */
-            status: "uploaded" | "building" | "ready" | "failed";
+            status: "queued" | "building" | "publishing" | "ready" | "failed";
             source: components["schemas"]["Artifact"];
-            builds: components["schemas"]["Build"][];
+            commit_sha?: string;
+            git_ref?: string;
+            build?: components["schemas"]["Build"] | null;
+            failure?: components["schemas"]["Failure"] | null;
+            logs: string;
+            /** Format: date-time */
+            started_at?: string | null;
+            /** Format: date-time */
+            finished_at?: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2289,54 +2257,6 @@ export interface operations {
                     "application/json": components["schemas"]["APIKey"];
                 };
             };
-        };
-    };
-    listBuilds: {
-        parameters: {
-            query?: {
-                limit?: components["parameters"]["Limit"];
-                deployment_id?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Project builds. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        builds: components["schemas"]["Build"][];
-                    };
-                };
-            };
-        };
-    };
-    getBuild: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                build_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Build. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Build"];
-                };
-            };
-            404: components["responses"]["Problem"];
         };
     };
     listDeployments: {

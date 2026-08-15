@@ -11,7 +11,8 @@ import (
 
 	"github.com/neurun-io/neurun/internal/domain/organization"
 	sessiondomain "github.com/neurun-io/neurun/internal/domain/session"
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/database"
+	"github.com/neurun-io/neurun/internal/repository/memory"
 )
 
 // ErrInvalidCredentials is returned for an unknown username, a wrong password,
@@ -40,17 +41,17 @@ var timingDecoyHash = sync.OnceValue(func() string {
 // SessionService exchanges a username and password for a session, and resolves
 // session tokens back to the person holding them.
 type SessionService struct {
-	users         *repository.UserRepository
-	organizations *repository.OrganizationRepository
-	sessions      *repository.SessionRepository
+	users         *database.UserRepository
+	organizations *database.OrganizationRepository
+	sessions      *memory.SessionRepository
 	sessionTTL    time.Duration
 	now           func() time.Time
 }
 
 func NewSessionService(
-	users *repository.UserRepository,
-	organizations *repository.OrganizationRepository,
-	sessions *repository.SessionRepository,
+	users *database.UserRepository,
+	organizations *database.OrganizationRepository,
+	sessions *memory.SessionRepository,
 	sessionTTL time.Duration,
 	now func() time.Time,
 ) (*SessionService, error) {

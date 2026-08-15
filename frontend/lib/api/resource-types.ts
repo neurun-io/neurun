@@ -1,6 +1,10 @@
 export type Runtime = "python" | "rust" | "go" | "ruby" | "node";
-export type BuildStatus = "building" | "ready" | "failed";
-export type DeploymentStatus = "uploaded" | BuildStatus;
+export type DeploymentStatus =
+  | "queued"
+  | "building"
+  | "publishing"
+  | "ready"
+  | "failed";
 export type ExecutionStatus = "queued" | "running" | "succeeded" | "failed";
 
 export interface Project {
@@ -71,19 +75,14 @@ export interface Failure {
   message: string;
 }
 
+/** What a deployment produced. How it went belongs to the deployment. */
 export interface Build {
   id: string;
-  project_id: string;
-  deployment_id: string;
-  number: number;
-  status: BuildStatus;
   runtime: Runtime;
   entrypoint: string;
   source_sha256: string;
   artifacts: Artifact[];
-  failure?: Failure | null;
-  started_at: string;
-  finished_at?: string | null;
+  created_at: string;
 }
 
 export interface Deployment {
@@ -94,7 +93,14 @@ export interface Deployment {
   entrypoint: string;
   status: DeploymentStatus;
   source: Artifact;
-  builds: Build[];
+  commit_sha?: string;
+  git_ref?: string;
+  build?: Build | null;
+  failure?: Failure | null;
+  /** What the toolchain printed, arriving while the deployment still runs. */
+  logs: string;
+  started_at?: string | null;
+  finished_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -295,4 +301,9 @@ export interface BrowserProfileState {
 
 export function isTerminalExecutionStatus(status: string): boolean {
   return status === "succeeded" || status === "failed";
+}
+
+/** Still going, so its output is still arriving. */
+export function isDeploymentRunning(status: string): boolean {
+  return status === "queued" || status === "building" || status === "publishing";
 }

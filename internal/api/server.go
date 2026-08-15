@@ -15,9 +15,11 @@ import (
 
 	"github.com/neurun-io/neurun/internal/buildinfo"
 	"github.com/neurun-io/neurun/internal/domain/account"
+	appdomain "github.com/neurun-io/neurun/internal/domain/app"
 	"github.com/neurun-io/neurun/internal/domain/auth"
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 	"github.com/neurun-io/neurun/internal/domain/execution"
+	"github.com/neurun-io/neurun/internal/domain/project"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/service"
 )
@@ -31,7 +33,6 @@ const (
 	ScopeAPIKeysWrite     = "api_keys:write"
 	ScopeProjectsRead     = "projects:read"
 	ScopeProjectsWrite    = "projects:write"
-	ScopeBuildsRead       = "builds:read"
 	ScopeExecutionsRead   = "executions:read"
 	ScopeExecutionsWrite  = "executions:write"
 	ScopeAppsRead         = "apps:read"
@@ -44,7 +45,7 @@ const (
 	ScopeBrowserProfilesRead  = "browser_profiles:read"
 	ScopeBrowserProfilesWrite = "browser_profiles:write"
 
-	defaultMaximumBodyBytes = int64(1 << 20)
+	defaultMaximumBodyBytes = int64(1_048_576)
 	defaultPageSize         = 50
 	maximumPageSize         = 200
 )
@@ -52,6 +53,8 @@ const (
 type ReadyCheck func(context.Context) error
 
 type ServerOptions struct {
+	Projects            *service.ProjectService
+	Apps                *service.AppService
 	Deployments         *service.DeploymentService
 	Executions          *service.ExecutionService
 	Accounts            *service.AccountService
@@ -67,6 +70,8 @@ type ServerOptions struct {
 }
 
 type Server struct {
+	projects            *service.ProjectService
+	apps                *service.AppService
 	deployments         *service.DeploymentService
 	executions          *service.ExecutionService
 	accounts            *service.AccountService
@@ -84,6 +89,10 @@ type Server struct {
 
 func NewServer(options ServerOptions) (*Server, error) {
 	switch {
+	case options.Projects == nil:
+		return nil, errors.New("project service is required")
+	case options.Apps == nil:
+		return nil, errors.New("app service is required")
 	case options.Deployments == nil:
 		return nil, errors.New("deployment service is required")
 	case options.Executions == nil:
@@ -101,6 +110,8 @@ func NewServer(options ServerOptions) (*Server, error) {
 		options.MaximumBodyBytes = defaultMaximumBodyBytes
 	}
 	server := &Server{
+		projects:            options.Projects,
+		apps:                options.Apps,
 		deployments:         options.Deployments,
 		executions:          options.Executions,
 		accounts:            options.Accounts,
@@ -202,9 +213,6 @@ func (server *Server) routes() *gin.Engine {
 	// The upgrade happens inside the authenticated group, so the credential is
 	// checked before a frame moves rather than after.
 	v1.GET("/browser-sessions/:session_id/display", server.scoped(ScopeBrowserSessionsRead), server.streamBrowserDisplay)
-
-	v1.GET("/builds", server.scoped(ScopeBuildsRead), server.listBuilds)
-	v1.GET("/builds/:build_id", server.scoped(ScopeBuildsRead), server.getBuild)
 
 	v1.GET("/organizations", sessionOnly(), server.listOrganizations)
 	// Deliberately unscoped: an account with no organization holds no scopes,
@@ -321,17 +329,17 @@ func writeError(ctx *gin.Context, err error) {
 	}
 	switch {
 	case errors.Is(err, deployment.ErrNotFound),
-		errors.Is(err, deployment.ErrProjectNotFound),
-		errors.Is(err, deployment.ErrAppNotFound),
+		errors.Is(err, project.ErrNotFound),
+		errors.Is(err, appdomain.ErrNotFound),
 		errors.Is(err, execution.ErrNotFound),
 		errors.Is(err, account.ErrNotFound):
 		notFound(ctx, "resource")
-	case errors.Is(err, deployment.ErrProjectConflict):
+	case errors.Is(err, project.ErrConflict):
 		writeProblem(ctx, http.StatusConflict, dto.Problem{
 			Code:    "project_conflict",
 			Message: "the project conflicts with an existing project",
 		})
-	case errors.Is(err, deployment.ErrAppConflict):
+	case errors.Is(err, appdomain.ErrConflict):
 		writeProblem(ctx, http.StatusConflict, dto.Problem{
 			Code:    "app_conflict",
 			Message: "the app conflicts with an existing app",
@@ -352,7 +360,7 @@ func writeError(ctx *gin.Context, err error) {
 			Message: "deployment upload exceeds the configured source limit",
 		})
 	case errors.Is(err, deployment.ErrInvalid),
-		errors.Is(err, deployment.ErrNoReadyBuild),
+		errors.Is(err, deployment.ErrNotReady),
 		errors.Is(err, execution.ErrInvalid),
 		errors.Is(err, account.ErrInvalid):
 		invalidRequest(ctx, err.Error())

@@ -5,13 +5,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/artifact"
+	"github.com/neurun-io/neurun/internal/repository/file"
 )
 
 const defaultEnvFile = ".env"
@@ -22,15 +23,15 @@ const (
 	defaultProjectID                = "prj_local"
 	defaultDataDirectory            = "data"
 	defaultShutdownTimeout          = 10 * time.Second
-	defaultRequestBodyBytes         = 1 << 20
-	defaultDeploymentSourceBytes    = 32 << 20
-	defaultDeploymentExpandedBytes  = 256 << 20
-	defaultDeploymentArtifactBytes  = 256 << 20
+	defaultRequestBodyBytes         = 1_048_576
+	defaultDeploymentSourceBytes    = 33_554_432
+	defaultDeploymentExpandedBytes  = 268_435_456
+	defaultDeploymentArtifactBytes  = 268_435_456
 	defaultDeploymentArchiveEntries = 1_000
 	defaultDeploymentBuildTimeout   = 5 * time.Minute
-	defaultRunInputBytes            = 1 << 20
-	defaultRunResultBytes           = 4 << 20
-	defaultRunLogBytes              = 256 << 10
+	defaultRunInputBytes            = 1_048_576
+	defaultRunResultBytes           = 4_194_304
+	defaultRunLogBytes              = 262_144
 	defaultRunTimeout               = 5 * time.Minute
 	defaultWorkerPollInterval       = 250 * time.Millisecond
 	defaultDatabaseURL              = "postgres://neurun:neurun-local-change-me@localhost:5432/neurun?sslmode=disable"
@@ -115,7 +116,7 @@ func Load() (Config, error) {
 		BuildCacheDirectory:         value("NEURUN_BUILD_CACHE_DIRECTORY", ""),
 		RedisURL:                    value("NEURUN_REDIS_URL", defaultRedisURL),
 		ArtifactStore:               value("NEURUN_ARTIFACT_STORE", "local"),
-		ArtifactCacheBytes:          artifact.DefaultCacheBytes,
+		ArtifactCacheBytes:          file.DefaultCacheBytes,
 		S3Bucket:                    value("NEURUN_S3_BUCKET", ""),
 		S3Endpoint:                  value("NEURUN_S3_ENDPOINT", ""),
 		S3Region:                    value("NEURUN_S3_REGION", "auto"),
@@ -238,7 +239,7 @@ func loadEnvFile(path string) error {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 1024), 1<<20)
+	scanner.Buffer(make([]byte, 1024), 1_048_576)
 	for lineNumber := 1; scanner.Scan(); lineNumber++ {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -381,7 +382,7 @@ func (c Config) Validate() error {
 			problems = append(problems, fmt.Errorf("%s must be positive", field.name))
 		}
 	}
-	if c.MaxRunLogBytes > 256<<10 {
+	if c.MaxRunLogBytes > 262_144 {
 		problems = append(problems,
 			errors.New("NEURUN_MAX_EXECUTION_LOG_KBS cannot exceed 256"))
 	}
@@ -445,7 +446,7 @@ func kilobyteValue(key string, fallback int64) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", key, err)
 	}
-	if parsed > (1<<63-1)/1024 {
+	if parsed > math.MaxInt64/1024 {
 		return 0, fmt.Errorf("%s is outside the supported range", key)
 	}
 	return parsed * 1024, nil

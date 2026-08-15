@@ -33,17 +33,11 @@ const artifactSchema = z.looseObject({
 });
 const buildSchema = z.looseObject({
   id: z.string(),
-  project_id: z.string(),
-  deployment_id: z.string(),
-  number: z.number(),
-  status: z.enum(["building", "ready", "failed"]),
   runtime: z.enum(["python", "rust", "go", "ruby", "node"]),
   entrypoint: z.string(),
   source_sha256: z.string(),
   artifacts: z.array(artifactSchema),
-  failure: failureSchema.nullish(),
-  started_at: timestampSchema,
-  finished_at: timestampSchema.nullish(),
+  created_at: timestampSchema,
 });
 const deploymentSchema = z.looseObject({
   id: z.string(),
@@ -51,9 +45,15 @@ const deploymentSchema = z.looseObject({
   app_id: z.string(),
   runtime: z.enum(["python", "rust", "go", "ruby", "node"]),
   entrypoint: z.string(),
-  status: z.enum(["uploaded", "building", "ready", "failed"]),
+  status: z.enum(["queued", "building", "publishing", "ready", "failed"]),
   source: artifactSchema,
-  builds: z.array(buildSchema),
+  commit_sha: z.string().optional(),
+  git_ref: z.string().optional(),
+  build: buildSchema.nullish(),
+  failure: failureSchema.nullish(),
+  logs: z.string(),
+  started_at: timestampSchema.nullish(),
+  finished_at: timestampSchema.nullish(),
   created_at: timestampSchema,
   updated_at: timestampSchema,
 });
@@ -328,24 +328,6 @@ export function getDeployment(id: string, signal?: AbortSignal) {
   return request<Deployment>(
     { path: `/v1/deployments/${segment(id)}`, signal },
     deploymentSchema as never,
-  );
-}
-
-export function listBuilds(deploymentId?: string, signal?: AbortSignal) {
-  return request<{ builds: Build[] }>(
-    {
-      path: "/v1/builds",
-      query: { deployment_id: deploymentId, limit: 200 },
-      signal,
-    },
-    z.looseObject({ builds: z.array(buildSchema) }) as never,
-  );
-}
-
-export function getBuild(id: string, signal?: AbortSignal) {
-  return request<Build>(
-    { path: `/v1/builds/${segment(id)}`, signal },
-    buildSchema as never,
   );
 }
 

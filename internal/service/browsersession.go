@@ -15,7 +15,7 @@ import (
 	"github.com/neurun-io/neurun/internal/browserservicepb"
 	"github.com/neurun-io/neurun/internal/domain/browser"
 	"github.com/neurun-io/neurun/internal/ids"
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/memory"
 )
 
 // DisplayStream is the framebuffer pipe, narrowed to what a bridge needs. The
@@ -32,13 +32,13 @@ const sessionIDMetadata = "neurun-session-id"
 
 // BrowserSessionService owns the live sessions an organization has open.
 type BrowserSessionService struct {
-	sessions *repository.BrowserSessionRepository
+	sessions *memory.BrowserSessionRepository
 	now      func() time.Time
 	newID    func(string) (string, error)
 }
 
 func NewBrowserSessionService(
-	sessions *repository.BrowserSessionRepository,
+	sessions *memory.BrowserSessionRepository,
 	now func() time.Time,
 	newID func(string) (string, error),
 ) (*BrowserSessionService, error) {

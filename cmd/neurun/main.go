@@ -18,15 +18,15 @@ import (
 	"time"
 
 	"github.com/neurun-io/neurun/internal/api"
-	"github.com/neurun-io/neurun/internal/artifact"
 	"github.com/neurun-io/neurun/internal/browsergrpc"
 	"github.com/neurun-io/neurun/internal/builder"
 	"github.com/neurun-io/neurun/internal/buildinfo"
 	"github.com/neurun-io/neurun/internal/config"
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/github"
-	"github.com/neurun-io/neurun/internal/repository"
-	"github.com/neurun-io/neurun/internal/repository/storage"
+	"github.com/neurun-io/neurun/internal/repository/database"
+	"github.com/neurun-io/neurun/internal/repository/file"
+	"github.com/neurun-io/neurun/internal/repository/memory"
 	"github.com/neurun-io/neurun/internal/service"
 	"github.com/neurun-io/neurun/internal/worker"
 	"github.com/neurun-io/neurun/migrations"
@@ -90,8 +90,8 @@ func buildCacheDirectory(cfg config.Config) string {
 // restart signs everybody out and a second replica sees none of them — which is
 // a broken control plane, not a degraded one. It fails here the same way a
 // missing database does.
-func sessionCache(cfg config.Config, logger *slog.Logger) (repository.Cache, error) {
-	cache, err := repository.NewRedisCache(cfg.RedisURL, "neurun")
+func sessionCache(cfg config.Config, logger *slog.Logger) (memory.Cache, error) {
+	cache, err := memory.NewRedisCache(cfg.RedisURL, "neurun")
 	if err != nil {
 		return nil, err
 	}
@@ -111,12 +111,12 @@ func sessionCache(cfg config.Config, logger *slog.Logger) (repository.Cache, err
 // one, and it is always wrapped in a read-through cache, because the worker
 // materializes a build's layers on every execution and that would otherwise be a
 // download per run.
-func artifactStore(cfg config.Config, logger *slog.Logger) (artifact.BlobStore, error) {
+func artifactStore(cfg config.Config, logger *slog.Logger) (file.Repository, error) {
 	if cfg.ArtifactStore != "s3" {
 		logger.Info("artifact storage is local", "directory", cfg.DataDirectory)
-		return artifact.NewLocalStore(filepath.Join(cfg.DataDirectory, "blobs"))
+		return file.NewLocal(filepath.Join(cfg.DataDirectory, "blobs"))
 	}
-	remote, err := artifact.NewS3Store(artifact.S3Options{
+	remote, err := file.NewS3(file.S3Options{
 		Bucket:    cfg.S3Bucket,
 		Endpoint:  cfg.S3Endpoint,
 		Region:    cfg.S3Region,
@@ -127,7 +127,7 @@ func artifactStore(cfg config.Config, logger *slog.Logger) (artifact.BlobStore, 
 	if err != nil {
 		return nil, err
 	}
-	cached, err := artifact.NewCacheStore(remote, artifact.CacheOptions{
+	cached, err := file.NewCache(remote, file.CacheOptions{
 		Directory: filepath.Join(cfg.DataDirectory, "cache"),
 		MaxBytes:  cfg.ArtifactCacheBytes,
 	})
@@ -157,7 +157,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	pool, err := storage.PostgresConnect(ctx, storage.PostgresConfig{
+	pool, err := database.PostgresConnect(ctx, database.PostgresConfig{
 		DSN:             dsn,
 		MaxConns:        cfg.DatabaseMaxConns,
 		ConnMaxLifetime: cfg.DatabaseConnMaxLifetime,
@@ -168,31 +168,35 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	defer pool.Close()
 
-	projects, err := repository.NewProjectRepository(pool)
+	projects, err := database.NewProjectRepository(pool)
 	if err != nil {
 		return err
 	}
-	apps, err := repository.NewAppRepository(pool)
+	apps, err := database.NewAppRepository(pool)
 	if err != nil {
 		return err
 	}
-	deployments, err := repository.NewDeploymentRepository(pool)
+	builds, err := database.NewBuildRepository(pool)
 	if err != nil {
 		return err
 	}
-	executions, err := repository.NewExecutionRepository(pool)
+	deployments, err := database.NewDeploymentRepository(pool, builds)
 	if err != nil {
 		return err
 	}
-	users, err := repository.NewUserRepository(pool)
+	executions, err := database.NewExecutionRepository(pool)
 	if err != nil {
 		return err
 	}
-	organizations, err := repository.NewOrganizationRepository(pool)
+	users, err := database.NewUserRepository(pool)
 	if err != nil {
 		return err
 	}
-	apiKeys, err := repository.NewAPIKeyRepository(pool)
+	organizations, err := database.NewOrganizationRepository(pool)
+	if err != nil {
+		return err
+	}
+	apiKeys, err := database.NewAPIKeyRepository(pool)
 	if err != nil {
 		return err
 	}
@@ -201,7 +205,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("configure session cache: %w", err)
 	}
 	defer cache.Close()
-	sessions, err := repository.NewSessionRepository(cache, users)
+	sessions, err := memory.NewSessionRepository(cache, users)
 	if err != nil {
 		return err
 	}
@@ -252,16 +256,24 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	// A runtime is available when its toolchain is in the image. Nothing here
 	// checks that; a missing toolchain fails the build it was asked for.
-	toolchains := map[deployment.Runtime]builder.Builder{
-		deployment.RuntimePython: pythonBuilder,
-		deployment.RuntimeRust:   rustBuilder,
-		deployment.RuntimeGo:     goBuilder,
-		deployment.RuntimeRuby:   rubyBuilder,
-		deployment.RuntimeNode:   nodeBuilder,
+	toolchains := map[build.Runtime]builder.Builder{
+		build.RuntimePython: pythonBuilder,
+		build.RuntimeRust:   rustBuilder,
+		build.RuntimeGo:     goBuilder,
+		build.RuntimeRuby:   rubyBuilder,
+		build.RuntimeNode:   nodeBuilder,
 	}
 
+	projectService, err := service.NewProjectService(projects, nil, nil)
+	if err != nil {
+		return fmt.Errorf("configure project service: %w", err)
+	}
+	appService, err := service.NewAppService(projects, apps, nil, nil)
+	if err != nil {
+		return fmt.Errorf("configure app service: %w", err)
+	}
 	deploymentService, err := service.NewDeploymentService(
-		projects, apps, deployments, blobStore, toolchains,
+		apps, deployments, builds, blobStore, toolchains,
 		service.DeploymentOptions{
 			BuildCacheDirectory: buildCacheDirectory(cfg),
 			MaxSourceBytes:      cfg.MaxDeploymentSourceBytes,
@@ -295,7 +307,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure organizations: %w", err)
 	}
-	browserProfiles, err := repository.NewBrowserProfileRepository(pool)
+	browserProfiles, err := database.NewBrowserProfileRepository(pool)
 	if err != nil {
 		return err
 	}
@@ -304,7 +316,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("configure browser profiles: %w", err)
 	}
 
-	browserSessions, err := repository.NewBrowserSessionRepository(cache)
+	browserSessions, err := memory.NewBrowserSessionRepository(cache)
 	if err != nil {
 		return err
 	}
@@ -313,7 +325,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("configure browser sessions: %w", err)
 	}
 
-	installations, err := repository.NewGitHubInstallationRepository(pool)
+	installations, err := database.NewGitHubInstallationRepository(pool)
 	if err != nil {
 		return err
 	}
@@ -341,7 +353,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		logger.Warn("github app is not configured; repository deployments are unavailable")
 	}
 	gitHubService, err := service.NewGitHubService(
-		gitHubClient, installations, apps, deploymentService, nil, nil,
+		gitHubClient, installations, appService, deploymentService, nil, nil,
 	)
 	if err != nil {
 		return fmt.Errorf("configure GitHub deployments: %w", err)
@@ -405,12 +417,12 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure compiled runner: %w", err)
 	}
-	runners := map[deployment.Runtime]worker.Runner{
-		deployment.RuntimePython: pythonRunner,
-		deployment.RuntimeRuby:   rubyRunner,
-		deployment.RuntimeNode:   nodeRunner,
-		deployment.RuntimeRust:   binaryRunner,
-		deployment.RuntimeGo:     binaryRunner,
+	runners := map[build.Runtime]worker.Runner{
+		build.RuntimePython: pythonRunner,
+		build.RuntimeRuby:   rubyRunner,
+		build.RuntimeNode:   nodeRunner,
+		build.RuntimeRust:   binaryRunner,
+		build.RuntimeGo:     binaryRunner,
 	}
 	executor, err := worker.New(
 		executions, deployments, blobStore, runners,
@@ -436,6 +448,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	controlAPI, err := api.NewServer(api.ServerOptions{
+		Projects:        projectService,
+		Apps:            appService,
 		Deployments:     deploymentService,
 		Executions:      executionService,
 		Accounts:        accountService,
@@ -465,7 +479,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Addr: cfg.HTTPAddr, Handler: controlAPI,
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second,
 		WriteTimeout: maximumDuration(30*time.Second, cfg.DeploymentBuildTimeout+10*time.Second),
-		IdleTimeout:  60 * time.Second, MaxHeaderBytes: 32 << 10,
+		IdleTimeout:  60 * time.Second, MaxHeaderBytes: 32_768,
 		BaseContext: func(net.Listener) context.Context { return runtimeCtx },
 	}
 	errs := make(chan error, 3)

@@ -68,7 +68,7 @@ export default function DeploymentsPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="font-mono">{deployment.entrypoint}</TableCell>
-                  <TableCell>{deployment.builds.length}</TableCell>
+                  <TableCell className="font-mono">{deployment.build?.id ?? "—"}</TableCell>
                   <TableCell>
                     <Timestamp value={deployment.updated_at} />
                   </TableCell>

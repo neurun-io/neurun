@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/build"
 	githubdomain "github.com/neurun-io/neurun/internal/domain/github"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/github"
@@ -20,7 +20,7 @@ import (
 const (
 	// GitHub caps a delivery at 25MB, but a push event carries at most twenty
 	// commits and never approaches that.
-	maximumWebhookBytes = int64(5 << 20)
+	maximumWebhookBytes = int64(5_242_880)
 	// A ceiling on a deploy that outlived its delivery, so a wedged build
 	// cannot leave a goroutine running for the life of the process.
 	webhookDeployTimeout = 30 * time.Minute
@@ -129,7 +129,7 @@ func (server *Server) deployRef(ctx *gin.Context) {
 	}
 	record, err := server.gitHub.Deploy(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID,
-		body.AppID, body.Ref, deployment.RuntimePython, "",
+		body.AppID, body.Ref, build.RuntimePython, "",
 	)
 	if err != nil {
 		writeError(ctx, err)

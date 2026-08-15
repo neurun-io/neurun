@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/database"
+	"github.com/neurun-io/neurun/internal/repository/memory"
 )
 
 // ErrUnknownExecutionToken is a token that is not live. A spent, expired or
@@ -32,14 +33,14 @@ type ExecutionIdentity struct {
 // one thing it holds that we minted, and everything it identifies lives on our
 // side of the lookup.
 type ExecutionTokenService struct {
-	cache repository.Cache
-	apps  *repository.AppRepository
+	cache memory.Cache
+	apps  *database.AppRepository
 	ttl   time.Duration
 }
 
 func NewExecutionTokenService(
-	cache repository.Cache,
-	apps *repository.AppRepository,
+	cache memory.Cache,
+	apps *database.AppRepository,
 	ttl time.Duration,
 ) (*ExecutionTokenService, error) {
 	if cache == nil || apps == nil {

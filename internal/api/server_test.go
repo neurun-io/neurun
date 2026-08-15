@@ -15,6 +15,8 @@ import (
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	server, err := NewServer(ServerOptions{
+		Projects:      &service.ProjectService{},
+		Apps:          &service.AppService{},
 		Deployments:   &service.DeploymentService{},
 		Executions:    &service.ExecutionService{},
 		Accounts:      &service.AccountService{},
@@ -89,8 +91,6 @@ func TestProtectedRoutesRejectAnonymousCallers(t *testing.T) {
 		"/v1/projects/prj_one",
 		"/v1/apps",
 		"/v1/apps/app_one",
-		"/v1/builds",
-		"/v1/builds/bld_one",
 		"/v1/users",
 		"/v1/users/usr_one",
 		"/v1/api-keys",

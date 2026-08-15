@@ -13,10 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/artifact"
+	"github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 	"github.com/neurun-io/neurun/internal/domain/execution"
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/files"
+	"github.com/neurun-io/neurun/internal/repository/database"
+	"github.com/neurun-io/neurun/internal/repository/file"
 )
 
 type ExecuteRequest struct {
@@ -69,18 +71,18 @@ type ExecutionTokens interface {
 }
 
 type Worker struct {
-	executions  *repository.ExecutionRepository
-	deployments *repository.DeploymentRepository
-	blobs       artifact.BlobStore
-	runners     map[deployment.Runtime]Runner
+	executions  *database.ExecutionRepository
+	deployments *database.DeploymentRepository
+	blobs       file.Repository
+	runners     map[build.Runtime]Runner
 	options     Options
 }
 
 func New(
-	executions *repository.ExecutionRepository,
-	deployments *repository.DeploymentRepository,
-	blobs artifact.BlobStore,
-	runners map[deployment.Runtime]Runner,
+	executions *database.ExecutionRepository,
+	deployments *database.DeploymentRepository,
+	blobs file.Repository,
+	runners map[build.Runtime]Runner,
 	options Options,
 ) (*Worker, error) {
 	switch {
@@ -106,19 +108,19 @@ func New(
 		options.RunTimeout = 5 * time.Minute
 	}
 	if options.MaxResultBytes == 0 {
-		options.MaxResultBytes = 4 << 20
+		options.MaxResultBytes = 4_194_304
 	}
 	if options.MaxLogBytes == 0 {
 		options.MaxLogBytes = execution.MaxLogBytes
 	}
 	if options.MaxArtifactBytes == 0 {
-		options.MaxArtifactBytes = 256 << 20
+		options.MaxArtifactBytes = 268_435_456
 	}
 	if options.MaxArchiveEntries == 0 {
-		options.MaxArchiveEntries = artifact.DefaultMaxArchiveEntries
+		options.MaxArchiveEntries = files.DefaultMaxArchiveEntries
 	}
 	if options.MaxArchiveExpandedBytes == 0 {
-		options.MaxArchiveExpandedBytes = artifact.DefaultMaxArchiveExpandedBytes
+		options.MaxArchiveExpandedBytes = files.DefaultMaxArchiveExpandedBytes
 	}
 	if options.Now == nil {
 		options.Now = time.Now
@@ -204,16 +206,17 @@ func (worker *Worker) execute(
 	if err != nil {
 		return nil, "", newFailure("deployment_unavailable", err)
 	}
-	build, ok := found.BuildByID(record.BuildID)
-	if !ok || build.Status != deployment.StatusReady {
+	produced := found.Build
+	if produced == nil || produced.ID != record.BuildID ||
+		found.Status != deployment.StatusReady {
 		return nil, "", newFailure(
 			"build_unavailable", errors.New("pinned build is not ready"),
 		)
 	}
-	if build.Runtime != deployment.RuntimePython {
+	if produced.Runtime != build.RuntimePython {
 		return nil, "", newFailure(
 			"runtime_unsupported",
-			fmt.Errorf("runtime %q is not supported", build.Runtime),
+			fmt.Errorf("runtime %q is not supported", produced.Runtime),
 		)
 	}
 	work, err := os.MkdirTemp("", "neurun-worker-*")
@@ -226,9 +229,9 @@ func (worker *Worker) execute(
 	installDir := filepath.Join(work, "install")
 	seenCode := false
 	remaining := worker.options.MaxArtifactBytes
-	for _, item := range build.Artifacts {
-		if item.Kind != deployment.ArtifactCodeLayer &&
-			item.Kind != deployment.ArtifactInstallLayer {
+	for _, item := range produced.Artifacts {
+		if item.Kind != build.ArtifactCodeLayer &&
+			item.Kind != build.ArtifactInstallLayer {
 			continue
 		}
 		if item.SizeBytes > remaining {
@@ -242,7 +245,7 @@ func (worker *Worker) execute(
 			return nil, "", newFailure("artifact_invalid", err)
 		}
 		destination := installDir
-		if item.Kind == deployment.ArtifactCodeLayer {
+		if item.Kind == build.ArtifactCodeLayer {
 			if seenCode {
 				return nil, "", newFailure("artifact_invalid", errors.New(
 					"build has duplicate code layers",
@@ -251,10 +254,10 @@ func (worker *Worker) execute(
 			seenCode = true
 			destination = codeDir
 		}
-		if _, err := artifact.ExtractZIPFile(
+		if _, err := files.ExtractZIPFile(
 			targetArchive,
 			destination,
-			artifact.ArchiveLimits{
+			files.ArchiveLimits{
 				MaxEntries:       worker.options.MaxArchiveEntries,
 				MaxExpandedBytes: worker.options.MaxArchiveExpandedBytes,
 			},
@@ -270,10 +273,10 @@ func (worker *Worker) execute(
 
 	runCtx, cancel := context.WithTimeout(ctx, worker.options.RunTimeout)
 	defer cancel()
-	runner, ok := worker.runners[build.Runtime]
+	runner, ok := worker.runners[produced.Runtime]
 	if !ok {
 		return nil, "", newFailure("runtime_unsupported", fmt.Errorf(
-			"worker: no runner for runtime %q", build.Runtime,
+			"worker: no runner for runtime %q", produced.Runtime,
 		))
 	}
 	// Minted for this run and spent when it ends, so a token that leaks cannot
@@ -298,7 +301,7 @@ func (worker *Worker) execute(
 	}
 	result, err := runner.Execute(runCtx, ExecuteRequest{
 		CodeDirectory: codeDir, InstallDirectory: installDir,
-		Entrypoint: build.EntryPoint, Input: record.Input,
+		Entrypoint: produced.EntryPoint, Input: record.Input,
 		CallbackAddress: worker.options.CallbackAddress,
 		ExecutionToken:  token,
 		MaxResultBytes:  worker.options.MaxResultBytes,
@@ -320,7 +323,7 @@ func (worker *Worker) execute(
 
 func (worker *Worker) materialize(
 	ctx context.Context,
-	item deployment.Artifact,
+	item build.Artifact,
 	targetPath string,
 ) error {
 	reader, info, err := worker.blobs.Open(ctx, item.StorageKey)
@@ -335,7 +338,7 @@ func (worker *Worker) materialize(
 	if err != nil {
 		return err
 	}
-	result, copyErr := artifact.CopyAndHashContext(ctx, target, reader, item.SizeBytes)
+	result, copyErr := files.CopyAndHashContext(ctx, target, reader, item.SizeBytes)
 	closeErr := target.Close()
 	if copyErr != nil {
 		return copyErr

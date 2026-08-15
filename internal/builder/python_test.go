@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/build"
 )
 
 func TestPythonBuilderProducesStableCodeLayer(t *testing.T) {
@@ -37,7 +37,7 @@ func TestPythonBuilderRejectsMissingEntrypoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = builder.Build(context.Background(), Request{Runtime: deployment.RuntimePython, EntryPoint: "main.py:handler", SourceArchivePath: source, WorkDirectory: filepath.Join(root, "work")})
+	_, err = builder.Build(context.Background(), Request{Runtime: build.RuntimePython, EntryPoint: "main.py:handler", SourceArchivePath: source, WorkDirectory: filepath.Join(root, "work")})
 	if err == nil {
 		t.Fatal("expected missing entrypoint error")
 	}
@@ -56,11 +56,11 @@ func buildFixture(t *testing.T, python string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := builder.Build(context.Background(), Request{Runtime: deployment.RuntimePython, EntryPoint: "main.py:handler", SourceArchivePath: source, WorkDirectory: work})
+	result, err := builder.Build(context.Background(), Request{Runtime: build.RuntimePython, EntryPoint: "main.py:handler", SourceArchivePath: source, WorkDirectory: work})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Artifacts) != 1 || result.Artifacts[0].Kind != deployment.ArtifactCodeLayer {
+	if len(result.Artifacts) != 1 || result.Artifacts[0].Kind != build.ArtifactCodeLayer {
 		t.Fatalf("unexpected artifacts: %#v", result.Artifacts)
 	}
 	return result.Artifacts[0].Path

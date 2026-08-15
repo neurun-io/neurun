@@ -5,18 +5,20 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/neurun-io/neurun/internal/domain/build"
 )
 
 var fixtureTime = time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC)
 
-func uploadedFixture(t *testing.T) Deployment {
+func queuedFixture(t *testing.T) Deployment {
 	t.Helper()
 	digest := strings.Repeat("a", 64)
 	record, err := New(
 		"dep_fixture", "prj_fixture", "app_fixture",
-		RuntimePython, "main.py:handler",
-		Artifact{
-			ID: "art_source", Kind: ArtifactSource, Name: "source.zip",
+		build.RuntimePython, "main.py:handler",
+		build.Artifact{
+			ID: "art_source", Kind: build.ArtifactSource, Name: "source.zip",
 			MediaType: "application/zip", SizeBytes: 12, SHA256: digest,
 			StorageKey: "objects/sha256/aa/" + digest, CreatedAt: fixtureTime,
 		},
@@ -28,136 +30,181 @@ func uploadedFixture(t *testing.T) Deployment {
 	return record
 }
 
-func codeLayer() []Artifact {
+func codeLayer() []build.Artifact {
 	digest := strings.Repeat("b", 64)
-	return []Artifact{{
-		ID: "art_code", Kind: ArtifactCodeLayer, Name: "code.zip",
+	return []build.Artifact{{
+		ID: "art_code", Kind: build.ArtifactCodeLayer, Name: "code.zip",
 		MediaType: "application/zip", SizeBytes: 24, SHA256: digest,
 		StorageKey: "objects/sha256/bb/" + digest, CreatedAt: fixtureTime,
 	}}
 }
 
-// A deployment's own status mirrors its newest build, and build numbers stay
-// contiguous. Both are invariants Validate enforces, so the transitions have to
-// maintain them without the caller helping.
-func TestBuildTransitionsKeepDeploymentConsistent(t *testing.T) {
-	t.Parallel()
-	record := uploadedFixture(t)
-	if record.Status != StatusUploaded || len(record.Builds) != 0 {
-		t.Fatalf("new deployment = %#v", record)
-	}
-
-	build, err := record.StartBuild("bld_one", fixtureTime.Add(time.Second))
+// sealed is what the deployment service hands over: a build already made.
+func sealed(t *testing.T, record Deployment, buildID string, now time.Time) build.Build {
+	t.Helper()
+	produced, err := build.New(
+		buildID, record.Runtime, record.EntryPoint,
+		record.Source.SHA256, codeLayer(), now,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if build.Number != 1 || build.Status != StatusBuilding ||
-		record.Status != StatusBuilding {
-		t.Fatalf("after StartBuild: build=%#v status=%s", build, record.Status)
+	return produced
+}
+
+// The stages are the deployment's whole life, and every one of them has to hold
+// the invariants Validate enforces without the caller helping.
+func TestStagesCarryTheDeploymentToItsBuild(t *testing.T) {
+	t.Parallel()
+	record := queuedFixture(t)
+	if record.Status != StatusQueued || record.Build != nil || record.StartedAt != nil {
+		t.Fatalf("new deployment = %#v", record)
+	}
+
+	if err := record.Advance(fixtureTime.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if record.Status != StatusBuilding || record.StartedAt == nil {
+		t.Fatalf("after first advance = %#v", record)
 	}
 	if err := record.Validate(); err != nil {
 		t.Fatalf("building deployment invalid: %v", err)
 	}
 
-	if err := record.MarkBuildReady(
-		"bld_one", codeLayer(), fixtureTime.Add(2*time.Second),
+	if err := record.Advance(fixtureTime.Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if record.Status != StatusPublishing {
+		t.Fatalf("after second advance status = %s", record.Status)
+	}
+	if err := record.Validate(); err != nil {
+		t.Fatalf("publishing deployment invalid: %v", err)
+	}
+
+	if err := record.MarkReady(
+		sealed(t, record, "bld_one", fixtureTime.Add(3*time.Second)), fixtureTime.Add(3*time.Second),
 	); err != nil {
 		t.Fatal(err)
 	}
-	if record.Status != StatusReady {
-		t.Fatalf("after MarkBuildReady status = %s", record.Status)
+	if record.Status != StatusReady || record.Build == nil ||
+		record.Build.ID != "bld_one" || record.FinishedAt == nil {
+		t.Fatalf("after MarkReady = %#v", record)
 	}
 	if err := record.Validate(); err != nil {
 		t.Fatalf("ready deployment invalid: %v", err)
 	}
-	ready, ok := record.ReadyBuild()
-	if !ok || ready.ID != "bld_one" {
-		t.Fatalf("ReadyBuild = %#v, %v", ready, ok)
+	// The build carries what it takes to run the artifacts, and nothing about
+	// how the deployment went.
+	if record.Build.SourceSHA256 != record.Source.SHA256 ||
+		record.Build.EntryPoint != record.EntryPoint {
+		t.Fatalf("build = %#v", record.Build)
 	}
+}
 
-	second, err := record.StartBuild("bld_two", fixtureTime.Add(3*time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second.Number != 2 {
-		t.Fatalf("second build number = %d", second.Number)
-	}
-	if err := record.FailBuild(
-		"bld_two",
-		Failure{Code: "build_failed", Message: "toolchain exploded"},
-		fixtureTime.Add(4*time.Second),
+// A build is something that came out. A deployment that dies before the
+// toolchain ran produced nothing, so it has a failure and no build.
+func TestFailureLeavesNoBuild(t *testing.T) {
+	t.Parallel()
+	record := queuedFixture(t)
+	if err := record.Fail(
+		Failure{Code: "source_unavailable", Message: "archive was gone"},
+		fixtureTime.Add(time.Second),
 	); err != nil {
 		t.Fatal(err)
 	}
-	if record.Status != StatusFailed {
-		t.Fatalf("after FailBuild status = %s", record.Status)
+	if record.Status != StatusFailed || record.Build != nil ||
+		record.Failure == nil || record.FinishedAt == nil {
+		t.Fatalf("failed deployment = %#v", record)
+	}
+	if record.StartedAt != nil {
+		t.Fatal("a deployment that never built reported a start time")
 	}
 	if err := record.Validate(); err != nil {
 		t.Fatalf("failed deployment invalid: %v", err)
 	}
-	// The earlier ready build is still the one an execution would pin to.
-	if ready, ok := record.ReadyBuild(); !ok || ready.ID != "bld_one" {
-		t.Fatalf("ReadyBuild after failure = %#v, %v", ready, ok)
-	}
 }
 
-// Finishing a build twice must not be possible: the second attempt would
-// overwrite a terminal record that an execution may already be pinned to.
-func TestFinishedBuildCannotBeFinishedAgain(t *testing.T) {
+// Finishing twice must not be possible: the second attempt would overwrite a
+// terminal record an execution may already be pinned to.
+func TestFinishedDeploymentCannotFinishAgain(t *testing.T) {
 	t.Parallel()
-	record := uploadedFixture(t)
-	if _, err := record.StartBuild("bld_one", fixtureTime.Add(time.Second)); err != nil {
+	record := queuedFixture(t)
+	if err := record.Advance(fixtureTime.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if err := record.MarkBuildReady(
-		"bld_one", codeLayer(), fixtureTime.Add(2*time.Second),
+	if err := record.MarkReady(
+		sealed(t, record, "bld_one", fixtureTime.Add(2*time.Second)), fixtureTime.Add(2*time.Second),
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := record.MarkBuildReady(
-		"bld_one", codeLayer(), fixtureTime.Add(3*time.Second),
+	if err := record.MarkReady(
+		sealed(t, record, "bld_two", fixtureTime.Add(3*time.Second)), fixtureTime.Add(3*time.Second),
 	); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("second MarkBuildReady error = %v", err)
+		t.Fatalf("second MarkReady error = %v", err)
 	}
-	if err := record.FailBuild(
-		"bld_one", Failure{Code: "x", Message: "y"}, fixtureTime.Add(3*time.Second),
+	if err := record.Fail(
+		Failure{Code: "x", Message: "y"}, fixtureTime.Add(3*time.Second),
 	); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("FailBuild on ready build error = %v", err)
+		t.Fatalf("Fail on a ready deployment error = %v", err)
 	}
-	if err := record.FailBuild(
-		"bld_missing", Failure{Code: "x", Message: "y"}, fixtureTime,
-	); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("FailBuild on unknown build error = %v", err)
+	if err := record.Advance(fixtureTime.Add(3 * time.Second)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("Advance on a ready deployment error = %v", err)
 	}
 }
 
-// Recovery fails a build a crash left running, and leaves everything else be.
-func TestFailInterruptedBuildOnlyTouchesBuildingDeployments(t *testing.T) {
+// Recovery fails what a crash left running, and leaves everything else be.
+func TestFailInterruptedOnlyTouchesRunningDeployments(t *testing.T) {
 	t.Parallel()
 	failure := Failure{Code: "build_interrupted", Message: "restarted"}
 	now := fixtureTime.Add(time.Minute)
 
-	uploaded := uploadedFixture(t)
-	if uploaded.FailInterruptedBuild(now, failure) {
-		t.Fatal("uploaded deployment reported as recovered")
-	}
-
-	building := uploadedFixture(t)
-	if _, err := building.StartBuild("bld_one", fixtureTime.Add(time.Second)); err != nil {
+	building := queuedFixture(t)
+	if err := building.Advance(fixtureTime.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if !building.FailInterruptedBuild(now, failure) {
+	if !building.FailInterrupted(now, failure) {
 		t.Fatal("building deployment was not recovered")
 	}
-	if building.Status != StatusFailed || building.Builds[0].Failure == nil {
+	if building.Status != StatusFailed || building.Failure == nil {
 		t.Fatalf("recovered deployment = %#v", building)
 	}
 	if err := building.Validate(); err != nil {
 		t.Fatalf("recovered deployment invalid: %v", err)
 	}
 	// Recovery is idempotent: a second pass has nothing left to do.
-	if building.FailInterruptedBuild(now, failure) {
+	if building.FailInterrupted(now, failure) {
 		t.Fatal("already-failed deployment reported as recovered again")
+	}
+
+	ready := queuedFixture(t)
+	if err := ready.Advance(fixtureTime.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ready.MarkReady(
+		sealed(t, ready, "bld_one", fixtureTime.Add(2*time.Second)), fixtureTime.Add(2*time.Second),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if ready.FailInterrupted(now, failure) {
+		t.Fatal("ready deployment reported as recovered")
+	}
+}
+
+// The end of a build is where the error is, so that is the end that survives.
+func TestLogKeepsTheTail(t *testing.T) {
+	t.Parallel()
+	record := queuedFixture(t)
+	record.Log(strings.Repeat("a", MaxLogBytes))
+	record.Log("error[E0433]: failed to resolve\n")
+
+	if len(record.Logs) != MaxLogBytes {
+		t.Fatalf("logs = %d bytes", len(record.Logs))
+	}
+	if !strings.HasSuffix(record.Logs, "error[E0433]: failed to resolve\n") {
+		t.Fatal("the newest output was trimmed instead of the oldest")
+	}
+	if err := record.Validate(); err != nil {
+		t.Fatalf("deployment with capped logs invalid: %v", err)
 	}
 }
 

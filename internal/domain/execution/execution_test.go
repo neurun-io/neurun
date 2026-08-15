@@ -151,7 +151,7 @@ func TestValidateTransitionToRejectsChangedMetadata(t *testing.T) {
 func TestNormalizeInputIsCanonicalAndLossless(t *testing.T) {
 	t.Parallel()
 	normalized, err := NormalizeInput(
-		json.RawMessage(` { "b" : 2, "a" : 1 } `), 1<<20,
+		json.RawMessage(` { "b" : 2, "a" : 1 } `), 1_048_576,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -161,18 +161,18 @@ func TestNormalizeInputIsCanonicalAndLossless(t *testing.T) {
 	}
 
 	big := json.RawMessage(`9007199254740993`)
-	normalized, err = NormalizeInput(big, 1<<20)
+	normalized, err = NormalizeInput(big, 1_048_576)
 	if err != nil || string(normalized) != string(big) {
 		t.Fatalf("large integer normalized to %s (%v)", normalized, err)
 	}
 
-	if _, err := NormalizeInput(json.RawMessage(`{} {}`), 1<<20); !errors.Is(err, ErrInvalid) {
+	if _, err := NormalizeInput(json.RawMessage(`{} {}`), 1_048_576); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("two values accepted: %v", err)
 	}
 	if _, err := NormalizeInput(json.RawMessage(`{"a":1}`), 4); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("oversized input accepted: %v", err)
 	}
-	if _, err := NormalizeInput(json.RawMessage(`null`), 1<<20); err != nil {
+	if _, err := NormalizeInput(json.RawMessage(`null`), 1_048_576); err != nil {
 		t.Fatalf("null input rejected: %v", err)
 	}
 }

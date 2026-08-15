@@ -19,7 +19,7 @@ import (
 	"github.com/neurun-io/neurun/internal/ids"
 )
 
-const MaxLogBytes = 256 << 10
+const MaxLogBytes = 262_144
 
 var (
 	ErrInvalid   = errors.New("invalid execution")

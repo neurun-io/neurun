@@ -7,7 +7,7 @@ import (
 
 	"github.com/neurun-io/neurun/internal/domain/browser"
 	"github.com/neurun-io/neurun/internal/ids"
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/database"
 )
 
 // BrowserService owns browser profiles.
@@ -17,13 +17,13 @@ import (
 // back through SaveState. Nothing here holds a connection to it — the control
 // plane could not reach a loopback address anyway.
 type BrowserService struct {
-	profiles *repository.BrowserProfileRepository
+	profiles *database.BrowserProfileRepository
 	now      func() time.Time
 	newID    func(string) (string, error)
 }
 
 func NewBrowserService(
-	profiles *repository.BrowserProfileRepository,
+	profiles *database.BrowserProfileRepository,
 	now func() time.Time,
 	newID func(string) (string, error),
 ) (*BrowserService, error) {

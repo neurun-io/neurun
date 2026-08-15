@@ -1,5 +1,5 @@
-// Package deployment owns immutable uploaded source, build metadata, and
-// durable executions pinned to an exact ready build.
+// Package deployment owns the act of turning one source archive into a build:
+// how far it got, what the toolchain printed on the way, and what it produced.
 package deployment
 
 import (
@@ -7,92 +7,56 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/neurun-io/neurun/internal/domain/build"
 )
 
 var (
-	ErrInvalid           = errors.New("invalid deployment")
-	ErrNotFound          = errors.New("deployment not found")
-	ErrExecutionNotFound = errors.New("deployment execution not found")
-	ErrExecutionConflict = errors.New("deployment execution state conflict")
-	// Compatibility aliases keep worker internals concise while public errors
-	// and JSON consistently use execution vocabulary.
-	ErrRunNotFound       = ErrExecutionNotFound
-	ErrRunConflict       = ErrExecutionConflict
-	ErrNoReadyBuild      = errors.New("deployment has no ready build")
-	ErrNoQueuedExecution = errors.New("no queued deployment execution")
-	ErrNoQueuedRun       = ErrNoQueuedExecution
-	ErrSourceTooLarge    = errors.New("deployment source is too large")
+	ErrInvalid        = errors.New("invalid deployment")
+	ErrNotFound       = errors.New("deployment not found")
+	ErrNotReady       = errors.New("deployment is not ready")
+	ErrSourceTooLarge = errors.New("deployment source is too large")
 )
-
-// Runtime identifies a pluggable builder/runner pair.
-type Runtime string
-
-const (
-	RuntimePython Runtime = "python"
-	RuntimeRust   Runtime = "rust"
-	RuntimeGo     Runtime = "go"
-	RuntimeRuby   Runtime = "ruby"
-	RuntimeNode   Runtime = "node"
-)
-
-// Compiled runtimes link their dependencies into one executable, so a build
-// produces a code layer and never an install layer.
-func (runtime Runtime) Compiled() bool {
-	return runtime == RuntimeRust || runtime == RuntimeGo
-}
-
-func (runtime Runtime) Valid() bool {
-	switch runtime {
-	case RuntimePython, RuntimeRust, RuntimeGo, RuntimeRuby, RuntimeNode:
-		return true
-	}
-	return false
-}
-
-func ParseRuntime(raw string) (Runtime, error) {
-	runtime := Runtime(strings.ToLower(strings.TrimSpace(raw)))
-	if !runtime.Valid() {
-		return "", fmt.Errorf("%w: runtime must be python, rust, go, ruby or node", ErrInvalid)
-	}
-	return runtime, nil
-}
 
 type Status string
 
+// The stages a deployment moves through. Each is a different thing to be
+// waiting on, which is why queueing and publishing are not folded into
+// building: one waits for a slot, the other for an upload.
 const (
-	StatusUploaded Status = "uploaded"
-	StatusBuilding Status = "building"
-	StatusReady    Status = "ready"
-	StatusFailed   Status = "failed"
+	StatusQueued     Status = "queued"
+	StatusBuilding   Status = "building"
+	StatusPublishing Status = "publishing"
+	StatusReady      Status = "ready"
+	StatusFailed     Status = "failed"
 )
 
 func (status Status) Valid() bool {
 	switch status {
-	case StatusUploaded, StatusBuilding, StatusReady, StatusFailed:
+	case StatusQueued, StatusBuilding, StatusPublishing,
+		StatusReady, StatusFailed:
 		return true
 	default:
 		return false
 	}
 }
 
-const (
-	ArtifactSource       = "deployment_source"
-	ArtifactInstallLayer = "install_layer"
-	ArtifactCodeLayer    = "code_layer"
-)
+// Running reports whether the deployment still has somewhere to go, which is
+// also what tells a reader to keep following its output.
+func (status Status) Running() bool {
+	switch status {
+	case StatusQueued, StatusBuilding, StatusPublishing:
+		return true
+	default:
+		return false
+	}
+}
 
-// Artifact is immutable payload metadata. StorageKey is the blob handle
-// builders and workers open; it names internal storage topology, so the API
-// projects artifacts into a response type rather than serving this one.
-type Artifact struct {
-	ID         string    `json:"id"`
-	Kind       string    `json:"kind"`
-	Name       string    `json:"name"`
-	MediaType  string    `json:"media_type"`
-	SizeBytes  int64     `json:"size_bytes"`
-	SHA256     string    `json:"sha256"`
-	StorageKey string    `json:"storage_key"`
-	CreatedAt  time.Time `json:"created_at"`
+// stages is the only path through the statuses. Anything else is a bug in the
+// caller rather than a state a deployment can hold.
+var stages = map[Status]Status{
+	StatusQueued:   StatusBuilding,
+	StatusBuilding: StatusPublishing,
 }
 
 type Failure struct {
@@ -100,36 +64,26 @@ type Failure struct {
 	Message string `json:"message"`
 }
 
-type Build struct {
-	ID           string     `json:"id"`
-	ProjectID    string     `json:"project_id"`
-	DeploymentID string     `json:"deployment_id"`
-	Number       int        `json:"number"`
-	Status       Status     `json:"status"`
-	Runtime      Runtime    `json:"runtime"`
-	EntryPoint   string     `json:"entrypoint"`
-	SourceSHA256 string     `json:"source_sha256"`
-	Artifacts    []Artifact `json:"artifacts"`
-	Failure      *Failure   `json:"failure,omitempty"`
-	StartedAt    time.Time  `json:"started_at"`
-	FinishedAt   *time.Time `json:"finished_at,omitempty"`
-}
-
 type Deployment struct {
-	ID         string   `json:"id"`
-	ProjectID  string   `json:"project_id"`
-	AppID      string   `json:"app_id"`
-	Runtime    Runtime  `json:"runtime"`
-	EntryPoint string   `json:"entrypoint"`
-	Status     Status   `json:"status"`
-	Source     Artifact `json:"source"`
+	ID         string         `json:"id"`
+	ProjectID  string         `json:"project_id"`
+	AppID      string         `json:"app_id"`
+	Runtime    build.Runtime  `json:"runtime"`
+	EntryPoint string         `json:"entrypoint"`
+	Status     Status         `json:"status"`
+	Source     build.Artifact `json:"source"`
 	// CommitSHA and GitRef are set when the source came from GitHub. The SHA is
 	// what actually built; the ref is what the caller asked for.
-	CommitSHA string    `json:"commit_sha,omitempty"`
-	GitRef    string    `json:"git_ref,omitempty"`
-	Builds    []Build   `json:"builds"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CommitSHA string `json:"commit_sha,omitempty"`
+	GitRef    string `json:"git_ref,omitempty"`
+	// Build is the output, nil until there is one. Failure is why there is not.
+	Build      *build.Build `json:"build,omitempty"`
+	Failure    *Failure     `json:"failure,omitempty"`
+	Logs       string       `json:"logs"`
+	StartedAt  *time.Time   `json:"started_at,omitempty"`
+	FinishedAt *time.Time   `json:"finished_at,omitempty"`
+	CreatedAt  time.Time    `json:"created_at"`
+	UpdatedAt  time.Time    `json:"updated_at"`
 }
 
 // FromGit records where an uploaded archive came from, once it has been fetched
@@ -139,24 +93,24 @@ func (record *Deployment) FromGit(commitSHA, ref string) {
 	record.GitRef = strings.TrimSpace(ref)
 }
 
-// New assembles an uploaded deployment around its stored source artifact.
+// New assembles a queued deployment around its stored source artifact.
 func New(
 	deploymentID string,
 	projectID string,
 	appID string,
-	runtime Runtime,
+	runtime build.Runtime,
 	entryPoint string,
-	source Artifact,
+	source build.Artifact,
 	now time.Time,
 ) (Deployment, error) {
-	normalized, err := NormalizeEntryPoint(runtime, entryPoint)
+	normalized, err := build.NormalizeEntryPoint(runtime, entryPoint)
 	if err != nil {
 		return Deployment{}, err
 	}
 	record := Deployment{
 		ID: deploymentID, ProjectID: projectID, AppID: appID,
-		Runtime: runtime, EntryPoint: normalized, Status: StatusUploaded,
-		Source: source, Builds: []Build{}, CreatedAt: now, UpdatedAt: now,
+		Runtime: runtime, EntryPoint: normalized, Status: StatusQueued,
+		Source: source, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := record.Validate(); err != nil {
 		return Deployment{}, err
@@ -164,139 +118,104 @@ func New(
 	return record, nil
 }
 
-func (record Deployment) ReadyBuild() (Build, bool) {
-	for index := len(record.Builds) - 1; index >= 0; index-- {
-		if record.Builds[index].Status == StatusReady {
-			return CloneBuild(record.Builds[index]), true
-		}
-	}
-	return Build{}, false
-}
-
-func (record Deployment) BuildByID(buildID string) (Build, bool) {
-	for _, build := range record.Builds {
-		if build.ID == buildID {
-			return CloneBuild(build), true
-		}
-	}
-	return Build{}, false
-}
-
-// StartBuild appends a building build numbered after the last one and moves the
-// deployment's own status with it.
-func (record *Deployment) StartBuild(buildID string, now time.Time) (Build, error) {
-	if err := ValidateIdentifier("build_id", buildID); err != nil {
-		return Build{}, err
+// Advance moves the deployment on to the stage that follows the one it is in.
+// Entering the toolchain is what starts the clock.
+func (record *Deployment) Advance(now time.Time) error {
+	following, ok := stages[record.Status]
+	if !ok {
+		return fmt.Errorf(
+			"%w: deployment %s cannot advance from %s", ErrInvalid, record.ID, record.Status,
+		)
 	}
 	if now.IsZero() || now.Before(record.CreatedAt) {
-		return Build{}, fmt.Errorf("%w: build start time is invalid", ErrInvalid)
+		return fmt.Errorf("%w: deployment stage time is invalid", ErrInvalid)
 	}
-	build := Build{
-		ID: buildID, ProjectID: record.ProjectID, DeploymentID: record.ID,
-		Number: len(record.Builds) + 1, Status: StatusBuilding,
-		Runtime: record.Runtime, EntryPoint: record.EntryPoint,
-		SourceSHA256: record.Source.SHA256, Artifacts: []Artifact{},
-		StartedAt: now,
+	if following == StatusBuilding {
+		started := now
+		record.StartedAt = &started
 	}
-	record.Builds = append(record.Builds, build)
-	record.Status = StatusBuilding
+	record.Status = following
 	record.UpdatedAt = now
-	return CloneBuild(build), nil
+	return nil
 }
 
-// MarkBuildReady completes a building build with the artifacts it produced.
-func (record *Deployment) MarkBuildReady(
-	buildID string,
-	artifacts []Artifact,
-	now time.Time,
-) error {
-	build, err := record.buildInProgress(buildID)
-	if err != nil {
+// MarkReady hands the deployment the build it produced. The build arrives
+// already sealed: a deployment finishes one, it does not make one.
+func (record *Deployment) MarkReady(produced build.Build, now time.Time) error {
+	if !record.Status.Running() {
+		return fmt.Errorf(
+			"%w: deployment %s is already finished", ErrInvalid, record.ID,
+		)
+	}
+	if err := produced.Validate(); err != nil {
 		return err
 	}
-	if len(artifacts) == 0 {
-		return fmt.Errorf("%w: ready build requires artifacts", ErrInvalid)
-	}
 	finished := now
-	build.Status = StatusReady
-	build.Artifacts = artifacts
-	build.Failure = nil
-	build.FinishedAt = &finished
+	record.Build = &produced
+	record.Failure = nil
 	record.Status = StatusReady
+	record.FinishedAt = &finished
 	record.UpdatedAt = finished
 	return nil
 }
 
-// FailBuild terminates a building build with the reason it stopped.
-func (record *Deployment) FailBuild(
-	buildID string,
-	failure Failure,
-	now time.Time,
-) error {
-	build, err := record.buildInProgress(buildID)
-	if err != nil {
-		return err
+// Fail stops the deployment with the reason it stopped. It is reachable from
+// every running stage, including before the toolchain ever ran — which is why
+// a failure leaves no build behind: there was nothing to point at.
+func (record *Deployment) Fail(failure Failure, now time.Time) error {
+	if !record.Status.Running() {
+		return fmt.Errorf(
+			"%w: deployment %s is already finished", ErrInvalid, record.ID,
+		)
 	}
 	if err := validateFailure(&failure); err != nil {
 		return err
 	}
 	finished := now
-	build.Status = StatusFailed
-	build.Failure = CloneFailure(&failure)
-	build.FinishedAt = &finished
+	record.Failure = CloneFailure(&failure)
 	record.Status = StatusFailed
+	record.FinishedAt = &finished
 	record.UpdatedAt = finished
 	return nil
 }
 
-// FailInterruptedBuild fails a build a crashed process left running, reporting
+// FailInterrupted fails a deployment a crashed process left running, reporting
 // whether it changed anything. It never retries the build's side effects.
-func (record *Deployment) FailInterruptedBuild(now time.Time, failure Failure) bool {
-	if record.Status != StatusBuilding || len(record.Builds) == 0 {
-		return false
-	}
-	index := len(record.Builds) - 1
-	if record.Builds[index].Status != StatusBuilding {
+func (record *Deployment) FailInterrupted(now time.Time, failure Failure) bool {
+	if !record.Status.Running() {
 		return false
 	}
 	finished := now
-	record.Builds[index].Status = StatusFailed
-	record.Builds[index].Failure = CloneFailure(&failure)
-	record.Builds[index].FinishedAt = &finished
+	record.Failure = CloneFailure(&failure)
 	record.Status = StatusFailed
+	record.FinishedAt = &finished
 	record.UpdatedAt = now
 	return true
 }
 
-func (record *Deployment) buildInProgress(buildID string) (*Build, error) {
-	for index := range record.Builds {
-		if record.Builds[index].ID != buildID {
-			continue
-		}
-		if record.Builds[index].Status != StatusBuilding {
-			return nil, fmt.Errorf(
-				"%w: build %s is no longer building", ErrInvalid, buildID,
-			)
-		}
-		return &record.Builds[index], nil
+// MaxLogBytes is what a deployment keeps of what the toolchain printed. The
+// tail is what survives: the end of a cargo build is where the error is.
+const MaxLogBytes = 262_144
+
+// Log appends toolchain output, trimming from the front once it outgrows the
+// cap so the newest output is always the part that is kept.
+func (record *Deployment) Log(output string) {
+	if output == "" {
+		return
 	}
-	return nil, fmt.Errorf("%w: build %s", ErrNotFound, buildID)
+	combined := record.Logs + output
+	if len(combined) > MaxLogBytes {
+		combined = combined[len(combined)-MaxLogBytes:]
+	}
+	record.Logs = combined
 }
 
 func CloneDeployment(record Deployment) Deployment {
 	cloned := record
-	cloned.Builds = make([]Build, len(record.Builds))
-	for index := range record.Builds {
-		cloned.Builds[index] = CloneBuild(record.Builds[index])
-	}
-	return cloned
-}
-
-func CloneBuild(build Build) Build {
-	cloned := build
-	cloned.Artifacts = append([]Artifact(nil), build.Artifacts...)
-	cloned.Failure = CloneFailure(build.Failure)
-	cloned.FinishedAt = cloneTime(build.FinishedAt)
+	cloned.Build = build.Clone(record.Build)
+	cloned.Failure = CloneFailure(record.Failure)
+	cloned.StartedAt = cloneTime(record.StartedAt)
+	cloned.FinishedAt = cloneTime(record.FinishedAt)
 	return cloned
 }
 

@@ -10,20 +10,20 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/organization"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/ids"
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/database"
 )
 
 // OrganizationService owns tenancy: who belongs where, and with what standing.
 type OrganizationService struct {
-	organizations *repository.OrganizationRepository
-	users         *repository.UserRepository
+	organizations *database.OrganizationRepository
+	users         *database.UserRepository
 	now           func() time.Time
 	newID         func(string) (string, error)
 }
 
 func NewOrganizationService(
-	organizations *repository.OrganizationRepository,
-	users *repository.UserRepository,
+	organizations *database.OrganizationRepository,
+	users *database.UserRepository,
 	now func() time.Time,
 	newID func(string) (string, error),
 ) (*OrganizationService, error) {

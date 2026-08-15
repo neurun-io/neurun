@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/neurun-io/neurun/internal/artifact"
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/build"
+	"github.com/neurun-io/neurun/internal/files"
 )
 
 type RustOptions struct {
@@ -28,7 +28,7 @@ type RustOptions struct {
 // directory the handler imports from at run time.
 type RustBuilder struct {
 	cargo  string
-	limits artifact.ArchiveLimits
+	limits files.ArchiveLimits
 }
 
 func NewRust(options RustOptions) (*RustBuilder, error) {
@@ -40,7 +40,7 @@ func NewRust(options RustOptions) (*RustBuilder, error) {
 	}
 	return &RustBuilder{
 		cargo: options.CargoExecutable,
-		limits: artifact.ArchiveLimits{
+		limits: files.ArchiveLimits{
 			MaxEntries:       options.MaxArchiveEntries,
 			MaxExpandedBytes: options.MaxArchiveExpandedBytes,
 		},
@@ -48,7 +48,7 @@ func NewRust(options RustOptions) (*RustBuilder, error) {
 }
 
 func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != deployment.RuntimeRust {
+	if request.Runtime != build.RuntimeRust {
 		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
 	}
 	if ctx == nil {
@@ -59,7 +59,7 @@ func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result,
 		return Result{}, errors.New("builder: source archive and work directory are required")
 	}
 	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := artifact.ExtractZIPFile(
+	if _, err := files.ExtractZIPFile(
 		request.SourceArchivePath, sourceDir, builder.limits,
 	); err != nil {
 		return Result{}, fmt.Errorf("builder: extract source: %w", err)
@@ -89,8 +89,8 @@ func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result,
 		"CARGO_TARGET_DIR="+filepath.Join(cache, "target"),
 		"CARGO_TERM_COLOR=never",
 	)
-	if output, err := compile.CombinedOutput(); err != nil {
-		return Result{}, commandError("compile Rust source", output, err)
+	if err := request.run("compile Rust source", compile); err != nil {
+		return Result{}, err
 	}
 
 	releaseDir := filepath.Join(cache, "target", "release")
@@ -103,7 +103,7 @@ func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result,
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)
 	}
 	return Result{Artifacts: []Output{{
-		Kind:      deployment.ArtifactCodeLayer,
+		Kind:      build.ArtifactCodeLayer,
 		Name:      "code-layer.zip",
 		MediaType: "application/zip",
 		Path:      codePath,

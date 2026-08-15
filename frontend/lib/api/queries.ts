@@ -13,7 +13,7 @@ import * as api from "./endpoints";
 import { NeurunApiError } from "./errors";
 import * as resources from "./resources";
 import { LIVE_POLL_INTERVAL_MS } from "./query-client";
-import { isTerminalExecutionStatus } from "./resource-types";
+import { isDeploymentRunning, isTerminalExecutionStatus } from "./resource-types";
 
 /* -------------------------------------------------------------------------- */
 /* Query keys                                                                  */
@@ -41,9 +41,6 @@ export const queryKeys = {
     [...queryKeys.scope(scope), "deployments", appId ?? "all"] as const,
   deployment: (scope: string, id: string) =>
     [...queryKeys.scope(scope), "deployment", id] as const,
-  builds: (scope: string, deploymentId?: string) =>
-    [...queryKeys.scope(scope), "builds", deploymentId ?? "all"] as const,
-  build: (scope: string, id: string) => [...queryKeys.scope(scope), "build", id] as const,
   executions: (scope: string, deploymentId?: string) =>
     [...queryKeys.scope(scope), "executions", deploymentId ?? "all"] as const,
   execution: (scope: string, id: string) =>
@@ -139,32 +136,11 @@ export function useDeploymentQuery(id: string) {
     queryKey: queryKeys.deployment(scope, id),
     queryFn: async ({ signal }) => (await resources.getDeployment(id, signal)).data,
     enabled: Boolean(id),
+    // Followed while it runs: the logs are still being written.
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return !status || status === "uploaded" || status === "building"
-        ? LIVE_POLL_INTERVAL_MS
-        : false;
+      return !status || isDeploymentRunning(status) ? LIVE_POLL_INTERVAL_MS : false;
     },
-  });
-}
-
-export function useBuildsQuery(deploymentId?: string) {
-  const scope = useScope();
-  return useQuery({
-    queryKey: queryKeys.builds(scope, deploymentId),
-    queryFn: async ({ signal }) => (await resources.listBuilds(deploymentId, signal)).data,
-    refetchInterval: LIVE_POLL_INTERVAL_MS,
-  });
-}
-
-export function useBuildQuery(id: string) {
-  const scope = useScope();
-  return useQuery({
-    queryKey: queryKeys.build(scope, id),
-    queryFn: async ({ signal }) => (await resources.getBuild(id, signal)).data,
-    enabled: Boolean(id),
-    refetchInterval: (query) =>
-      query.state.data?.status === "building" ? LIVE_POLL_INTERVAL_MS : false,
   });
 }
 

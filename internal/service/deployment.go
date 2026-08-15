@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"os"
 	"path"
@@ -15,17 +16,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/artifact"
 	"github.com/neurun-io/neurun/internal/builder"
+	"github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 	"github.com/neurun-io/neurun/internal/dto"
+	"github.com/neurun-io/neurun/internal/files"
 	"github.com/neurun-io/neurun/internal/ids"
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/database"
+	"github.com/neurun-io/neurun/internal/repository/file"
 )
 
 const (
-	DefaultMaxSourceBytes   = int64(32 << 20)
-	DefaultMaxArtifactBytes = int64(256 << 20)
+	DefaultMaxSourceBytes   = int64(33_554_432)
+	DefaultMaxArtifactBytes = int64(268_435_456)
 	DefaultBuildTimeout     = 5 * time.Minute
 	maximumPageSize         = 200
 )
@@ -41,12 +44,15 @@ type DeploymentOptions struct {
 	NewID               func(string) (string, error)
 }
 
+// DeploymentService turns a source archive into a build. It reaches the app
+// repository only to learn which project a deployment belongs to; projects and
+// apps are owned elsewhere.
 type DeploymentService struct {
-	projects    *repository.ProjectRepository
-	apps        *repository.AppRepository
-	deployments *repository.DeploymentRepository
-	blobs       artifact.BlobStore
-	builders    map[deployment.Runtime]builder.Builder
+	apps        *database.AppRepository
+	deployments *database.DeploymentRepository
+	builds      *database.BuildRepository
+	blobs       file.Repository
+	builders    map[build.Runtime]builder.Builder
 
 	maxSourceBytes   int64
 	maxArtifactBytes int64
@@ -58,15 +64,15 @@ type DeploymentService struct {
 }
 
 func NewDeploymentService(
-	projects *repository.ProjectRepository,
-	apps *repository.AppRepository,
-	deployments *repository.DeploymentRepository,
-	blobs artifact.BlobStore,
-	toolchains map[deployment.Runtime]builder.Builder,
+	apps *database.AppRepository,
+	deployments *database.DeploymentRepository,
+	builds *database.BuildRepository,
+	blobs file.Repository,
+	toolchains map[build.Runtime]builder.Builder,
 	options DeploymentOptions,
 ) (*DeploymentService, error) {
 	switch {
-	case projects == nil || apps == nil || deployments == nil:
+	case apps == nil || deployments == nil || builds == nil:
 		return nil, errors.New("deployment service requires its repositories")
 	case blobs == nil:
 		return nil, errors.New("deployment service requires an artifact store")
@@ -92,7 +98,7 @@ func NewDeploymentService(
 		options.NewID = ids.New
 	}
 	return &DeploymentService{
-		projects: projects, apps: apps, deployments: deployments,
+		apps: apps, deployments: deployments, builds: builds,
 		blobs: blobs, builders: toolchains,
 		maxSourceBytes:   options.MaxSourceBytes,
 		maxArtifactBytes: options.MaxArtifactBytes,
@@ -137,7 +143,7 @@ func (service *DeploymentService) Create(
 		ctx, request.Source, service.maxSourceBytes,
 	)
 	if err != nil {
-		if errors.Is(err, artifact.ErrByteLimitExceeded) {
+		if errors.Is(err, files.ErrByteLimitExceeded) {
 			return deployment.Deployment{}, fmt.Errorf(
 				"%w: source ZIP exceeds %d bytes",
 				deployment.ErrSourceTooLarge, service.maxSourceBytes,
@@ -166,8 +172,8 @@ func (service *DeploymentService) Create(
 	record, err := deployment.New(
 		deploymentID, app.ProjectID, app.ID,
 		request.Runtime, request.EntryPoint,
-		deployment.Artifact{
-			ID: sourceID, Kind: deployment.ArtifactSource, Name: sourceName,
+		build.Artifact{
+			ID: sourceID, Kind: build.ArtifactSource, Name: sourceName,
 			MediaType: "application/zip", SizeBytes: sourceInfo.SizeBytes,
 			SHA256: sourceInfo.SHA256, StorageKey: storageKey, CreatedAt: now,
 		},
@@ -209,33 +215,6 @@ func (service *DeploymentService) List(
 	return service.deployments.List(ctx, organizationID, projectID, appID, limit)
 }
 
-func (service *DeploymentService) GetBuild(
-	ctx context.Context,
-	organizationID string,
-	buildID string,
-) (deployment.Build, error) {
-	return service.deployments.GetBuild(ctx, organizationID, buildID)
-}
-
-func (service *DeploymentService) ListBuilds(
-	ctx context.Context,
-	organizationID string,
-	deploymentID string,
-	limit int,
-) ([]deployment.Build, error) {
-	if err := validateLimit(limit); err != nil {
-		return nil, err
-	}
-	if deploymentID != "" {
-		if _, err := service.deployments.GetByID(
-			ctx, organizationID, deploymentID,
-		); err != nil {
-			return nil, err
-		}
-	}
-	return service.deployments.ListBuilds(ctx, organizationID, deploymentID, limit)
-}
-
 // RecoverInterruptedBuilds marks builds a prior process crash left building as
 // failed. It never retries the build's side effects.
 func (service *DeploymentService) RecoverInterruptedBuilds(
@@ -249,162 +228,6 @@ func (service *DeploymentService) RecoverInterruptedBuilds(
 			Message: "build was interrupted by a service restart",
 		},
 	)
-}
-
-// CreateProject mints a project. Nothing creates one implicitly: a project is
-// only ever brought into being by an explicit call.
-func (service *DeploymentService) CreateProject(
-	ctx context.Context,
-	organizationID string,
-	name string,
-) (deployment.Project, error) {
-	id, err := service.allocateID("prj")
-	if err != nil {
-		return deployment.Project{}, err
-	}
-	record, err := deployment.NewProject(
-		id, organizationID, name, service.now().UTC().Round(0),
-	)
-	if err != nil {
-		return deployment.Project{}, err
-	}
-	return service.projects.Create(ctx, record)
-}
-
-// DeleteProject destroys a project and everything beneath it — apps,
-// deployments, builds, executions, users and API keys all cascade. Blob
-// payloads in the artifact store are left alone; they are content-addressed and
-// shared, so removing them belongs to a separate sweep.
-func (service *DeploymentService) DeleteProject(
-	ctx context.Context,
-	organizationID string,
-	projectID string,
-) error {
-	return service.projects.Delete(ctx, organizationID, projectID)
-}
-
-// DeleteApp destroys an app and the deployments, builds and executions under it.
-func (service *DeploymentService) DeleteApp(
-	ctx context.Context,
-	organizationID string,
-	appID string,
-) error {
-	return service.apps.Delete(ctx, organizationID, appID)
-}
-
-func (service *DeploymentService) GetProject(
-	ctx context.Context,
-	organizationID string,
-	projectID string,
-) (deployment.Project, error) {
-	return service.projects.GetByID(ctx, organizationID, projectID)
-}
-
-func (service *DeploymentService) ListProjects(
-	ctx context.Context,
-	organizationID string,
-	limit int,
-) ([]deployment.Project, error) {
-	if err := validateLimit(limit); err != nil {
-		return nil, err
-	}
-	return service.projects.List(ctx, organizationID, limit)
-}
-
-func (service *DeploymentService) UpdateProject(
-	ctx context.Context,
-	organizationID string,
-	projectID string,
-	request dto.UpdateProjectRequest,
-) (deployment.Project, error) {
-	if request.Name == nil {
-		return deployment.Project{}, fmt.Errorf(
-			"%w: project update is empty", deployment.ErrInvalid,
-		)
-	}
-	record, err := service.projects.GetByID(ctx, organizationID, projectID)
-	if err != nil {
-		return deployment.Project{}, err
-	}
-	if err := record.Rename(*request.Name, service.now().UTC().Round(0)); err != nil {
-		return deployment.Project{}, err
-	}
-	return service.projects.Update(ctx, record)
-}
-
-func (service *DeploymentService) CreateApp(
-	ctx context.Context,
-	organizationID string,
-	request dto.CreateAppRequest,
-) (deployment.App, error) {
-	if err := deployment.ValidateIdentifier("project_id", request.ProjectID); err != nil {
-		return deployment.App{}, err
-	}
-	if _, err := service.projects.GetByID(
-		ctx, organizationID, request.ProjectID,
-	); err != nil {
-		return deployment.App{}, err
-	}
-	id, err := service.allocateID("app")
-	if err != nil {
-		return deployment.App{}, err
-	}
-	now := service.now().UTC().Round(0)
-	record, err := deployment.NewApp(id, request.ProjectID, request.Name, now)
-	if err != nil {
-		return deployment.App{}, err
-	}
-	// Connected before the insert rather than after: an app that exists without
-	// its repository is an app nothing can ever deploy to.
-	if err := record.Connect(request.Repository, request.ProductionRef, now); err != nil {
-		return deployment.App{}, err
-	}
-	return service.apps.Create(ctx, record)
-}
-
-func (service *DeploymentService) GetApp(
-	ctx context.Context,
-	organizationID string,
-	appID string,
-) (deployment.App, error) {
-	return service.apps.GetByID(ctx, organizationID, appID)
-}
-
-func (service *DeploymentService) ListApps(
-	ctx context.Context,
-	organizationID string,
-	projectID string,
-	name string,
-	limit int,
-) ([]deployment.App, error) {
-	if err := validateLimit(limit); err != nil {
-		return nil, err
-	}
-	if err := deployment.ValidateAppNameFilter(name); err != nil {
-		return nil, err
-	}
-	return service.apps.List(ctx, organizationID, projectID, name, limit)
-}
-
-func (service *DeploymentService) UpdateApp(
-	ctx context.Context,
-	organizationID string,
-	appID string,
-	request dto.UpdateAppRequest,
-) (deployment.App, error) {
-	if request.Name == nil {
-		return deployment.App{}, fmt.Errorf(
-			"%w: app update is empty", deployment.ErrInvalid,
-		)
-	}
-	record, err := service.apps.GetByID(ctx, organizationID, appID)
-	if err != nil {
-		return deployment.App{}, err
-	}
-	if err := record.Rename(*request.Name, service.now().UTC().Round(0)); err != nil {
-		return deployment.App{}, err
-	}
-	return service.apps.Update(ctx, organizationID, record)
 }
 
 // runBuild is serialized process-wide: a build spends minutes in a toolchain,
@@ -424,32 +247,21 @@ func (service *DeploymentService) runBuild(
 	} else if !errors.Is(err, deployment.ErrNotFound) {
 		return deployment.Deployment{}, err
 	}
-	buildID, err := service.allocateID("bld")
-	if err != nil {
-		return deployment.Deployment{}, err
-	}
-	if _, err := record.StartBuild(buildID, service.now().UTC().Round(0)); err != nil {
-		return deployment.Deployment{}, err
-	}
-	if err := service.deployments.Save(ctx, record); err != nil {
-		return deployment.Deployment{}, fmt.Errorf("persist deployment build start: %w", err)
-	}
-
 	buildCtx, cancel := context.WithTimeout(ctx, service.buildTimeout)
 	defer cancel()
 	workDirectory, err := os.MkdirTemp("", "neurun-build-*")
 	if err != nil {
-		return service.failBuild(ctx, record, buildID, "build_environment", err)
+		return service.fail(ctx, record, "build_environment", err)
 	}
 	defer os.RemoveAll(workDirectory)
 
 	sourcePath := filepath.Join(workDirectory, "source.zip")
 	if err := service.materialize(buildCtx, record.Source, sourcePath); err != nil {
-		return service.failBuild(ctx, record, buildID, "source_unavailable", err)
+		return service.fail(ctx, record, "source_unavailable", err)
 	}
 	toolchain, ok := service.builders[record.Runtime]
 	if !ok {
-		return service.failBuild(ctx, record, buildID, "runtime_unsupported",
+		return service.fail(ctx, record, "runtime_unsupported",
 			fmt.Errorf("no builder for runtime %q", record.Runtime))
 	}
 	// Cached per runtime: a Go build cache and a cargo target directory have
@@ -459,50 +271,167 @@ func (service *DeploymentService) runBuild(
 	if service.buildCache != "" {
 		cacheDirectory = filepath.Join(service.buildCache, string(record.Runtime))
 		if err := os.MkdirAll(cacheDirectory, 0o700); err != nil {
-			return service.failBuild(ctx, record, buildID, "build_environment", err)
+			return service.fail(ctx, record, "build_environment", err)
 		}
 	}
+
+	// Nothing above this point has run a toolchain, so nothing above it can
+	// leave a build behind: those failures are the deployment's alone.
+	if err := service.advance(ctx, &record); err != nil {
+		return deployment.Deployment{}, err
+	}
+	stream := service.follow(ctx, &record)
 	result, buildErr := toolchain.Build(buildCtx, builder.Request{
 		Runtime: record.Runtime, EntryPoint: record.EntryPoint,
 		SourceArchivePath: sourcePath, WorkDirectory: workDirectory,
-		CacheDirectory: cacheDirectory,
+		CacheDirectory: cacheDirectory, Logs: stream,
 	})
+	stream.Close()
 	if buildErr != nil {
 		code := "build_failed"
 		if errors.Is(buildErr, context.DeadlineExceeded) ||
 			errors.Is(buildCtx.Err(), context.DeadlineExceeded) {
 			code = "build_timeout"
 		}
-		return service.failBuild(ctx, record, buildID, code, buildErr)
+		return service.fail(ctx, record, code, buildErr)
 	}
 	if len(result.Artifacts) == 0 {
-		return service.failBuild(ctx, record, buildID, "build_failed",
+		return service.fail(ctx, record, "build_failed",
 			errors.New("builder produced no artifacts"))
+	}
+	if err := service.advance(ctx, &record); err != nil {
+		return deployment.Deployment{}, err
 	}
 	stored, err := service.storeBuildArtifacts(buildCtx, result.Artifacts)
 	if err != nil {
-		return service.failBuild(ctx, record, buildID, "artifact_store_failed", err)
+		return service.fail(ctx, record, "artifact_store_failed", err)
 	}
-	if err := record.MarkBuildReady(
-		buildID, stored, service.now().UTC().Round(0),
-	); err != nil {
+	buildID, err := service.allocateID("bld")
+	if err != nil {
+		return deployment.Deployment{}, err
+	}
+	produced, err := build.New(
+		buildID, record.Runtime, record.EntryPoint,
+		record.Source.SHA256, stored, service.now().UTC().Round(0),
+	)
+	if err != nil {
+		return deployment.Deployment{}, err
+	}
+	// The build is written first: the deployment points at it, so the row it
+	// references has to exist before the reference does.
+	if err := service.builds.Save(ctx, produced); err != nil {
+		return deployment.Deployment{}, fmt.Errorf("persist build: %w", err)
+	}
+	if err := record.MarkReady(produced, service.now().UTC().Round(0)); err != nil {
 		return deployment.Deployment{}, err
 	}
 	if err := service.deployments.Save(ctx, record); err != nil {
-		return deployment.Deployment{}, fmt.Errorf("persist completed deployment build: %w", err)
+		return deployment.Deployment{}, fmt.Errorf("persist completed deployment: %w", err)
 	}
 	return deployment.CloneDeployment(record), nil
 }
 
-func (service *DeploymentService) failBuild(
+// logFlush is how far behind the toolchain a reader is allowed to be. A build
+// prints in bursts, and writing the row on every burst would write it hundreds
+// of times for output nobody reads that fast.
+const logFlush = 2 * time.Second
+
+// logStream carries toolchain output onto the deployment while the build is
+// still running, so following a deployment shows it happening rather than
+// showing nothing and then everything.
+type logStream struct {
+	mutex   sync.Mutex
+	record  *deployment.Deployment
+	written bool
+	persist func(deployment.Deployment)
+	stop    chan struct{}
+	stopped chan struct{}
+}
+
+func (service *DeploymentService) follow(
+	ctx context.Context,
+	record *deployment.Deployment,
+) *logStream {
+	stream := &logStream{
+		record: record,
+		persist: func(snapshot deployment.Deployment) {
+			if err := service.deployments.Save(ctx, snapshot); err != nil {
+				slog.Warn(
+					"persist deployment logs",
+					"deployment", snapshot.ID, "error", err,
+				)
+			}
+		},
+		stop:    make(chan struct{}),
+		stopped: make(chan struct{}),
+	}
+	go stream.flushEvery(logFlush)
+	return stream
+}
+
+func (stream *logStream) Write(output []byte) (int, error) {
+	stream.mutex.Lock()
+	defer stream.mutex.Unlock()
+	stream.record.Log(string(output))
+	stream.written = true
+	return len(output), nil
+}
+
+func (stream *logStream) flushEvery(interval time.Duration) {
+	defer close(stream.stopped)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stream.stop:
+			stream.flush()
+			return
+		case <-ticker.C:
+			stream.flush()
+		}
+	}
+}
+
+func (stream *logStream) flush() {
+	stream.mutex.Lock()
+	if !stream.written {
+		stream.mutex.Unlock()
+		return
+	}
+	stream.written = false
+	snapshot := deployment.CloneDeployment(*stream.record)
+	stream.mutex.Unlock()
+	stream.persist(snapshot)
+}
+
+// Close stops following and leaves the last of the output on the row.
+func (stream *logStream) Close() {
+	close(stream.stop)
+	<-stream.stopped
+}
+
+// advance moves the deployment on to its next stage and records it there, so
+// somebody watching sees which wait they are in.
+func (service *DeploymentService) advance(
+	ctx context.Context,
+	record *deployment.Deployment,
+) error {
+	if err := record.Advance(service.now().UTC().Round(0)); err != nil {
+		return err
+	}
+	if err := service.deployments.Save(ctx, *record); err != nil {
+		return fmt.Errorf("persist deployment stage: %w", err)
+	}
+	return nil
+}
+
+func (service *DeploymentService) fail(
 	ctx context.Context,
 	record deployment.Deployment,
-	buildID string,
 	code string,
 	cause error,
 ) (deployment.Deployment, error) {
-	if err := record.FailBuild(
-		buildID,
+	if err := record.Fail(
 		deployment.Failure{Code: code, Message: boundedError(cause)},
 		service.now().UTC().Round(0),
 	); err != nil {
@@ -516,7 +445,7 @@ func (service *DeploymentService) failBuild(
 	}
 	if err := service.deployments.Save(saveCtx, record); err != nil {
 		return deployment.CloneDeployment(record), fmt.Errorf(
-			"persist failed deployment build: %w", err,
+			"persist failed deployment: %w", err,
 		)
 	}
 	return deployment.CloneDeployment(record), nil
@@ -524,7 +453,7 @@ func (service *DeploymentService) failBuild(
 
 func (service *DeploymentService) materialize(
 	ctx context.Context,
-	stored deployment.Artifact,
+	stored build.Artifact,
 	targetPath string,
 ) error {
 	reader, info, err := service.blobs.Open(ctx, stored.StorageKey)
@@ -539,7 +468,7 @@ func (service *DeploymentService) materialize(
 	if err != nil {
 		return err
 	}
-	result, copyErr := artifact.CopyAndHashContext(ctx, target, reader, stored.SizeBytes)
+	result, copyErr := files.CopyAndHashContext(ctx, target, reader, stored.SizeBytes)
 	closeErr := target.Close()
 	if copyErr != nil {
 		return copyErr
@@ -556,10 +485,10 @@ func (service *DeploymentService) materialize(
 func (service *DeploymentService) storeBuildArtifacts(
 	ctx context.Context,
 	outputs []builder.Output,
-) ([]deployment.Artifact, error) {
+) ([]build.Artifact, error) {
 	remaining := service.maxArtifactBytes
 	seenKinds := make(map[string]struct{}, len(outputs))
-	stored := make([]deployment.Artifact, 0, len(outputs))
+	stored := make([]build.Artifact, 0, len(outputs))
 	for _, output := range outputs {
 		if err := validateBuiltArtifact(output); err != nil {
 			return nil, err
@@ -568,7 +497,7 @@ func (service *DeploymentService) storeBuildArtifacts(
 			return nil, fmt.Errorf("builder returned duplicate %s artifact", output.Kind)
 		}
 		seenKinds[output.Kind] = struct{}{}
-		info, err := artifact.HashFile(output.Path, remaining)
+		info, err := files.HashFile(output.Path, remaining)
 		if err != nil {
 			return nil, err
 		}
@@ -581,14 +510,14 @@ func (service *DeploymentService) storeBuildArtifacts(
 			return nil, err
 		}
 		remaining -= info.SizeBytes
-		stored = append(stored, deployment.Artifact{
+		stored = append(stored, build.Artifact{
 			ID: artifactID, Kind: output.Kind, Name: output.Name,
 			MediaType: output.MediaType, SizeBytes: info.SizeBytes,
 			SHA256: info.SHA256, StorageKey: storageKey,
 			CreatedAt: service.now().UTC().Round(0),
 		})
 	}
-	if _, exists := seenKinds[deployment.ArtifactCodeLayer]; !exists {
+	if _, exists := seenKinds[build.ArtifactCodeLayer]; !exists {
 		return nil, errors.New("builder did not produce a code layer")
 	}
 	return stored, nil
@@ -600,7 +529,7 @@ func (service *DeploymentService) storeBuildArtifacts(
 func (service *DeploymentService) putContentAddressed(
 	ctx context.Context,
 	filePath string,
-	expected artifact.CopyResult,
+	expected files.CopyResult,
 	maximumBytes int64,
 ) (string, error) {
 	if len(expected.SHA256) != 64 || expected.SizeBytes < 0 {
@@ -622,7 +551,7 @@ func (service *DeploymentService) putContentAddressed(
 		}
 		return storageKey, nil
 	}
-	if !errors.Is(putErr, artifact.ErrObjectExists) {
+	if !errors.Is(putErr, file.ErrExists) {
 		return "", putErr
 	}
 	existing, existingInfo, err := service.blobs.Open(ctx, storageKey)
@@ -669,19 +598,19 @@ func spoolSource(
 	ctx context.Context,
 	source io.Reader,
 	maximumBytes int64,
-) (string, artifact.CopyResult, func(), error) {
+) (string, files.CopyResult, func(), error) {
 	file, err := os.CreateTemp("", "neurun-source-*.zip")
 	if err != nil {
-		return "", artifact.CopyResult{}, func() {}, err
+		return "", files.CopyResult{}, func() {}, err
 	}
 	name := file.Name()
 	cleanup := func() { _ = os.Remove(name) }
 	if err := file.Chmod(0o600); err != nil {
 		file.Close()
 		cleanup()
-		return "", artifact.CopyResult{}, func() {}, err
+		return "", files.CopyResult{}, func() {}, err
 	}
-	result, copyErr := artifact.CopyAndHashContext(ctx, file, source, maximumBytes)
+	result, copyErr := files.CopyAndHashContext(ctx, file, source, maximumBytes)
 	if copyErr == nil {
 		copyErr = file.Sync()
 	}
@@ -698,8 +627,8 @@ func spoolSource(
 }
 
 func validateBuiltArtifact(output builder.Output) error {
-	if output.Kind != deployment.ArtifactInstallLayer &&
-		output.Kind != deployment.ArtifactCodeLayer {
+	if output.Kind != build.ArtifactInstallLayer &&
+		output.Kind != build.ArtifactCodeLayer {
 		return fmt.Errorf("builder returned unsupported artifact kind %q", output.Kind)
 	}
 	if output.Name == "" || path.Base(output.Name) != output.Name ||

@@ -30,16 +30,11 @@ export const app: App = {
 
 export const readyBuild: Build = {
   id: BUILD_ID,
-  project_id: PROJECT_ID,
-  deployment_id: DEPLOYMENT_ID,
-  number: 1,
-  status: "ready",
   runtime: "python",
   entrypoint: "main.py:handler",
   source_sha256: SOURCE_SHA256,
   artifacts: [],
-  started_at: "2026-07-29T10:00:01Z",
-  finished_at: "2026-07-29T10:00:09Z",
+  created_at: "2026-07-29T10:00:09Z",
 };
 
 export const readyDeployment: Deployment = {
@@ -58,7 +53,10 @@ export const readyDeployment: Deployment = {
     sha256: SOURCE_SHA256,
     created_at: "2026-07-29T10:00:00Z",
   },
-  builds: [readyBuild],
+  build: readyBuild,
+  logs: "$ compile Python source\n",
+  started_at: "2026-07-29T10:00:01Z",
+  finished_at: "2026-07-29T10:00:09Z",
   created_at: "2026-07-29T10:00:00Z",
   updated_at: "2026-07-29T10:00:09Z",
 };

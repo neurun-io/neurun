@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/artifact"
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/build"
+	"github.com/neurun-io/neurun/internal/files"
 )
 
 type PythonOptions struct {
@@ -26,7 +26,7 @@ type PythonOptions struct {
 
 type PythonBuilder struct {
 	python string
-	limits artifact.ArchiveLimits
+	limits files.ArchiveLimits
 }
 
 func NewPython(options PythonOptions) (*PythonBuilder, error) {
@@ -36,13 +36,13 @@ func NewPython(options PythonOptions) (*PythonBuilder, error) {
 	if options.MaxArchiveEntries < 0 || options.MaxArchiveExpandedBytes < 0 {
 		return nil, errors.New("builder: archive limits cannot be negative")
 	}
-	return &PythonBuilder{python: options.PythonExecutable, limits: artifact.ArchiveLimits{
+	return &PythonBuilder{python: options.PythonExecutable, limits: files.ArchiveLimits{
 		MaxEntries: options.MaxArchiveEntries, MaxExpandedBytes: options.MaxArchiveExpandedBytes,
 	}}, nil
 }
 
 func (builder *PythonBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != deployment.RuntimePython {
+	if request.Runtime != build.RuntimePython {
 		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
 	}
 	if ctx == nil {
@@ -52,7 +52,7 @@ func (builder *PythonBuilder) Build(ctx context.Context, request Request) (Resul
 		return Result{}, errors.New("builder: source archive and work directory are required")
 	}
 	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := artifact.ExtractZIPFile(request.SourceArchivePath, sourceDir, builder.limits); err != nil {
+	if _, err := files.ExtractZIPFile(request.SourceArchivePath, sourceDir, builder.limits); err != nil {
 		return Result{}, fmt.Errorf("builder: extract source: %w", err)
 	}
 	if err := validateEntrypoint(sourceDir, request.EntryPoint); err != nil {
@@ -60,14 +60,14 @@ func (builder *PythonBuilder) Build(ctx context.Context, request Request) (Resul
 	}
 	compile := exec.CommandContext(ctx, builder.python, "-m", "compileall", "-q", sourceDir)
 	compile.Env = append(os.Environ(), "PYTHONPYCACHEPREFIX="+filepath.Join(request.WorkDirectory, "pycache"))
-	if output, err := compile.CombinedOutput(); err != nil {
-		return Result{}, commandError("compile Python source", output, err)
+	if err := request.run("compile Python source", compile); err != nil {
+		return Result{}, err
 	}
 	codePath := filepath.Join(request.WorkDirectory, "code-layer.zip")
 	if err := zipDirectory(sourceDir, codePath); err != nil {
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)
 	}
-	result := Result{Artifacts: []Output{{Kind: deployment.ArtifactCodeLayer, Name: "code-layer.zip", MediaType: "application/zip", Path: codePath}}}
+	result := Result{Artifacts: []Output{{Kind: build.ArtifactCodeLayer, Name: "code-layer.zip", MediaType: "application/zip", Path: codePath}}}
 	requirements := filepath.Join(sourceDir, "requirements.txt")
 	info, err := os.Stat(requirements)
 	if errors.Is(err, os.ErrNotExist) {
@@ -101,14 +101,14 @@ func (builder *PythonBuilder) Build(ctx context.Context, request Request) (Resul
 		"PIP_NO_INPUT=1",
 		"PIP_CACHE_DIR="+filepath.Join(cache, "pip"),
 	)
-	if output, err := pip.CombinedOutput(); err != nil {
-		return Result{}, commandError("install Python requirements", output, err)
+	if err := request.run("install Python requirements", pip); err != nil {
+		return Result{}, err
 	}
 	installPath := filepath.Join(request.WorkDirectory, "install-layer.zip")
 	if err := zipDirectory(installDir, installPath); err != nil {
 		return Result{}, fmt.Errorf("builder: package install layer: %w", err)
 	}
-	result.Artifacts = append(result.Artifacts, Output{Kind: deployment.ArtifactInstallLayer, Name: "install-layer.zip", MediaType: "application/zip", Path: installPath})
+	result.Artifacts = append(result.Artifacts, Output{Kind: build.ArtifactInstallLayer, Name: "install-layer.zip", MediaType: "application/zip", Path: installPath})
 	return result, nil
 }
 

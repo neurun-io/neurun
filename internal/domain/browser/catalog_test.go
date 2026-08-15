@@ -247,4 +247,3 @@ func devicesFor(catalog Catalog, system OS) []CatalogDevice {
 	}
 	return found
 }
-

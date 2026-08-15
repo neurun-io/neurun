@@ -10,12 +10,14 @@ import (
 	"strings"
 	"time"
 
+	appdomain "github.com/neurun-io/neurun/internal/domain/app"
+	"github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 	githubdomain "github.com/neurun-io/neurun/internal/domain/github"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/github"
 	"github.com/neurun-io/neurun/internal/ids"
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/database"
 )
 
 // GitHubService turns a repository and a ref into a deployment. It owns no
@@ -23,8 +25,8 @@ import (
 // exactly as an upload would arrive.
 type GitHubService struct {
 	client        *github.Client
-	installations *repository.GitHubInstallationRepository
-	apps          *repository.AppRepository
+	installations *database.GitHubInstallationRepository
+	apps          *AppService
 	deployments   *DeploymentService
 	now           func() time.Time
 	newID         func(string) (string, error)
@@ -32,8 +34,8 @@ type GitHubService struct {
 
 func NewGitHubService(
 	client *github.Client,
-	installations *repository.GitHubInstallationRepository,
-	apps *repository.AppRepository,
+	installations *database.GitHubInstallationRepository,
+	apps *AppService,
 	deployments *DeploymentService,
 	now func() time.Time,
 	newID func(string) (string, error),
@@ -102,7 +104,7 @@ func (service *GitHubService) Push(
 		// later push must not silently take this one's place.
 		record, err := service.build(
 			ctx, installation.OrganizationID, app, push.InstallationID,
-			push.Ref, push.Commit, deployment.RuntimePython, "",
+			push.Ref, push.Commit, build.RuntimePython, "",
 		)
 		if err != nil {
 			problems = append(problems, fmt.Errorf("deploy app %s: %w", app.ID, err))
@@ -193,31 +195,31 @@ func (service *GitHubService) Branches(
 	return service.client.Branches(ctx, installation.InstallationID, parsed)
 }
 
-// CreateApp mints an app against a repository. An app has no other source of
+// CreateApp mints an app against a database. An app has no other source of
 // code, so the repository is required and is proved readable before the app
 // exists — a name that deploys nothing is worse than a refusal.
 func (service *GitHubService) CreateApp(
 	ctx context.Context,
 	organizationID string,
 	request dto.CreateAppRequest,
-) (deployment.App, error) {
+) (appdomain.App, error) {
 	request.Repository = strings.TrimSpace(request.Repository)
 	request.ProductionRef = strings.TrimSpace(request.ProductionRef)
 	if request.Repository == "" {
-		return deployment.App{}, fmt.Errorf(
+		return appdomain.App{}, fmt.Errorf(
 			"%w: repository is required", githubdomain.ErrInvalid,
 		)
 	}
 	if !service.Configured() {
-		return deployment.App{}, github.ErrNotConfigured
+		return appdomain.App{}, github.ErrNotConfigured
 	}
 	installation, err := service.installations.ByOrganization(ctx, organizationID)
 	if err != nil {
-		return deployment.App{}, err
+		return appdomain.App{}, err
 	}
 	parsed, err := github.ParseRepo(request.Repository)
 	if err != nil {
-		return deployment.App{}, err
+		return appdomain.App{}, err
 	}
 	ref := request.ProductionRef
 	if ref == "" {
@@ -226,9 +228,9 @@ func (service *GitHubService) CreateApp(
 	if _, err := service.client.ResolveRef(
 		ctx, installation.InstallationID, parsed, ref,
 	); err != nil {
-		return deployment.App{}, err
+		return appdomain.App{}, err
 	}
-	return service.deployments.CreateApp(ctx, organizationID, request)
+	return service.apps.Create(ctx, organizationID, request)
 }
 
 // Connect points an app at a repository, verifying the installation can see it
@@ -238,23 +240,23 @@ func (service *GitHubService) Connect(
 	organizationID string,
 	appID string,
 	request dto.ConnectRepositoryRequest,
-) (deployment.App, error) {
-	app, err := service.apps.GetByID(ctx, organizationID, appID)
+) (appdomain.App, error) {
+	app, err := service.apps.Get(ctx, organizationID, appID)
 	if err != nil {
-		return deployment.App{}, err
+		return appdomain.App{}, err
 	}
 	repository := strings.TrimSpace(request.Repository)
 	if repository != "" {
 		if !service.Configured() {
-			return deployment.App{}, github.ErrNotConfigured
+			return appdomain.App{}, github.ErrNotConfigured
 		}
 		installation, err := service.installations.ByOrganization(ctx, organizationID)
 		if err != nil {
-			return deployment.App{}, err
+			return appdomain.App{}, err
 		}
 		parsed, err := github.ParseRepo(repository)
 		if err != nil {
-			return deployment.App{}, err
+			return appdomain.App{}, err
 		}
 		ref := request.ProductionRef
 		if strings.TrimSpace(ref) == "" {
@@ -265,15 +267,15 @@ func (service *GitHubService) Connect(
 		if _, err := service.client.ResolveRef(
 			ctx, installation.InstallationID, parsed, ref,
 		); err != nil {
-			return deployment.App{}, err
+			return appdomain.App{}, err
 		}
 	}
 	if err := app.Connect(
 		repository, request.ProductionRef, service.now().UTC().Round(0),
 	); err != nil {
-		return deployment.App{}, err
+		return appdomain.App{}, err
 	}
-	return service.apps.Update(ctx, organizationID, app)
+	return service.apps.Save(ctx, organizationID, app)
 }
 
 // Deploy resolves a ref, downloads that commit, and builds it. An empty ref
@@ -283,13 +285,13 @@ func (service *GitHubService) Deploy(
 	organizationID string,
 	appID string,
 	ref string,
-	runtime deployment.Runtime,
+	runtime build.Runtime,
 	entryPoint string,
 ) (deployment.Deployment, error) {
 	if !service.Configured() {
 		return deployment.Deployment{}, github.ErrNotConfigured
 	}
-	app, err := service.apps.GetByID(ctx, organizationID, appID)
+	app, err := service.apps.Get(ctx, organizationID, appID)
 	if err != nil {
 		return deployment.Deployment{}, err
 	}
@@ -326,11 +328,11 @@ func (service *GitHubService) Deploy(
 func (service *GitHubService) build(
 	ctx context.Context,
 	organizationID string,
-	app deployment.App,
+	app appdomain.App,
 	installationID int64,
 	ref string,
 	commit string,
-	runtime deployment.Runtime,
+	runtime build.Runtime,
 	entryPoint string,
 ) (deployment.Deployment, error) {
 	parsed, err := github.ParseRepo(app.Repository)
@@ -356,7 +358,7 @@ func (service *GitHubService) build(
 	defer file.Close()
 
 	if !runtime.Valid() {
-		runtime = deployment.RuntimePython
+		runtime = build.RuntimePython
 	}
 	return service.deployments.Create(ctx, organizationID, dto.CreateDeploymentRequest{
 		AppID:      app.ID,

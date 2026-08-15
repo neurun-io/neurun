@@ -10,10 +10,10 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/execution"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/ids"
-	"github.com/neurun-io/neurun/internal/repository"
+	"github.com/neurun-io/neurun/internal/repository/database"
 )
 
-const DefaultMaxExecutionInputBytes = int64(1 << 20)
+const DefaultMaxExecutionInputBytes = int64(1_048_576)
 
 type ExecutionOptions struct {
 	MaxInputBytes int64
@@ -22,16 +22,16 @@ type ExecutionOptions struct {
 }
 
 type ExecutionService struct {
-	executions    *repository.ExecutionRepository
-	deployments   *repository.DeploymentRepository
+	executions    *database.ExecutionRepository
+	deployments   *database.DeploymentRepository
 	maxInputBytes int64
 	now           func() time.Time
 	newID         func(string) (string, error)
 }
 
 func NewExecutionService(
-	executions *repository.ExecutionRepository,
-	deployments *repository.DeploymentRepository,
+	executions *database.ExecutionRepository,
+	deployments *database.DeploymentRepository,
 	options ExecutionOptions,
 ) (*ExecutionService, error) {
 	switch {
@@ -76,10 +76,9 @@ func (service *ExecutionService) Create(
 	if err != nil {
 		return execution.Execution{}, err
 	}
-	build, ok := record.ReadyBuild()
-	if !ok {
+	if record.Status != deployment.StatusReady || record.Build == nil {
 		return execution.Execution{}, fmt.Errorf(
-			"%w: %s", deployment.ErrNoReadyBuild, record.ID,
+			"%w: %s", deployment.ErrNotReady, record.ID,
 		)
 	}
 	id, err := service.allocateID()
@@ -87,7 +86,7 @@ func (service *ExecutionService) Create(
 		return execution.Execution{}, err
 	}
 	queued, err := execution.New(
-		id, record.ProjectID, record.ID, build.ID, input,
+		id, record.ProjectID, record.ID, record.Build.ID, input,
 		service.now().UTC().Round(0),
 	)
 	if err != nil {
@@ -166,10 +165,10 @@ func (service *ExecutionService) Rerun(
 	if err != nil {
 		return execution.Execution{}, err
 	}
-	build, exists := record.BuildByID(original.BuildID)
-	if !exists || build.Status != deployment.StatusReady {
+	if record.Status != deployment.StatusReady || record.Build == nil ||
+		record.Build.ID != original.BuildID {
 		return execution.Execution{}, fmt.Errorf(
-			"%w: pinned build %s", deployment.ErrNoReadyBuild, original.BuildID,
+			"%w: pinned build %s", deployment.ErrNotReady, original.BuildID,
 		)
 	}
 	id, err := service.allocateID()

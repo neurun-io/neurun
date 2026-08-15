@@ -16,7 +16,7 @@ import (
 
 // displayBufferBytes is a framebuffer update's working size. RFB sends large
 // rectangles; a small buffer turns one update into many syscalls.
-const displayBufferBytes = 32 << 10
+const displayBufferBytes = 32_768
 
 func (server *Server) listBrowserSessions(ctx *gin.Context) {
 	records, err := server.browserSessions.List(

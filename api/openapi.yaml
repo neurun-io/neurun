@@ -878,41 +878,6 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/APIKey"}
-  /v1/builds:
-    get:
-      operationId: listBuilds
-      parameters:
-        - $ref: "#/components/parameters/Limit"
-        - name: deployment_id
-          in: query
-          schema: {type: string}
-      responses:
-        "200":
-          description: Project builds.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [builds]
-                properties:
-                  builds:
-                    type: array
-                    items: {$ref: "#/components/schemas/Build"}
-  /v1/builds/{build_id}:
-    parameters:
-      - name: build_id
-        in: path
-        required: true
-        schema: {type: string}
-    get:
-      operationId: getBuild
-      responses:
-        "200":
-          description: Build.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Build"}
-        "404": {$ref: "#/components/responses/Problem"}
   /v1/deployments:
     get:
       operationId: listDeployments
@@ -1525,42 +1490,53 @@ components:
         code: {type: string}
         message: {type: string}
     Build:
+      description: >-
+        What a deployment produced: the artifacts, and what identifies them. A
+        build carries no status and no failure — the deployment that ran it
+        does, and a deployment that produced nothing has no build at all.
       type: object
-      required: [id, project_id, deployment_id, number, status, runtime, entrypoint, source_sha256, artifacts, started_at]
+      required: [id, runtime, entrypoint, source_sha256, artifacts, created_at]
       properties:
         id: {type: string}
-        project_id: {type: string}
-        deployment_id: {type: string}
-        number: {type: integer}
-        status: {type: string, enum: [building, ready, failed]}
         runtime: {type: string, enum: [python, rust, go, ruby, node]}
         entrypoint: {type: string}
         source_sha256: {type: string}
         artifacts:
           type: array
           items: {$ref: "#/components/schemas/Artifact"}
-        failure:
-          oneOf:
-            - $ref: "#/components/schemas/Failure"
-            - type: "null"
-        started_at: {type: string, format: date-time}
-        finished_at:
-          type: [string, "null"]
-          format: date-time
+        created_at: {type: string, format: date-time}
     Deployment:
+      description: >-
+        One attempt to turn a source archive into a build. Statuses run
+        queued → building → publishing → ready or failed; logs carry what the
+        toolchain printed and arrive while it is still running.
       type: object
-      required: [id, project_id, app_id, runtime, entrypoint, status, source, builds, created_at, updated_at]
+      required: [id, project_id, app_id, runtime, entrypoint, status, source, logs, created_at, updated_at]
       properties:
         id: {type: string}
         project_id: {type: string}
         app_id: {type: string}
         runtime: {type: string, enum: [python, rust, go, ruby, node]}
         entrypoint: {type: string}
-        status: {type: string, enum: [uploaded, building, ready, failed]}
+        status: {type: string, enum: [queued, building, publishing, ready, failed]}
         source: {$ref: "#/components/schemas/Artifact"}
-        builds:
-          type: array
-          items: {$ref: "#/components/schemas/Build"}
+        commit_sha: {type: string}
+        git_ref: {type: string}
+        build:
+          oneOf:
+            - $ref: "#/components/schemas/Build"
+            - type: "null"
+        failure:
+          oneOf:
+            - $ref: "#/components/schemas/Failure"
+            - type: "null"
+        logs: {type: string}
+        started_at:
+          type: [string, "null"]
+          format: date-time
+        finished_at:
+          type: [string, "null"]
+          format: date-time
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
     Execution:

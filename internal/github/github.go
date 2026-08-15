@@ -74,7 +74,7 @@ func New(options Options) (*Client, error) {
 		options.Transport = http.DefaultTransport
 	}
 	if options.Limits.MaxArchiveBytes <= 0 {
-		options.Limits.MaxArchiveBytes = 64 << 20
+		options.Limits.MaxArchiveBytes = 67_108_864
 	}
 	if options.Limits.MaxArchiveEntries <= 0 {
 		options.Limits.MaxArchiveEntries = 20_000

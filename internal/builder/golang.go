@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/neurun-io/neurun/internal/artifact"
-	"github.com/neurun-io/neurun/internal/domain/deployment"
+	"github.com/neurun-io/neurun/internal/domain/build"
+	"github.com/neurun-io/neurun/internal/files"
 )
 
 type GoOptions struct {
@@ -23,7 +23,7 @@ type GoOptions struct {
 // it emits no install layer: the dependencies are linked in.
 type GoBuilder struct {
 	golang string
-	limits artifact.ArchiveLimits
+	limits files.ArchiveLimits
 }
 
 func NewGo(options GoOptions) (*GoBuilder, error) {
@@ -35,7 +35,7 @@ func NewGo(options GoOptions) (*GoBuilder, error) {
 	}
 	return &GoBuilder{
 		golang: options.GoExecutable,
-		limits: artifact.ArchiveLimits{
+		limits: files.ArchiveLimits{
 			MaxEntries:       options.MaxArchiveEntries,
 			MaxExpandedBytes: options.MaxArchiveExpandedBytes,
 		},
@@ -43,7 +43,7 @@ func NewGo(options GoOptions) (*GoBuilder, error) {
 }
 
 func (builder *GoBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != deployment.RuntimeGo {
+	if request.Runtime != build.RuntimeGo {
 		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
 	}
 	if ctx == nil {
@@ -54,7 +54,7 @@ func (builder *GoBuilder) Build(ctx context.Context, request Request) (Result, e
 		return Result{}, errors.New("builder: source archive and work directory are required")
 	}
 	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := artifact.ExtractZIPFile(
+	if _, err := files.ExtractZIPFile(
 		request.SourceArchivePath, sourceDir, builder.limits,
 	); err != nil {
 		return Result{}, fmt.Errorf("builder: extract source: %w", err)
@@ -85,8 +85,8 @@ func (builder *GoBuilder) Build(ctx context.Context, request Request) (Result, e
 		"GOMODCACHE="+filepath.Join(cache, "go-mod"),
 		"CGO_ENABLED=0",
 	)
-	if output, err := compile.CombinedOutput(); err != nil {
-		return Result{}, commandError("compile Go source", output, err)
+	if err := request.run("compile Go source", compile); err != nil {
+		return Result{}, err
 	}
 	if info, err := os.Lstat(binary); err != nil || !info.Mode().IsRegular() {
 		return Result{}, errors.New("builder: go build produced no binary")
@@ -97,7 +97,7 @@ func (builder *GoBuilder) Build(ctx context.Context, request Request) (Result, e
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)
 	}
 	return Result{Artifacts: []Output{{
-		Kind:      deployment.ArtifactCodeLayer,
+		Kind:      build.ArtifactCodeLayer,
 		Name:      "code-layer.zip",
 		MediaType: "application/zip",
 		Path:      codePath,
