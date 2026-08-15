@@ -878,6 +878,43 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/APIKey"}
+  /v1/builds:
+    get:
+      operationId: listBuilds
+      description: >-
+        Every build the organization's deployments produced, newest first.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - name: deployment_id
+          in: query
+          schema: {type: string}
+      responses:
+        "200":
+          description: Builds.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [builds]
+                properties:
+                  builds:
+                    type: array
+                    items: {$ref: "#/components/schemas/Build"}
+  /v1/builds/{build_id}:
+    parameters:
+      - name: build_id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      operationId: getBuild
+      responses:
+        "200":
+          description: Build.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Build"}
+        "404": {$ref: "#/components/responses/Problem"}
   /v1/deployments:
     get:
       operationId: listDeployments
@@ -1505,6 +1542,8 @@ components:
           type: array
           items: {$ref: "#/components/schemas/Artifact"}
         created_at: {type: string, format: date-time}
+        deployment_id: {type: string}
+        app_id: {type: string}
     Deployment:
       description: >-
         One attempt to turn a source archive into a build. Statuses run

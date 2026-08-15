@@ -15,6 +15,7 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 	githubdomain "github.com/neurun-io/neurun/internal/domain/github"
 	"github.com/neurun-io/neurun/internal/dto"
+	"github.com/neurun-io/neurun/internal/files"
 	"github.com/neurun-io/neurun/internal/github"
 	"github.com/neurun-io/neurun/internal/ids"
 	"github.com/neurun-io/neurun/internal/repository/database"
@@ -104,7 +105,7 @@ func (service *GitHubService) Push(
 		// later push must not silently take this one's place.
 		record, err := service.build(
 			ctx, installation.OrganizationID, app, push.InstallationID,
-			push.Ref, push.Commit, build.RuntimePython, "",
+			push.Ref, push.Commit,
 		)
 		if err != nil {
 			problems = append(problems, fmt.Errorf("deploy app %s: %w", app.ID, err))
@@ -285,8 +286,6 @@ func (service *GitHubService) Deploy(
 	organizationID string,
 	appID string,
 	ref string,
-	runtime build.Runtime,
-	entryPoint string,
 ) (deployment.Deployment, error) {
 	if !service.Configured() {
 		return deployment.Deployment{}, github.ErrNotConfigured
@@ -318,8 +317,7 @@ func (service *GitHubService) Deploy(
 		return deployment.Deployment{}, err
 	}
 	return service.build(
-		ctx, organizationID, app, installation.InstallationID,
-		ref, commit, runtime, entryPoint,
+		ctx, organizationID, app, installation.InstallationID, ref, commit,
 	)
 }
 
@@ -332,8 +330,6 @@ func (service *GitHubService) build(
 	installationID int64,
 	ref string,
 	commit string,
-	runtime build.Runtime,
-	entryPoint string,
 ) (deployment.Deployment, error) {
 	parsed, err := github.ParseRepo(app.Repository)
 	if err != nil {
@@ -357,13 +353,19 @@ func (service *GitHubService) build(
 	}
 	defer file.Close()
 
-	if !runtime.Valid() {
-		runtime = build.RuntimePython
+	// A push carries no runtime, and the repository is the only thing that knows
+	// what it is: Cargo.toml is a Rust crate whoever pushed it.
+	names, err := files.ZIPNames(archive)
+	if err != nil {
+		return deployment.Deployment{}, err
+	}
+	runtime, err := build.DetectRuntime(names)
+	if err != nil {
+		return deployment.Deployment{}, err
 	}
 	return service.deployments.Create(ctx, organizationID, dto.CreateDeploymentRequest{
 		AppID:      app.ID,
 		Runtime:    runtime,
-		EntryPoint: entryPoint,
 		SourceName: fmt.Sprintf("%s-%s.zip", parsed.Name, commit[:7]),
 		Source:     file,
 		CommitSHA:  commit,

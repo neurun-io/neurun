@@ -23,7 +23,7 @@ var (
 var knownScopes = []string{
 	"*", "users:read", "users:write", "api_keys:read", "api_keys:write",
 	"projects:read", "projects:write", "apps:read", "apps:write",
-	"deployments:read", "deployments:write",
+	"builds:read", "deployments:read", "deployments:write",
 	"executions:read", "executions:write",
 }
 

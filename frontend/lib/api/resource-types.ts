@@ -83,6 +83,9 @@ export interface Build {
   source_sha256: string;
   artifacts: Artifact[];
   created_at: string;
+  /** Set when a build is served on its own rather than under its deployment. */
+  deployment_id?: string;
+  app_id?: string;
 }
 
 export interface Deployment {

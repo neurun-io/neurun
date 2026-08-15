@@ -418,3 +418,19 @@ func isWindowsDeviceName(component string) bool {
 	}
 	return false
 }
+
+// ZIPNames lists what an archive contains without expanding it, which is how a
+// deployment learns what kind of source it just fetched.
+func ZIPNames(archivePath string) ([]string, error) {
+	archive, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("files: read archive: %w", err)
+	}
+	defer archive.Close()
+
+	names := make([]string, 0, len(archive.File))
+	for _, entry := range archive.File {
+		names = append(names, entry.Name)
+	}
+	return names, nil
+}

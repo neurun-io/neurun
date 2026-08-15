@@ -25,6 +25,10 @@ type BuildResponse struct {
 	SourceSHA256 string             `json:"source_sha256"`
 	Artifacts    []ArtifactResponse `json:"artifacts"`
 	CreatedAt    time.Time          `json:"created_at"`
+	// Where it came from, answered when a build is served on its own. Nested
+	// under the deployment that made it, both are already known.
+	DeploymentID string `json:"deployment_id,omitempty"`
+	AppID        string `json:"app_id,omitempty"`
 }
 
 func NewArtifactResponse(record build.Artifact) ArtifactResponse {
@@ -45,4 +49,12 @@ func NewBuildResponse(record build.Build) BuildResponse {
 		SourceSHA256: record.SourceSHA256, Artifacts: artifacts,
 		CreatedAt: record.CreatedAt,
 	}
+}
+
+// NewProducedResponse serves a build on its own, so it says where it came from.
+func NewProducedResponse(record build.Build, deploymentID, appID string) BuildResponse {
+	response := NewBuildResponse(record)
+	response.DeploymentID = deploymentID
+	response.AppID = appID
+	return response
 }

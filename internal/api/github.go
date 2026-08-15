@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/neurun-io/neurun/internal/domain/build"
 	githubdomain "github.com/neurun-io/neurun/internal/domain/github"
 	"github.com/neurun-io/neurun/internal/dto"
 	"github.com/neurun-io/neurun/internal/github"
@@ -129,7 +128,7 @@ func (server *Server) deployRef(ctx *gin.Context) {
 	}
 	record, err := server.gitHub.Deploy(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID,
-		body.AppID, body.Ref, build.RuntimePython, "",
+		body.AppID, body.Ref,
 	)
 	if err != nil {
 		writeError(ctx, err)

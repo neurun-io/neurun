@@ -95,3 +95,92 @@ func (repository *BuildRepository) GetByID(
 	}
 	return record, nil
 }
+
+// Produced is a build with the deployment that made it. The link is a join
+// rather than a column on the build: a build is an output, and asking where an
+// output came from is a question about deployments.
+type Produced struct {
+	Build        build.Build
+	DeploymentID string
+	AppID        string
+}
+
+func scanProduced(row pgx.CollectableRow) (Produced, error) {
+	var record Produced
+	var artifactsJSON []byte
+	err := row.Scan(
+		&record.Build.ID, &record.Build.Runtime, &record.Build.EntryPoint,
+		&record.Build.SourceSHA256, &artifactsJSON, &record.Build.CreatedAt,
+		&record.DeploymentID, &record.AppID,
+	)
+	if err != nil {
+		return Produced{}, err
+	}
+	if err := json.Unmarshal(artifactsJSON, &record.Build.Artifacts); err != nil {
+		return Produced{}, fmt.Errorf("decode build artifacts: %w", err)
+	}
+	return record, nil
+}
+
+const producedSelect = `SELECT ` + buildColumns + `, d.id, d.app_id
+FROM builds b
+JOIN deployments d ON d.build_id = b.id
+JOIN apps a ON a.id = d.app_id
+JOIN projects p ON p.id = a.project_id`
+
+// List returns the organization's builds, newest first.
+func (repository *BuildRepository) List(
+	ctx context.Context,
+	organizationID string,
+	deploymentID string,
+	limit int,
+) ([]Produced, error) {
+	if deploymentID != "" {
+		if err := build.ValidateIdentifier("deployment_id", deploymentID); err != nil {
+			return nil, err
+		}
+	}
+	rows, err := repository.pool.Query(
+		ctx,
+		producedSelect+`
+		 WHERE p.organization_id = $1 AND ($2 = '' OR d.id = $2)
+		 ORDER BY b.created_at DESC, b.id DESC LIMIT $3`,
+		organizationID, deploymentID, postgresLimit(limit),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list builds: %w", err)
+	}
+	records, err := pgx.CollectRows(rows, scanProduced)
+	if err != nil {
+		return nil, fmt.Errorf("list builds: %w", err)
+	}
+	return records, nil
+}
+
+// Get returns one of the organization's builds. A build no deployment points at
+// is not visible: nothing owns it.
+func (repository *BuildRepository) Get(
+	ctx context.Context,
+	organizationID string,
+	buildID string,
+) (Produced, error) {
+	if err := build.ValidateIdentifier("build_id", buildID); err != nil {
+		return Produced{}, err
+	}
+	rows, err := repository.pool.Query(
+		ctx,
+		producedSelect+` WHERE p.organization_id = $1 AND b.id = $2`,
+		organizationID, buildID,
+	)
+	if err != nil {
+		return Produced{}, fmt.Errorf("read build: %w", err)
+	}
+	record, err := pgx.CollectExactlyOneRow(rows, scanProduced)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Produced{}, fmt.Errorf("%w: %s", build.ErrNotFound, buildID)
+	}
+	if err != nil {
+		return Produced{}, fmt.Errorf("read build: %w", err)
+	}
+	return record, nil
+}

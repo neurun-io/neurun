@@ -550,6 +550,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Every build the organization's deployments produced, newest first. */
+        get: operations["listBuilds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/builds/{build_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                build_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getBuild"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/deployments": {
         parameters: {
             query?: never;
@@ -980,6 +1015,8 @@ export interface components {
             artifacts: components["schemas"]["Artifact"][];
             /** Format: date-time */
             created_at: string;
+            deployment_id?: string;
+            app_id?: string;
         };
         /** @description One attempt to turn a source archive into a build. Statuses run queued → building → publishing → ready or failed; logs carry what the toolchain printed and arrive while it is still running. */
         Deployment: {
@@ -2257,6 +2294,54 @@ export interface operations {
                     "application/json": components["schemas"]["APIKey"];
                 };
             };
+        };
+    };
+    listBuilds: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+                deployment_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Builds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        builds: components["schemas"]["Build"][];
+                    };
+                };
+            };
+        };
+    };
+    getBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                build_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Build"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
     listDeployments: {

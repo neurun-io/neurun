@@ -36,6 +36,7 @@ const (
 	ScopeExecutionsRead   = "executions:read"
 	ScopeExecutionsWrite  = "executions:write"
 	ScopeAppsRead         = "apps:read"
+	ScopeBuildsRead       = "builds:read"
 	ScopeAppsWrite        = "apps:write"
 	// A display is a signed-in browser rendered as pixels, which is more than
 	// the profile endpoints ever return.
@@ -55,6 +56,7 @@ type ReadyCheck func(context.Context) error
 type ServerOptions struct {
 	Projects            *service.ProjectService
 	Apps                *service.AppService
+	Builds              *service.BuildService
 	Deployments         *service.DeploymentService
 	Executions          *service.ExecutionService
 	Accounts            *service.AccountService
@@ -72,6 +74,7 @@ type ServerOptions struct {
 type Server struct {
 	projects            *service.ProjectService
 	apps                *service.AppService
+	builds              *service.BuildService
 	deployments         *service.DeploymentService
 	executions          *service.ExecutionService
 	accounts            *service.AccountService
@@ -93,6 +96,8 @@ func NewServer(options ServerOptions) (*Server, error) {
 		return nil, errors.New("project service is required")
 	case options.Apps == nil:
 		return nil, errors.New("app service is required")
+	case options.Builds == nil:
+		return nil, errors.New("build service is required")
 	case options.Deployments == nil:
 		return nil, errors.New("deployment service is required")
 	case options.Executions == nil:
@@ -112,6 +117,7 @@ func NewServer(options ServerOptions) (*Server, error) {
 	server := &Server{
 		projects:            options.Projects,
 		apps:                options.Apps,
+		builds:              options.Builds,
 		deployments:         options.Deployments,
 		executions:          options.Executions,
 		accounts:            options.Accounts,
@@ -182,6 +188,9 @@ func (server *Server) routes() *gin.Engine {
 	v1.GET("/deployments/:deployment_id", server.scoped(ScopeDeploymentsRead), server.getDeployment)
 	v1.GET("/deployments/:deployment_id/executions", server.scoped(ScopeExecutionsRead), server.listDeploymentExecutions)
 	v1.POST("/deployments/:deployment_id/executions", server.scoped(ScopeExecutionsWrite), server.createExecution)
+
+	v1.GET("/builds", server.scoped(ScopeBuildsRead), server.listBuilds)
+	v1.GET("/builds/:build_id", server.scoped(ScopeBuildsRead), server.getBuild)
 
 	v1.GET("/executions", server.scoped(ScopeExecutionsRead), server.listExecutions)
 	v1.GET("/executions/:execution_id", server.scoped(ScopeExecutionsRead), server.getExecution)

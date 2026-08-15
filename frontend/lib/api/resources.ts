@@ -39,6 +39,10 @@ const buildSchema = z.looseObject({
   artifacts: z.array(artifactSchema),
   created_at: timestampSchema,
 });
+const producedBuildSchema = buildSchema.extend({
+  deployment_id: z.string().optional(),
+  app_id: z.string().optional(),
+});
 const deploymentSchema = z.looseObject({
   id: z.string(),
   project_id: z.string(),
@@ -328,6 +332,24 @@ export function getDeployment(id: string, signal?: AbortSignal) {
   return request<Deployment>(
     { path: `/v1/deployments/${segment(id)}`, signal },
     deploymentSchema as never,
+  );
+}
+
+export function listBuilds(deploymentId?: string, signal?: AbortSignal) {
+  return request<{ builds: Build[] }>(
+    {
+      path: "/v1/builds",
+      query: { deployment_id: deploymentId, limit: 200 },
+      signal,
+    },
+    z.looseObject({ builds: z.array(producedBuildSchema) }) as never,
+  );
+}
+
+export function getBuild(id: string, signal?: AbortSignal) {
+  return request<Build>(
+    { path: `/v1/builds/${segment(id)}`, signal },
+    producedBuildSchema as never,
   );
 }
 

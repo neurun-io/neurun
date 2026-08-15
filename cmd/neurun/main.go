@@ -272,6 +272,10 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure app service: %w", err)
 	}
+	buildService, err := service.NewBuildService(builds)
+	if err != nil {
+		return fmt.Errorf("configure build service: %w", err)
+	}
 	deploymentService, err := service.NewDeploymentService(
 		apps, deployments, builds, blobStore, toolchains,
 		service.DeploymentOptions{
@@ -450,6 +454,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	controlAPI, err := api.NewServer(api.ServerOptions{
 		Projects:        projectService,
 		Apps:            appService,
+		Builds:          buildService,
 		Deployments:     deploymentService,
 		Executions:      executionService,
 		Accounts:        accountService,
