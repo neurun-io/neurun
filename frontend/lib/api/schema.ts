@@ -619,7 +619,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/deployments/{deployment_id}/executions": {
+    "/v1/deployments/{deployment_id}/retry": {
         parameters: {
             query?: never;
             header?: never;
@@ -628,9 +628,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        get: operations["listDeploymentExecutions"];
+        get?: never;
         put?: never;
-        post: operations["createDeploymentExecution"];
+        /** @description Build the same commit again as a new deployment. The ref is not resolved again — a retry builds what this deployment built. */
+        post: operations["retryDeployment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -646,7 +647,8 @@ export interface paths {
         };
         get: operations["listExecutions"];
         put?: never;
-        post?: never;
+        /** @description Run an app. build_id picks one of its builds; absent takes the latest the app has ready. The execution is pinned to that build and stays there, whatever is deployed afterwards. */
+        post: operations["createExecution"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2396,34 +2398,7 @@ export interface operations {
             404: components["responses"]["Problem"];
         };
     };
-    listDeploymentExecutions: {
-        parameters: {
-            query?: {
-                limit?: components["parameters"]["Limit"];
-            };
-            header?: never;
-            path: {
-                deployment_id: components["parameters"]["DeploymentID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Executions for this deployment. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        executions: components["schemas"]["Execution"][];
-                    };
-                };
-            };
-            404: components["responses"]["Problem"];
-        };
-    };
-    createDeploymentExecution: {
+    retryDeployment: {
         parameters: {
             query?: never;
             header?: never;
@@ -2432,25 +2407,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": {
-                    input: unknown;
-                };
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Execution durably queued and pinned to the latest ready build. */
+            /** @description Deployment queued. */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Execution"];
+                    "application/json": components["schemas"]["Deployment"];
                 };
             };
             404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     listExecutions: {
@@ -2476,6 +2447,37 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    createExecution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    app_id: string;
+                    build_id?: string;
+                    input: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Execution durably queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Execution"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
     getExecution: {

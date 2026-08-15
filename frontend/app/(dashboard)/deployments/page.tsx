@@ -43,8 +43,7 @@ export default function DeploymentsPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Deployment</TableHead>
                 <TableHead>App</TableHead>
-                <TableHead>Entrypoint</TableHead>
-                <TableHead>Builds</TableHead>
+                <TableHead>Build</TableHead>
                 <TableHead>Updated</TableHead>
               </TableRow>
             </TableHeader>
@@ -67,7 +66,6 @@ export default function DeploymentsPage() {
                       {deployment.app_id}
                     </Link>
                   </TableCell>
-                  <TableCell className="font-mono">{deployment.entrypoint}</TableCell>
                   <TableCell className="font-mono">{deployment.build?.id ?? "—"}</TableCell>
                   <TableCell>
                     <Timestamp value={deployment.updated_at} />

@@ -7,9 +7,12 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/execution"
 )
 
+// CreateExecutionRequest runs an app. BuildID picks one of its builds; absent
+// takes the latest the app has ready, which is what a caller means by "run it".
 type CreateExecutionRequest struct {
-	DeploymentID string          `json:"-"`
-	Input        json.RawMessage `json:"input"`
+	AppID   string          `json:"app_id"`
+	BuildID string          `json:"build_id"`
+	Input   json.RawMessage `json:"input"`
 }
 
 type ExecutionResponse struct {

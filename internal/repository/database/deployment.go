@@ -338,3 +338,42 @@ func (repository *DeploymentRepository) RecoverBuilding(
 	})
 	return recovered, err
 }
+
+// ReadyForApp returns the deployment behind one of an app's builds: the one it
+// named, or the app's newest ready deployment when it named none.
+func (repository *DeploymentRepository) ReadyForApp(
+	ctx context.Context,
+	organizationID string,
+	appID string,
+	buildID string,
+) (deployment.Deployment, error) {
+	if err := deployment.ValidateIdentifier("app_id", appID); err != nil {
+		return deployment.Deployment{}, err
+	}
+	if buildID != "" {
+		if err := deployment.ValidateIdentifier("build_id", buildID); err != nil {
+			return deployment.Deployment{}, err
+		}
+	}
+	var found string
+	err := repository.pool.QueryRow(
+		ctx,
+		`SELECT d.id FROM deployments d
+		 JOIN apps a ON a.id = d.app_id
+		 JOIN projects p ON p.id = a.project_id
+		 WHERE p.organization_id = $1 AND d.app_id = $2
+		   AND d.status = 'ready' AND d.build_id IS NOT NULL
+		   AND ($3 = '' OR d.build_id = $3)
+		 ORDER BY d.created_at DESC, d.id DESC LIMIT 1`,
+		organizationID, appID, buildID,
+	).Scan(&found)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return deployment.Deployment{}, fmt.Errorf(
+			"%w: app %s has no ready build", deployment.ErrNotReady, appID,
+		)
+	}
+	if err != nil {
+		return deployment.Deployment{}, fmt.Errorf("read ready deployment: %w", err)
+	}
+	return repository.GetByID(ctx, organizationID, found)
+}

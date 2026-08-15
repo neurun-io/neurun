@@ -56,30 +56,28 @@ func NewExecutionService(
 	}, nil
 }
 
-// Create queues an invocation against whichever build is ready now, and pins it
-// there — a later rebuild will not move it.
+// Create queues an invocation of an app against one of its builds, and pins it
+// there — a later deployment will not move it.
 func (service *ExecutionService) Create(
 	ctx context.Context,
 	organizationID string,
 	request dto.CreateExecutionRequest,
 ) (execution.Execution, error) {
 	ctx = orBackground(ctx)
-	if err := ids.Validate("deployment_id", request.DeploymentID); err != nil {
+	if err := ids.Validate("app_id", request.AppID); err != nil {
 		return execution.Execution{}, fmt.Errorf("%w: %v", execution.ErrInvalid, err)
 	}
 	input, err := execution.NormalizeInput(request.Input, service.maxInputBytes)
 	if err != nil {
 		return execution.Execution{}, err
 	}
-	// The deployment carries the project; the caller does not supply one.
-	record, err := service.deployments.GetByID(ctx, organizationID, request.DeploymentID)
+	// The deployment that made the build carries the project, and is what an
+	// execution runs: the caller names an app and, at most, which build of it.
+	record, err := service.deployments.ReadyForApp(
+		ctx, organizationID, request.AppID, request.BuildID,
+	)
 	if err != nil {
 		return execution.Execution{}, err
-	}
-	if record.Status != deployment.StatusReady || record.Build == nil {
-		return execution.Execution{}, fmt.Errorf(
-			"%w: %s", deployment.ErrNotReady, record.ID,
-		)
 	}
 	id, err := service.allocateID()
 	if err != nil {

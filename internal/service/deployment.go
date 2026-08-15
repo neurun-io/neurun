@@ -278,12 +278,24 @@ func (service *DeploymentService) runBuild(
 		return service.fail(ctx, record, "runtime_unsupported",
 			fmt.Errorf("no builder for runtime %q", record.Runtime))
 	}
-	// Cached per runtime: a Go build cache and a cargo target directory have
-	// nothing to say to each other, and keeping them apart makes one runtime's
-	// cache safe to delete on its own.
+	// The cache is the build environment, kept so the next deployment of this
+	// app compiles what changed rather than everything. It is per app and per
+	// runtime: two apps sharing a target directory would fingerprint against
+	// each other's intermediates, and one runtime's cache stays safe to delete
+	// on its own.
+	//
+	// Absolute, because a toolchain runs with the source as its working
+	// directory and reads this out of the environment: a relative path would
+	// put the cache inside whatever it happens to be compiling.
 	cacheDirectory := ""
 	if service.buildCache != "" {
-		cacheDirectory = filepath.Join(service.buildCache, string(record.Runtime))
+		absolute, err := filepath.Abs(filepath.Join(
+			service.buildCache, string(record.Runtime), record.AppID,
+		))
+		if err != nil {
+			return service.fail(ctx, record, "build_environment", err)
+		}
+		cacheDirectory = absolute
 		if err := os.MkdirAll(cacheDirectory, 0o700); err != nil {
 			return service.fail(ctx, record, "build_environment", err)
 		}

@@ -372,3 +372,40 @@ func (service *GitHubService) build(
 		GitRef:     ref,
 	})
 }
+
+// Retry builds the same commit again. It deploys what the original deployment
+// built, not what the ref points at now — a ref moves, and a retry that
+// silently built something else would not be a retry.
+func (service *GitHubService) Retry(
+	ctx context.Context,
+	organizationID string,
+	deploymentID string,
+) (deployment.Deployment, error) {
+	if !service.Configured() {
+		return deployment.Deployment{}, github.ErrNotConfigured
+	}
+	record, err := service.deployments.Get(ctx, organizationID, deploymentID)
+	if err != nil {
+		return deployment.Deployment{}, err
+	}
+	if record.CommitSHA == "" {
+		return deployment.Deployment{}, fmt.Errorf(
+			"%w: deployment carries no commit to build again", githubdomain.ErrInvalid,
+		)
+	}
+	app, err := service.apps.Get(ctx, organizationID, record.AppID)
+	if err != nil {
+		return deployment.Deployment{}, err
+	}
+	if app.Repository == "" {
+		return deployment.Deployment{}, githubdomain.ErrNotConnected
+	}
+	installation, err := service.installations.ByOrganization(ctx, organizationID)
+	if err != nil {
+		return deployment.Deployment{}, err
+	}
+	return service.build(
+		ctx, organizationID, app, installation.InstallationID,
+		record.GitRef, record.CommitSHA,
+	)
+}

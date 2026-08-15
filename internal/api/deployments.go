@@ -37,3 +37,17 @@ func (server *Server) getDeployment(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, dto.NewDeploymentResponse(record))
 }
+
+// retryDeployment builds the same commit again, as a new deployment: the one
+// that failed keeps its logs and its failure.
+func (server *Server) retryDeployment(ctx *gin.Context) {
+	record, err := server.gitHub.Retry(
+		ctx.Request.Context(), principalOf(ctx).OrganizationID,
+		ctx.Param("deployment_id"),
+	)
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusAccepted, dto.NewDeploymentResponse(record))
+}

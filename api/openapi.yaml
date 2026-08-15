@@ -954,49 +954,24 @@ paths:
               schema: {$ref: "#/components/schemas/Deployment"}
         "404":
           $ref: "#/components/responses/Problem"
-  /v1/deployments/{deployment_id}/executions:
+  /v1/deployments/{deployment_id}/retry:
     parameters:
       - $ref: "#/components/parameters/DeploymentID"
-    get:
-      operationId: listDeploymentExecutions
-      parameters:
-        - $ref: "#/components/parameters/Limit"
-      responses:
-        "200":
-          description: Executions for this deployment.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [executions]
-                properties:
-                  executions:
-                    type: array
-                    items: {$ref: "#/components/schemas/Execution"}
-        "404":
-          $ref: "#/components/responses/Problem"
     post:
-      operationId: createDeploymentExecution
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [input]
-              properties:
-                input: {}
+      operationId: retryDeployment
+      description: >-
+        Build the same commit again as a new deployment. The ref is not
+        resolved again — a retry builds what this deployment built.
       responses:
         "202":
-          description: Execution durably queued and pinned to the latest ready build.
+          description: Deployment queued.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/Execution"}
-        "404":
-          $ref: "#/components/responses/Problem"
-        "422":
-          $ref: "#/components/responses/Problem"
+              schema: {$ref: "#/components/schemas/Deployment"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /v1/executions:
     get:
       operationId: listExecutions
@@ -1017,6 +992,33 @@ paths:
                   executions:
                     type: array
                     items: {$ref: "#/components/schemas/Execution"}
+    post:
+      operationId: createExecution
+      description: >-
+        Run an app. build_id picks one of its builds; absent takes the latest
+        the app has ready. The execution is pinned to that build and stays
+        there, whatever is deployed afterwards.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [app_id, input]
+              properties:
+                app_id: {type: string}
+                build_id: {type: string}
+                input: {}
+      responses:
+        "202":
+          description: Execution durably queued.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Execution"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
   /v1/executions/{execution_id}:
     parameters:
       - $ref: "#/components/parameters/ExecutionID"

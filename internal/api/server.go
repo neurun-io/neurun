@@ -186,13 +186,13 @@ func (server *Server) routes() *gin.Engine {
 
 	v1.GET("/deployments", server.scoped(ScopeDeploymentsRead), server.listDeployments)
 	v1.GET("/deployments/:deployment_id", server.scoped(ScopeDeploymentsRead), server.getDeployment)
-	v1.GET("/deployments/:deployment_id/executions", server.scoped(ScopeExecutionsRead), server.listDeploymentExecutions)
-	v1.POST("/deployments/:deployment_id/executions", server.scoped(ScopeExecutionsWrite), server.createExecution)
+	v1.POST("/deployments/:deployment_id/retry", server.scoped(ScopeDeploymentsWrite), server.retryDeployment)
 
 	v1.GET("/builds", server.scoped(ScopeBuildsRead), server.listBuilds)
 	v1.GET("/builds/:build_id", server.scoped(ScopeBuildsRead), server.getBuild)
 
 	v1.GET("/executions", server.scoped(ScopeExecutionsRead), server.listExecutions)
+	v1.POST("/executions", server.scoped(ScopeExecutionsWrite), server.createExecution)
 	v1.GET("/executions/:execution_id", server.scoped(ScopeExecutionsRead), server.getExecution)
 	v1.POST("/executions/:execution_id/rerun", server.scoped(ScopeExecutionsWrite), server.rerunExecution)
 

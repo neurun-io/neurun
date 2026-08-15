@@ -63,7 +63,7 @@ export function RepositoryPanel({ app }: { app: NeurunApp }) {
               }
             >
               <Rocket aria-hidden />
-              {deploy.isPending ? "Deploying…" : "Deploy now"}
+              {deploy.isPending ? "Deploying…" : "Deploy"}
             </Button>
             <Button
               size="sm"

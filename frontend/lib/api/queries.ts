@@ -147,6 +147,20 @@ export function useDeploymentQuery(id: string) {
   });
 }
 
+/** Builds the same commit again, as a new deployment. */
+export function useRetryDeploymentMutation() {
+  const scope = useScope();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (deploymentId: string) =>
+      (await resources.retryDeployment(deploymentId)).data,
+    onSuccess: (deployment) => {
+      queryClient.setQueryData(queryKeys.deployment(scope, deployment.id), deployment);
+      void queryClient.invalidateQueries({ queryKey: [...queryKeys.scope(scope), "deployments"] });
+    },
+  });
+}
+
 export function useBuildsQuery(deploymentId?: string) {
   const scope = useScope();
   return useQuery({
@@ -430,8 +444,15 @@ export function useCreateExecutionMutation() {
   const scope = useScope();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ deploymentId, input }: { deploymentId: string; input: unknown }) =>
-      (await resources.createExecution(deploymentId, input)).data,
+    mutationFn: async ({
+      appId,
+      input,
+      buildId,
+    }: {
+      appId: string;
+      input: unknown;
+      buildId?: string;
+    }) => (await resources.createExecution(appId, input, buildId)).data,
     onSuccess: (execution) => {
       queryClient.setQueryData(queryKeys.execution(scope, execution.id), execution);
       void queryClient.invalidateQueries({

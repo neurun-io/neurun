@@ -85,7 +85,6 @@ func TestProtectedRoutesRejectAnonymousCallers(t *testing.T) {
 	for _, target := range []string{
 		"/v1/deployments",
 		"/v1/deployments/dep_one",
-		"/v1/deployments/dep_one/executions",
 		"/v1/executions",
 		"/v1/executions/exe_one",
 		"/v1/projects",

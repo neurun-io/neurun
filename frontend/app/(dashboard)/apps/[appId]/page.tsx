@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+import { RunPanel } from "@/components/apps/run-panel";
 import { RepositoryPanel } from "@/components/github/repository-panel";
 import { ErrorPanel } from "@/components/neurun/error-panel";
 import { EmptyState } from "@/components/neurun/feedback";
@@ -39,7 +40,8 @@ export default function AppPage() {
   return (
     <div>
       <PageHeader crumbs={[{ label: "Apps", href: "/apps" }, { label: app.id }]} title={app.name} />
-      <div className="mx-auto max-w-4xl space-y-4 p-6">
+      <div className="space-y-4 p-6">
+        <RunPanel appId={appId} />
         <Panel label="App">
           <KeyValue
             columns={2}

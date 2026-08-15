@@ -82,9 +82,10 @@ func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result,
 		cache = request.WorkDirectory
 	}
 	compile.Env = append(os.Environ(),
-		// CARGO_HOME holds the registry, which is checksum-verified and the
-		// safest thing to share; the target directory is what makes a rebuild
-		// incremental rather than total.
+		// What the cache is for: the registry cargo resolves against and the
+		// intermediate objects it fingerprints, so the next deployment of this
+		// crate compiles what changed instead of everything. The binary is
+		// copied out of it — the cache holds the environment, not the release.
 		"CARGO_HOME="+filepath.Join(cache, "cargo"),
 		"CARGO_TARGET_DIR="+filepath.Join(cache, "target"),
 		"CARGO_TERM_COLOR=never",

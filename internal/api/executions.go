@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -10,41 +9,25 @@ import (
 	"github.com/neurun-io/neurun/internal/dto"
 )
 
+// createExecution runs an app. An execution belongs to the app, not to the
+// deployment that happened to build what it runs.
 func (server *Server) createExecution(ctx *gin.Context) {
-	var payload map[string]json.RawMessage
-	if !server.bindJSON(ctx, &payload) {
+	var body dto.CreateExecutionRequest
+	if !server.bindJSON(ctx, &body) {
 		return
 	}
-	input, exists := payload["input"]
-	if !exists || len(payload) != 1 {
-		invalidRequest(ctx, `request must contain exactly the "input" field`)
+	if len(body.Input) == 0 {
+		invalidRequest(ctx, "input is required")
 		return
 	}
 	record, err := server.executions.Create(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID, dto.CreateExecutionRequest{
-			DeploymentID: ctx.Param("deployment_id"),
-			Input:        input,
-		})
-	if err != nil {
-		writeError(ctx, err)
-		return
-	}
-	ctx.JSON(http.StatusAccepted, dto.NewExecutionResponse(record))
-}
-
-func (server *Server) listDeploymentExecutions(ctx *gin.Context) {
-	limit, ok := server.pageLimit(ctx)
-	if !ok {
-		return
-	}
-	records, err := server.executions.ListForDeployment(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID, ctx.Param("deployment_id"), limit,
+		ctx.Request.Context(), principalOf(ctx).OrganizationID, body,
 	)
 	if err != nil {
 		writeError(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"executions": dto.NewExecutionResponses(records)})
+	ctx.JSON(http.StatusAccepted, dto.NewExecutionResponse(record))
 }
 
 func (server *Server) listExecutions(ctx *gin.Context) {

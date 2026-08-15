@@ -47,11 +47,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   if (!session.organization_id) return <OrganizationSetup />;
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    // The shell owns the viewport and the main pane scrolls inside it, so the
+    // nav stays put instead of scrolling away with the page.
+    <div className="flex h-dvh flex-col overflow-hidden">
       <TopNav />
       <div className="flex min-h-0 flex-1">
         <SideNav className="hidden md:block" />
-        <main id="main" className="min-w-0 flex-1 overflow-x-hidden">
+        <main id="main" className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           {children}
         </main>
       </div>

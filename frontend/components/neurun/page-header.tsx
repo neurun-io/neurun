@@ -24,7 +24,14 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <header className={cn("border-b border-line px-6 py-4", className)}>
+    <header
+      className={cn(
+        // Sticky: the main pane is what scrolls, and the heading is what says
+        // which record the rows under it belong to.
+        "sticky top-0 z-20 border-b border-line bg-surface-base px-6 py-4",
+        className,
+      )}
+    >
       {crumbs && crumbs.length > 0 ? (
         <nav aria-label="Breadcrumb" className="mb-1.5">
           <ol className="flex flex-wrap items-center gap-1 font-mono text-micro text-fg-muted">

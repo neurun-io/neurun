@@ -34,7 +34,6 @@ export default function BuildsPage() {
               <TableRow>
                 <TableHead>Build</TableHead>
                 <TableHead>Runtime</TableHead>
-                <TableHead>Entrypoint</TableHead>
                 <TableHead>Deployment</TableHead>
                 <TableHead>Layers</TableHead>
                 <TableHead>Made</TableHead>
@@ -49,7 +48,6 @@ export default function BuildsPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="font-mono">{build.runtime}</TableCell>
-                  <TableCell className="font-mono">{build.entrypoint || "—"}</TableCell>
                   <TableCell>
                     {build.deployment_id ? (
                       <Link

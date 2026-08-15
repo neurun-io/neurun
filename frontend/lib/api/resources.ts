@@ -335,6 +335,13 @@ export function getDeployment(id: string, signal?: AbortSignal) {
   );
 }
 
+export function retryDeployment(id: string) {
+  return request<Deployment>(
+    { method: "POST", path: `/v1/deployments/${segment(id)}/retry` },
+    deploymentSchema as never,
+  );
+}
+
 export function listBuilds(deploymentId?: string, signal?: AbortSignal) {
   return request<{ builds: Build[] }>(
     {
@@ -371,12 +378,13 @@ export function getExecution(id: string, signal?: AbortSignal) {
   );
 }
 
-export function createExecution(deploymentId: string, input: unknown) {
+/** Runs an app. An absent buildId takes the latest build the app has ready. */
+export function createExecution(appId: string, input: unknown, buildId?: string) {
   return request<Execution>(
     {
       method: "POST",
-      path: `/v1/deployments/${segment(deploymentId)}/executions`,
-      body: { input },
+      path: "/v1/executions",
+      body: { app_id: appId, build_id: buildId, input },
     },
     executionSchema as never,
   );
