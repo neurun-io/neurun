@@ -6,13 +6,11 @@ import (
 	"github.com/neurun-io/neurun/internal/domain/build"
 )
 
-// ArtifactResponse drops StorageKey, the internal blob handle. Serving the
-// domain artifact directly would publish storage topology.
+// ArtifactResponse drops StorageKey, the internal handle. Serving the domain
+// artifact directly would publish storage topology.
 type ArtifactResponse struct {
 	ID        string    `json:"id"`
-	Kind      string    `json:"kind"`
 	Name      string    `json:"name"`
-	MediaType string    `json:"media_type"`
 	SizeBytes int64     `json:"size_bytes"`
 	SHA256    string    `json:"sha256"`
 	CreatedAt time.Time `json:"created_at"`
@@ -33,8 +31,7 @@ type BuildResponse struct {
 
 func NewArtifactResponse(record build.Artifact) ArtifactResponse {
 	return ArtifactResponse{
-		ID: record.ID, Kind: record.Kind, Name: record.Name,
-		MediaType: record.MediaType, SizeBytes: record.SizeBytes,
+		ID: record.ID, Name: record.Name, SizeBytes: record.SizeBytes,
 		SHA256: record.SHA256, CreatedAt: record.CreatedAt,
 	}
 }

@@ -40,7 +40,7 @@ func (record Deployment) Validate() error {
 		record.UpdatedAt.Before(record.CreatedAt) {
 		return fmt.Errorf("%w: deployment timestamps are invalid", ErrInvalid)
 	}
-	if err := build.ValidateArtifact(record.Source, build.ArtifactSource); err != nil {
+	if err := build.ValidateArtifact(record.Source); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	if len(record.Logs) > MaxLogBytes {

@@ -225,38 +225,21 @@ func (worker *Worker) execute(
 	}
 	defer os.RemoveAll(work)
 
-	codeDir := filepath.Join(work, "code")
-	installDir := filepath.Join(work, "install")
-	seenCode := false
 	remaining := worker.options.MaxArtifactBytes
-	for _, item := range produced.Artifacts {
-		if item.Kind != build.ArtifactCodeLayer &&
-			item.Kind != build.ArtifactInstallLayer {
-			continue
-		}
-		if item.SizeBytes > remaining {
+	for _, layer := range produced.Artifacts {
+		if layer.SizeBytes > remaining {
 			return nil, "", newFailure("artifact_invalid", errors.New(
 				"build artifacts exceed configured byte limit",
 			))
 		}
-		remaining -= item.SizeBytes
-		targetArchive := filepath.Join(work, item.ID+".zip")
-		if err := worker.materialize(ctx, item, targetArchive); err != nil {
+		remaining -= layer.SizeBytes
+		targetArchive := filepath.Join(work, layer.ID+".zip")
+		if err := worker.materialize(ctx, layer, targetArchive); err != nil {
 			return nil, "", newFailure("artifact_invalid", err)
-		}
-		destination := installDir
-		if item.Kind == build.ArtifactCodeLayer {
-			if seenCode {
-				return nil, "", newFailure("artifact_invalid", errors.New(
-					"build has duplicate code layers",
-				))
-			}
-			seenCode = true
-			destination = codeDir
 		}
 		if _, err := files.ExtractZIPFile(
 			targetArchive,
-			destination,
+			filepath.Join(work, layer.Name),
 			files.ArchiveLimits{
 				MaxEntries:       worker.options.MaxArchiveEntries,
 				MaxExpandedBytes: worker.options.MaxArchiveExpandedBytes,
@@ -264,11 +247,6 @@ func (worker *Worker) execute(
 		); err != nil {
 			return nil, "", newFailure("artifact_invalid", err)
 		}
-	}
-	if !seenCode {
-		return nil, "", newFailure(
-			"artifact_invalid", errors.New("build has no code layer"),
-		)
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, worker.options.RunTimeout)
@@ -300,8 +278,9 @@ func (worker *Worker) execute(
 		}
 	}
 	result, err := runner.Execute(runCtx, ExecuteRequest{
-		CodeDirectory: codeDir, InstallDirectory: installDir,
-		Entrypoint: produced.EntryPoint, Input: record.Input,
+		CodeDirectory:    filepath.Join(work, build.LayerCode),
+		InstallDirectory: filepath.Join(work, build.LayerInstall),
+		Entrypoint:       produced.EntryPoint, Input: record.Input,
 		CallbackAddress: worker.options.CallbackAddress,
 		ExecutionToken:  token,
 		MaxResultBytes:  worker.options.MaxResultBytes,

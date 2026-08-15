@@ -1,7 +1,7 @@
--- A build is what a deployment produced: a layer over the artifacts and enough
--- about them to know what they run. It carries no status and no failure — those
--- belong to the deployment that ran it — and it is never rewritten, which is
--- why it has no version column.
+-- A build is what a deployment produced: the layers it made, each named for
+-- what it is to the runtime, and enough about them to know what runs them. It
+-- carries no status and no failure — those belong to the deployment that ran
+-- it — and it is never rewritten, which is why it has no version column.
 CREATE TABLE builds (
     id             text PRIMARY KEY,
     runtime        text NOT NULL,

@@ -16,10 +16,10 @@ var (
 	ErrNotFound = errors.New("build not found")
 )
 
-// Build is a layer over the artifacts one deployment produced. It exists only
-// once there is something to point at, so a deployment that never got that far
-// has none, and a build never records a failure — the deployment that failed to
-// make one does.
+// Build is what one deployment produced: the layers it made, each named for
+// what it is to the runtime. Every build has a code layer; a runtime that
+// resolves dependencies separately adds an install layer, and a toolchain that
+// grows a third only has to name it.
 type Build struct {
 	ID           string     `json:"id"`
 	Runtime      Runtime    `json:"runtime"`
@@ -50,6 +50,16 @@ func New(
 	return record, nil
 }
 
+// Layer returns the artifact a runner unpacks under that name.
+func (record Build) Layer(name string) (Artifact, bool) {
+	for _, artifact := range record.Artifacts {
+		if artifact.Name == name {
+			return artifact, true
+		}
+	}
+	return Artifact{}, false
+}
+
 // Validate checks the output on its own terms. Whether it matches the
 // deployment that made it is the deployment's business.
 func (record Build) Validate() error {
@@ -65,24 +75,23 @@ func (record Build) Validate() error {
 	if record.CreatedAt.IsZero() {
 		return fmt.Errorf("%w: build creation time is required", ErrInvalid)
 	}
-	if len(record.Artifacts) == 0 {
-		return fmt.Errorf("%w: a build requires artifacts", ErrInvalid)
-	}
-	kinds := make(map[string]struct{}, len(record.Artifacts))
-	for _, stored := range record.Artifacts {
-		if err := ValidateArtifact(stored, ""); err != nil {
+	names := make(map[string]struct{}, len(record.Artifacts))
+	for _, artifact := range record.Artifacts {
+		if err := ValidateArtifact(artifact); err != nil {
 			return err
 		}
-		if stored.Kind != ArtifactCodeLayer && stored.Kind != ArtifactInstallLayer {
-			return fmt.Errorf("%w: build artifact kind is invalid", ErrInvalid)
+		if _, duplicate := names[artifact.Name]; duplicate {
+			return fmt.Errorf(
+				"%w: build has two %s layers", ErrInvalid, artifact.Name,
+			)
 		}
-		if _, duplicate := kinds[stored.Kind]; duplicate {
-			return fmt.Errorf("%w: build artifact kinds must be unique", ErrInvalid)
-		}
-		kinds[stored.Kind] = struct{}{}
+		names[artifact.Name] = struct{}{}
 	}
-	if _, exists := kinds[ArtifactCodeLayer]; !exists {
+	if _, exists := names[LayerCode]; !exists {
 		return fmt.Errorf("%w: a build requires a code layer", ErrInvalid)
+	}
+	if _, exists := names[LayerInstall]; exists && record.Runtime.Compiled() {
+		return fmt.Errorf("%w: a compiled build has no install layer", ErrInvalid)
 	}
 	return nil
 }

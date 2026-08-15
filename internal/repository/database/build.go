@@ -17,8 +17,8 @@ import (
 const buildColumns = `b.id, b.runtime, b.entrypoint, b.source_sha256,
 	b.artifacts, b.created_at`
 
-// BuildRepository stores what deployments produced. Blob bytes stay in the
-// artifact store; only the handles reach the artifacts JSON column.
+// BuildRepository stores what deployments produced. The ZIPs stay in the file
+// repository; only their handles reach the artifacts column.
 type BuildRepository struct {
 	pool *pgxpool.Pool
 }
@@ -110,8 +110,8 @@ func scanProduced(row pgx.CollectableRow) (Produced, error) {
 	var artifactsJSON []byte
 	err := row.Scan(
 		&record.Build.ID, &record.Build.Runtime, &record.Build.EntryPoint,
-		&record.Build.SourceSHA256, &artifactsJSON, &record.Build.CreatedAt,
-		&record.DeploymentID, &record.AppID,
+		&record.Build.SourceSHA256, &artifactsJSON,
+		&record.Build.CreatedAt, &record.DeploymentID, &record.AppID,
 	)
 	if err != nil {
 		return Produced{}, err

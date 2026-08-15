@@ -33,7 +33,15 @@ export const readyBuild: Build = {
   runtime: "python",
   entrypoint: "main.py:handler",
   source_sha256: SOURCE_SHA256,
-  artifacts: [],
+  artifacts: [
+    {
+      id: "art_01HXQ8F2CODE",
+      name: "code",
+      size_bytes: 4096,
+      sha256: SOURCE_SHA256,
+      created_at: "2026-07-29T10:00:09Z",
+    },
+  ],
   created_at: "2026-07-29T10:00:09Z",
 };
 
@@ -46,9 +54,7 @@ export const readyDeployment: Deployment = {
   status: "ready",
   source: {
     id: "art_01HXQ8F2SRC",
-    kind: "source",
-    name: "dist.zip",
-    media_type: "application/zip",
+    name: "source",
     size_bytes: 2048,
     sha256: SOURCE_SHA256,
     created_at: "2026-07-29T10:00:00Z",

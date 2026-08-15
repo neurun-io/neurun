@@ -24,9 +24,7 @@ const timestampSchema = z.string();
 const failureSchema = z.looseObject({ code: z.string(), message: z.string() });
 const artifactSchema = z.looseObject({
   id: z.string(),
-  kind: z.string(),
   name: z.string(),
-  media_type: z.string(),
   size_bytes: z.number(),
   sha256: z.string(),
   created_at: timestampSchema,

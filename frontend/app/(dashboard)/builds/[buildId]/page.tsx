@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { ErrorPanel } from "@/components/neurun/error-panel";
-import { JsonView } from "@/components/neurun/json-view";
 import { KeyValue } from "@/components/neurun/key-value";
 import { PageHeader } from "@/components/neurun/page-header";
 import { Panel } from "@/components/neurun/panel";
 import { Timestamp } from "@/components/neurun/timestamp";
 import { useBuildQuery } from "@/lib/api/queries";
+import { formatBytes } from "@/lib/view/units";
 
 export default function BuildPage() {
   const { buildId } = useParams<{ buildId: string }>();
@@ -63,8 +63,16 @@ export default function BuildPage() {
             ]}
           />
         </Panel>
-        <Panel label="Artifacts">
-          <JsonView value={build.artifacts} preRedacted />
+        <Panel label="Layers">
+          {build.artifacts.map((artifact) => (
+            <div
+              key={artifact.id}
+              className="flex items-center justify-between border-b border-line py-2 font-mono text-sm last:border-0"
+            >
+              <span>{artifact.name}</span>
+              <span className="text-fg-muted">{formatBytes(artifact.size_bytes)}</span>
+            </div>
+          ))}
         </Panel>
       </div>
     </div>

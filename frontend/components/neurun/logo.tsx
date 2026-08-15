@@ -1,8 +1,10 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Loaded from /logo.svg (a filled black diagram) rather than drawn inline,
- * since it's a single traced path, not a small set of strokes.
+ * Loaded from /logo.svg rather than drawn inline, since it's a single traced
+ * path, not a small set of strokes. One fill per theme, both rendered and one
+ * hidden in CSS: an img cannot inherit currentColor, and swapping the src on
+ * the client would show the wrong ink until the theme resolved.
  */
 export function Logo({
   className,
@@ -11,13 +13,14 @@ export function Logo({
   className?: string;
   title?: string;
 }) {
+  const shared = cn("size-10 shrink-0 object-contain", className);
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- next/image will not optimise an SVG without dangerouslyAllowSVG
-    <img
-      src="/logo.svg"
-      alt={title}
-      className={cn("size-10 shrink-0 object-contain", className)}
-    />
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element -- next/image will not optimise an SVG without dangerouslyAllowSVG */}
+      <img src="/logo.svg" alt={title} className={cn(shared, "dark:hidden")} />
+      {/* eslint-disable-next-line @next/next/no-img-element -- as above */}
+      <img src="/logo-dark.svg" alt="" aria-hidden className={cn(shared, "hidden dark:block")} />
+    </>
   );
 }
 

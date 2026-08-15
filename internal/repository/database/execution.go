@@ -281,7 +281,7 @@ func getExecution(
 	executionID string,
 	lock bool,
 ) (executionRow, error) {
-	query := executionSelect + ` WHERE id = $1`
+	query := executionSelect + ` WHERE e.id = $1`
 	if lock {
 		query += ` FOR UPDATE`
 	}

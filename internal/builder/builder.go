@@ -45,17 +45,17 @@ func (request Request) run(action string, command *exec.Cmd) error {
 	return nil
 }
 
-// Output is one file a build produced, still on local disk. The service hashes
-// and stores it; the builder only says what it is and where it put it.
-type Output struct {
-	Kind      string
-	Name      string
-	MediaType string
-	Path      string
+// Layer is one ZIP a build produced, still on local disk. Name is what it is
+// to the runtime — the directory a runner unpacks it into.
+type Layer struct {
+	Name string
+	Path string
 }
 
+// Result is what a build produced. The service hashes and stores each layer;
+// the builder only says what it made and where it put it.
 type Result struct {
-	Artifacts []Output
+	Layers []Layer
 }
 
 // Builder is the runtime-neutral boundary around language toolchains. Only

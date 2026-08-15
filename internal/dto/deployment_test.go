@@ -30,16 +30,16 @@ func TestResponsesNeverCarryTheStorageHandle(t *testing.T) {
 		Runtime: build.RuntimePython, EntryPoint: "main.py:handler",
 		Status: deployment.StatusReady,
 		Source: build.Artifact{
-			ID: "art_source", Kind: build.ArtifactSource, Name: "source.zip",
-			MediaType: "application/zip", SizeBytes: 12, SHA256: sourceDigest,
+			ID: "art_source", Name: "source",
+			SizeBytes: 12, SHA256: sourceDigest,
 			StorageKey: sourceKey, CreatedAt: now,
 		},
 		Build: &build.Build{
 			ID: "bld_fixture", Runtime: build.RuntimePython,
 			EntryPoint: "main.py:handler", SourceSHA256: sourceDigest,
 			Artifacts: []build.Artifact{{
-				ID: "art_code", Kind: build.ArtifactCodeLayer, Name: "code.zip",
-				MediaType: "application/zip", SizeBytes: 24, SHA256: codeDigest,
+				ID: "art_code", Name: build.LayerCode,
+				SizeBytes: 24, SHA256: codeDigest,
 				StorageKey: codeKey, CreatedAt: now,
 			}},
 			CreatedAt: finished,

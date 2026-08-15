@@ -1513,13 +1513,14 @@ components:
           properties:
             secret: {type: string}
     Artifact:
+      description: >-
+        One stored ZIP. name is what the layer is to the runtime — code and
+        install today — and is what a runner unpacks it into.
       type: object
-      required: [id, kind, name, media_type, size_bytes, sha256, created_at]
+      required: [id, name, size_bytes, sha256, created_at]
       properties:
         id: {type: string}
-        kind: {type: string}
         name: {type: string}
-        media_type: {type: string}
         size_bytes: {type: integer, format: int64}
         sha256: {type: string}
         created_at: {type: string, format: date-time}

@@ -18,8 +18,8 @@ func queuedFixture(t *testing.T) Deployment {
 		"dep_fixture", "prj_fixture", "app_fixture",
 		build.RuntimePython, "main.py:handler",
 		build.Artifact{
-			ID: "art_source", Kind: build.ArtifactSource, Name: "source.zip",
-			MediaType: "application/zip", SizeBytes: 12, SHA256: digest,
+			ID: "art_source", Name: "source",
+			SizeBytes: 12, SHA256: digest,
 			StorageKey: "objects/sha256/aa/" + digest, CreatedAt: fixtureTime,
 		},
 		fixtureTime,
@@ -33,8 +33,8 @@ func queuedFixture(t *testing.T) Deployment {
 func codeLayer() []build.Artifact {
 	digest := strings.Repeat("b", 64)
 	return []build.Artifact{{
-		ID: "art_code", Kind: build.ArtifactCodeLayer, Name: "code.zip",
-		MediaType: "application/zip", SizeBytes: 24, SHA256: digest,
+		ID: "art_code", Name: build.LayerCode,
+		SizeBytes: 24, SHA256: digest,
 		StorageKey: "objects/sha256/bb/" + digest, CreatedAt: fixtureTime,
 	}}
 }

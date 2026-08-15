@@ -15,6 +15,7 @@ import { Timestamp } from "@/components/neurun/timestamp";
 import { Button } from "@/components/ui/button";
 import { useDeploymentQuery, useRetryDeploymentMutation } from "@/lib/api/queries";
 import { isDeploymentRunning } from "@/lib/api/resource-types";
+import { formatBytes } from "@/lib/view/units";
 
 export default function DeploymentPage() {
   const { deploymentId } = useParams<{ deploymentId: string }>();
@@ -115,7 +116,7 @@ export default function DeploymentPage() {
                     className="flex items-center justify-between border-b border-line py-2 font-mono text-sm last:border-0"
                   >
                     <span>{artifact.name}</span>
-                    <span className="text-fg-muted">{artifact.kind}</span>
+                    <span className="text-fg-muted">{formatBytes(artifact.size_bytes)}</span>
                   </div>
                 ))}
               </div>

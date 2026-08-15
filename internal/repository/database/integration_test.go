@@ -158,8 +158,8 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 	record, err := deployment.New(
 		"dep_it", project.ID, app.ID, build.RuntimePython, "main.py:handler",
 		build.Artifact{
-			ID: "art_src", Kind: build.ArtifactSource, Name: "source.zip",
-			MediaType: "application/zip", SizeBytes: 10, SHA256: sourceDigest,
+			ID: "art_src", Name: "source",
+			SizeBytes: 10, SHA256: sourceDigest,
 			StorageKey: "objects/sha256/aa/" + sourceDigest, CreatedAt: now,
 		},
 		now,
@@ -179,8 +179,8 @@ func TestDeploymentAndExecutionRoundTrip(t *testing.T) {
 	produced, err := build.New(
 		"bld_it", record.Runtime, record.EntryPoint, record.Source.SHA256,
 		[]build.Artifact{{
-			ID: "art_code", Kind: build.ArtifactCodeLayer, Name: "code.zip",
-			MediaType: "application/zip", SizeBytes: 20, SHA256: codeDigest,
+			ID: "art_code", Name: build.LayerCode,
+			SizeBytes: 20, SHA256: codeDigest,
 			StorageKey: "objects/sha256/cc/" + codeDigest, CreatedAt: now,
 		}},
 		now.Add(2*time.Second),
@@ -297,8 +297,8 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 	record, err := deployment.New(
 		"dep_rec", project.ID, app.ID, build.RuntimePython, "main.py:handler",
 		build.Artifact{
-			ID: "art_rec", Kind: build.ArtifactSource, Name: "source.zip",
-			MediaType: "application/zip", SizeBytes: 10, SHA256: digest,
+			ID: "art_rec", Name: "source",
+			SizeBytes: 10, SHA256: digest,
 			StorageKey: "objects/sha256/dd/" + digest, CreatedAt: now,
 		},
 		now,
@@ -333,17 +333,17 @@ func TestRecoveryClosesInterruptedWork(t *testing.T) {
 
 	// An execution left running is failed, while a queued one is untouched.
 	ready := build.Artifact{
-		ID: "art_code2", Kind: build.ArtifactCodeLayer, Name: "code.zip",
-		MediaType: "application/zip", SizeBytes: 20,
-		SHA256: strings.Repeat("e", 64), CreatedAt: now,
+		ID: "art_code2", Name: build.LayerCode,
+		SizeBytes: 20,
+		SHA256:    strings.Repeat("e", 64), CreatedAt: now,
 	}
 	ready.StorageKey = "objects/sha256/ee/" + ready.SHA256
 	fresh, err := deployment.New(
 		"dep_rec2", project.ID, app.ID, build.RuntimePython, "main.py:handler",
 		build.Artifact{
-			ID: "art_rec2", Kind: build.ArtifactSource, Name: "source.zip",
-			MediaType: "application/zip", SizeBytes: 10,
-			SHA256: strings.Repeat("f", 64), CreatedAt: now,
+			ID: "art_rec2", Name: "source",
+			SizeBytes: 10,
+			SHA256:    strings.Repeat("f", 64), CreatedAt: now,
 		}, now,
 	)
 	if err != nil {

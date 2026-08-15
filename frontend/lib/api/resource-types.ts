@@ -60,11 +60,10 @@ export interface Installation {
   updated_at: string;
 }
 
+/** One stored ZIP. The name is the layer it is: code, install, source. */
 export interface Artifact {
   id: string;
-  kind: string;
   name: string;
-  media_type: string;
   size_bytes: number;
   sha256: string;
   created_at: string;

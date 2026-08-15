@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"mime"
 	"os"
 	"path"
 	"path/filepath"
@@ -51,7 +50,7 @@ type DeploymentService struct {
 	apps        *database.AppRepository
 	deployments *database.DeploymentRepository
 	builds      *database.BuildRepository
-	blobs       file.Repository
+	files       file.Repository
 	builders    map[build.Runtime]builder.Builder
 
 	maxSourceBytes   int64
@@ -67,15 +66,15 @@ func NewDeploymentService(
 	apps *database.AppRepository,
 	deployments *database.DeploymentRepository,
 	builds *database.BuildRepository,
-	blobs file.Repository,
+	files file.Repository,
 	toolchains map[build.Runtime]builder.Builder,
 	options DeploymentOptions,
 ) (*DeploymentService, error) {
 	switch {
 	case apps == nil || deployments == nil || builds == nil:
 		return nil, errors.New("deployment service requires its repositories")
-	case blobs == nil:
-		return nil, errors.New("deployment service requires an artifact store")
+	case files == nil:
+		return nil, errors.New("deployment service requires a file repository")
 	case len(toolchains) == 0:
 		return nil, errors.New("deployment service requires at least one builder")
 	case options.MaxSourceBytes < 0 || options.MaxArtifactBytes < 0 ||
@@ -99,7 +98,7 @@ func NewDeploymentService(
 	}
 	return &DeploymentService{
 		apps: apps, deployments: deployments, builds: builds,
-		blobs: blobs, builders: toolchains,
+		files: files, builders: toolchains,
 		maxSourceBytes:   options.MaxSourceBytes,
 		maxArtifactBytes: options.MaxArtifactBytes,
 		buildTimeout:     options.BuildTimeout,
@@ -134,12 +133,7 @@ func (service *DeploymentService) Create(
 			"%w: source ZIP is required", deployment.ErrInvalid,
 		)
 	}
-	sourceName, err := normalizeSourceName(request.SourceName)
-	if err != nil {
-		return deployment.Deployment{}, err
-	}
-
-	sourcePath, sourceInfo, cleanup, err := spoolSource(
+	sourcePath, _, cleanup, err := spoolSource(
 		ctx, request.Source, service.maxSourceBytes,
 	)
 	if err != nil {
@@ -157,12 +151,10 @@ func (service *DeploymentService) Create(
 	if err != nil {
 		return deployment.Deployment{}, err
 	}
-	sourceID, err := service.allocateID("art")
-	if err != nil {
-		return deployment.Deployment{}, err
-	}
-	storageKey, err := service.putContentAddressed(
-		ctx, sourcePath, sourceInfo, service.maxSourceBytes,
+	source, err := service.store(
+		ctx, deploymentID,
+		builder.Layer{Name: "source", Path: sourcePath},
+		service.maxSourceBytes,
 	)
 	if err != nil {
 		return deployment.Deployment{}, fmt.Errorf("store deployment source: %w", err)
@@ -171,13 +163,7 @@ func (service *DeploymentService) Create(
 	now := service.now().UTC().Round(0)
 	record, err := deployment.New(
 		deploymentID, app.ProjectID, app.ID,
-		request.Runtime, request.EntryPoint,
-		build.Artifact{
-			ID: sourceID, Kind: build.ArtifactSource, Name: sourceName,
-			MediaType: "application/zip", SizeBytes: sourceInfo.SizeBytes,
-			SHA256: sourceInfo.SHA256, StorageKey: storageKey, CreatedAt: now,
-		},
-		now,
+		request.Runtime, request.EntryPoint, source, now,
 	)
 	if err != nil {
 		return deployment.Deployment{}, err
@@ -321,24 +307,30 @@ func (service *DeploymentService) runBuild(
 		}
 		return service.fail(ctx, record, code, buildErr)
 	}
-	if len(result.Artifacts) == 0 {
+	if len(result.Layers) == 0 {
 		return service.fail(ctx, record, "build_failed",
-			errors.New("builder produced no artifacts"))
+			errors.New("builder produced no layers"))
 	}
 	if err := service.advance(ctx, &record); err != nil {
 		return deployment.Deployment{}, err
-	}
-	stored, err := service.storeBuildArtifacts(buildCtx, result.Artifacts)
-	if err != nil {
-		return service.fail(ctx, record, "artifact_store_failed", err)
 	}
 	buildID, err := service.allocateID("bld")
 	if err != nil {
 		return deployment.Deployment{}, err
 	}
+	remaining := service.maxArtifactBytes
+	artifacts := make([]build.Artifact, 0, len(result.Layers))
+	for _, layer := range result.Layers {
+		stored, err := service.store(buildCtx, buildID, layer, remaining)
+		if err != nil {
+			return service.fail(ctx, record, "artifact_store_failed", err)
+		}
+		remaining -= stored.SizeBytes
+		artifacts = append(artifacts, stored)
+	}
 	produced, err := build.New(
 		buildID, record.Runtime, record.EntryPoint,
-		record.Source.SHA256, stored, service.now().UTC().Round(0),
+		record.Source.SHA256, artifacts, service.now().UTC().Round(0),
 	)
 	if err != nil {
 		return deployment.Deployment{}, err
@@ -482,7 +474,7 @@ func (service *DeploymentService) materialize(
 	stored build.Artifact,
 	targetPath string,
 ) error {
-	reader, info, err := service.blobs.Open(ctx, stored.StorageKey)
+	reader, info, err := service.files.Open(ctx, stored.StorageKey)
 	if err != nil {
 		return err
 	}
@@ -508,90 +500,43 @@ func (service *DeploymentService) materialize(
 	return nil
 }
 
-func (service *DeploymentService) storeBuildArtifacts(
+// store puts one ZIP under whatever owns it — a build's layers under the
+// build, a deployment's source under the deployment — and returns the handle.
+// The store hashes what it writes, so the digest describes what actually
+// landed rather than what was staged.
+func (service *DeploymentService) store(
 	ctx context.Context,
-	outputs []builder.Output,
-) ([]build.Artifact, error) {
-	remaining := service.maxArtifactBytes
-	seenKinds := make(map[string]struct{}, len(outputs))
-	stored := make([]build.Artifact, 0, len(outputs))
-	for _, output := range outputs {
-		if err := validateBuiltArtifact(output); err != nil {
-			return nil, err
-		}
-		if _, duplicate := seenKinds[output.Kind]; duplicate {
-			return nil, fmt.Errorf("builder returned duplicate %s artifact", output.Kind)
-		}
-		seenKinds[output.Kind] = struct{}{}
-		info, err := files.HashFile(output.Path, remaining)
-		if err != nil {
-			return nil, err
-		}
-		storageKey, err := service.putContentAddressed(ctx, output.Path, info, remaining)
-		if err != nil {
-			return nil, err
-		}
-		artifactID, err := service.allocateID("art")
-		if err != nil {
-			return nil, err
-		}
-		remaining -= info.SizeBytes
-		stored = append(stored, build.Artifact{
-			ID: artifactID, Kind: output.Kind, Name: output.Name,
-			MediaType: output.MediaType, SizeBytes: info.SizeBytes,
-			SHA256: info.SHA256, StorageKey: storageKey,
-			CreatedAt: service.now().UTC().Round(0),
-		})
-	}
-	if _, exists := seenKinds[build.ArtifactCodeLayer]; !exists {
-		return nil, errors.New("builder did not produce a code layer")
-	}
-	return stored, nil
-}
-
-// putContentAddressed stores bytes under their own digest. An existing object
-// is accepted only after its digest is confirmed, so a corrupted blob can never
-// be silently reused.
-func (service *DeploymentService) putContentAddressed(
-	ctx context.Context,
-	filePath string,
-	expected files.CopyResult,
+	ownerID string,
+	layer builder.Layer,
 	maximumBytes int64,
-) (string, error) {
-	if len(expected.SHA256) != 64 || expected.SizeBytes < 0 {
-		return "", errors.New("content digest metadata is invalid")
-	}
-	storageKey := path.Join("objects", "sha256", expected.SHA256[:2], expected.SHA256)
-	source, err := os.Open(filePath)
+) (build.Artifact, error) {
+	info, err := os.Lstat(layer.Path)
 	if err != nil {
-		return "", err
+		return build.Artifact{}, fmt.Errorf("inspect built artifact: %w", err)
 	}
-	info, putErr := service.blobs.Put(ctx, storageKey, source, maximumBytes)
-	closeErr := source.Close()
-	if putErr == nil && closeErr != nil {
-		return "", closeErr
+	if !info.Mode().IsRegular() {
+		return build.Artifact{}, errors.New("built artifact must be a regular file")
 	}
-	if putErr == nil {
-		if info.SizeBytes() != expected.SizeBytes || info.SHA256() != expected.SHA256 {
-			return "", errors.New("stored blob digest differs from staged content")
-		}
-		return storageKey, nil
-	}
-	if !errors.Is(putErr, file.ErrExists) {
-		return "", putErr
-	}
-	existing, existingInfo, err := service.blobs.Open(ctx, storageKey)
+	artifactID, err := service.allocateID("art")
 	if err != nil {
-		return "", fmt.Errorf("verify existing content-addressed blob: %w", err)
+		return build.Artifact{}, err
 	}
-	if err := existing.Close(); err != nil {
-		return "", err
+	source, err := os.Open(layer.Path)
+	if err != nil {
+		return build.Artifact{}, err
 	}
-	if existingInfo.SizeBytes() != expected.SizeBytes ||
-		existingInfo.SHA256() != expected.SHA256 {
-		return "", errors.New("content-addressed blob does not match its digest")
+	defer source.Close()
+
+	storageKey := build.StorageKeyFor(ownerID, artifactID)
+	stored, err := service.files.Put(ctx, storageKey, source, maximumBytes)
+	if err != nil {
+		return build.Artifact{}, err
 	}
-	return storageKey, nil
+	return build.Artifact{
+		ID: artifactID, Name: layer.Name,
+		SizeBytes: stored.SizeBytes(), SHA256: stored.SHA256(),
+		StorageKey: storageKey, CreatedAt: service.now().UTC().Round(0),
+	}, nil
 }
 
 func (service *DeploymentService) allocateID(prefix string) (string, error) {
@@ -650,32 +595,6 @@ func spoolSource(
 		return "", result, func() {}, closeErr
 	}
 	return name, result, cleanup, nil
-}
-
-func validateBuiltArtifact(output builder.Output) error {
-	if output.Kind != build.ArtifactInstallLayer &&
-		output.Kind != build.ArtifactCodeLayer {
-		return fmt.Errorf("builder returned unsupported artifact kind %q", output.Kind)
-	}
-	if output.Name == "" || path.Base(output.Name) != output.Name ||
-		strings.ContainsAny(output.Name, "\\\x00") {
-		return errors.New("builder returned an unsafe artifact name")
-	}
-	if output.Path == "" {
-		return errors.New("builder returned an empty artifact path")
-	}
-	info, err := os.Lstat(output.Path)
-	if err != nil {
-		return fmt.Errorf("inspect built artifact: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return errors.New("builder artifact must be a regular file")
-	}
-	mediaType, _, err := mime.ParseMediaType(output.MediaType)
-	if err != nil || !strings.Contains(mediaType, "/") {
-		return errors.New("builder returned an invalid artifact media type")
-	}
-	return nil
 }
 
 func validateLimit(limit int) error {

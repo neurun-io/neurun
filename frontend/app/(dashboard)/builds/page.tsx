@@ -60,7 +60,9 @@ export default function BuildsPage() {
                       "—"
                     )}
                   </TableCell>
-                  <TableCell>{build.artifacts.length}</TableCell>
+                  <TableCell className="font-mono">
+                    {build.artifacts.map((artifact) => artifact.name).join(", ")}
+                  </TableCell>
                   <TableCell>
                     <Timestamp value={build.created_at} />
                   </TableCell>

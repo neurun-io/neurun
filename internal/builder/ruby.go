@@ -69,12 +69,7 @@ func (builder *RubyBuilder) Build(ctx context.Context, request Request) (Result,
 	if err := zipDirectory(sourceDir, codePath); err != nil {
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)
 	}
-	result := Result{Artifacts: []Output{{
-		Kind:      build.ArtifactCodeLayer,
-		Name:      "code-layer.zip",
-		MediaType: "application/zip",
-		Path:      codePath,
-	}}}
+	result := Result{Layers: []Layer{{Name: build.LayerCode, Path: codePath}}}
 
 	// No Gemfile is a handler on the standard library alone, which is a complete
 	// app and needs no second layer.
@@ -108,12 +103,7 @@ func (builder *RubyBuilder) Build(ctx context.Context, request Request) (Result,
 	if err := zipDirectory(installDir, installPath); err != nil {
 		return Result{}, fmt.Errorf("builder: package install layer: %w", err)
 	}
-	result.Artifacts = append(result.Artifacts, Output{
-		Kind:      build.ArtifactInstallLayer,
-		Name:      "install-layer.zip",
-		MediaType: "application/zip",
-		Path:      installPath,
-	})
+	result.Layers = append(result.Layers, Layer{Name: build.LayerInstall, Path: installPath})
 	return result, nil
 }
 

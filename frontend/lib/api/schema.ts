@@ -992,11 +992,10 @@ export interface components {
         CreatedAPIKey: components["schemas"]["APIKey"] & {
             secret: string;
         };
+        /** @description One stored ZIP. name is what the layer is to the runtime — code and install today — and is what a runner unpacks it into. */
         Artifact: {
             id: string;
-            kind: string;
             name: string;
-            media_type: string;
             /** Format: int64 */
             size_bytes: number;
             sha256: string;

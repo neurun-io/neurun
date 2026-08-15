@@ -96,12 +96,7 @@ func (builder *GoBuilder) Build(ctx context.Context, request Request) (Result, e
 	if err := zipFileAs(binary, CompiledBinaryName, codePath); err != nil {
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)
 	}
-	return Result{Artifacts: []Output{{
-		Kind:      build.ArtifactCodeLayer,
-		Name:      "code-layer.zip",
-		MediaType: "application/zip",
-		Path:      codePath,
-	}}}, nil
+	return Result{Layers: []Layer{{Name: build.LayerCode, Path: codePath}}}, nil
 }
 
 var _ Builder = (*GoBuilder)(nil)

@@ -105,16 +105,17 @@ func sessionCache(cfg config.Config, logger *slog.Logger) (memory.Cache, error) 
 	return cache, nil
 }
 
-// artifactStore builds the payload store the whole plane shares.
+// fileRepository builds the store the whole plane shares.
 //
 // Local is the appliance shape: one host owning its own disk. S3 is the hosted
-// one, and it is always wrapped in a read-through cache, because the worker
-// materializes a build's layers on every execution and that would otherwise be a
-// download per run.
-func artifactStore(cfg config.Config, logger *slog.Logger) (file.Repository, error) {
+// one — R2 speaks it — and is always wrapped in a read-through cache, because
+// the worker unpacks a build's layers on every execution and that would
+// otherwise be a download per run. Both keep the same folder per build, so a
+// cached layer sits at the path it has remotely.
+func fileRepository(cfg config.Config, logger *slog.Logger) (file.Repository, error) {
 	if cfg.ArtifactStore != "s3" {
-		logger.Info("artifact storage is local", "directory", cfg.DataDirectory)
-		return file.NewLocal(filepath.Join(cfg.DataDirectory, "blobs"))
+		logger.Info("builds are stored locally", "directory", cfg.DataDirectory)
+		return file.NewLocal(filepath.Join(cfg.DataDirectory, "builds"))
 	}
 	remote, err := file.NewS3(file.S3Options{
 		Bucket:    cfg.S3Bucket,
@@ -128,13 +129,13 @@ func artifactStore(cfg config.Config, logger *slog.Logger) (file.Repository, err
 		return nil, err
 	}
 	cached, err := file.NewCache(remote, file.CacheOptions{
-		Directory: filepath.Join(cfg.DataDirectory, "cache"),
+		Directory: filepath.Join(cfg.DataDirectory, "builds"),
 		MaxBytes:  cfg.ArtifactCacheBytes,
 	})
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("artifact storage is s3",
+	logger.Info("builds are stored in s3",
 		"bucket", cfg.S3Bucket, "cache_bytes", cfg.ArtifactCacheBytes,
 	)
 	return cached, nil
@@ -210,9 +211,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 
-	blobStore, err := artifactStore(cfg, logger)
+	files, err := fileRepository(cfg, logger)
 	if err != nil {
-		return fmt.Errorf("configure artifact storage: %w", err)
+		return fmt.Errorf("configure file storage: %w", err)
 	}
 	pythonBuilder, err := builder.NewPython(builder.PythonOptions{
 		MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
@@ -277,7 +278,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("configure build service: %w", err)
 	}
 	deploymentService, err := service.NewDeploymentService(
-		apps, deployments, builds, blobStore, toolchains,
+		apps, deployments, builds, files, toolchains,
 		service.DeploymentOptions{
 			BuildCacheDirectory: buildCacheDirectory(cfg),
 			MaxSourceBytes:      cfg.MaxDeploymentSourceBytes,
@@ -429,7 +430,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		build.RuntimeGo:     binaryRunner,
 	}
 	executor, err := worker.New(
-		executions, deployments, blobStore, runners,
+		executions, deployments, files, runners,
 		worker.Options{
 			PollInterval: cfg.WorkerPollInterval, RunTimeout: cfg.RunTimeout,
 			MaxResultBytes: cfg.MaxRunResultBytes, MaxLogBytes: cfg.MaxRunLogBytes,
@@ -466,7 +467,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		AllowedOrigins:  cfg.AllowedOrigins,
 		Ready: func(readyCtx context.Context) error {
 			return errors.Join(
-				pool.Ping(readyCtx), storeReady(readyCtx, blobStore),
+				pool.Ping(readyCtx), storeReady(readyCtx, files),
 				storeReady(readyCtx, cache),
 				deployments.Check(readyCtx),
 			)

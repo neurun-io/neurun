@@ -60,10 +60,10 @@ func buildFixture(t *testing.T, python string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Artifacts) != 1 || result.Artifacts[0].Kind != build.ArtifactCodeLayer {
-		t.Fatalf("unexpected artifacts: %#v", result.Artifacts)
+	if len(result.Layers) != 1 || result.Layers[0].Name != build.LayerCode {
+		t.Fatalf("unexpected artifacts: %#v", result.Layers)
 	}
-	return result.Artifacts[0].Path
+	return result.Layers[0].Path
 }
 
 func pythonForTest(t *testing.T) string {

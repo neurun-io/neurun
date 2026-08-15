@@ -103,12 +103,7 @@ func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result,
 	if err := zipFileAs(binary, CompiledBinaryName, codePath); err != nil {
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)
 	}
-	return Result{Artifacts: []Output{{
-		Kind:      build.ArtifactCodeLayer,
-		Name:      "code-layer.zip",
-		MediaType: "application/zip",
-		Path:      codePath,
-	}}}, nil
+	return Result{Layers: []Layer{{Name: build.LayerCode, Path: codePath}}}, nil
 }
 
 // locateBinary finds what cargo produced. A named entrypoint must exist under
