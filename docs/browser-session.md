@@ -87,6 +87,10 @@ profile endpoint returns, so it takes its own scope. The credential is checked
 **before the handshake completes** — a refused viewer never sees a frame, and an
 unreachable service is a `502` rather than a socket that opens and dies.
 
+A framebuffer is Xvfb and x11vnc, so a host without X11 has none: on Windows a
+session still opens and drives a browser, and the display endpoint refuses with
+`501` rather than dialing a port nothing is serving.
+
 No address appears in any response. A viewer names a session and asks the
 control plane to stream it.
 

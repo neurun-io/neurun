@@ -81,7 +81,6 @@ export default function ExecutionPage() {
                   </Link>
                 ),
               },
-              { label: "Created", value: <Timestamp value={execution.created_at} /> },
               { label: "Started", value: <Timestamp value={execution.started_at} /> },
               { label: "Finished", value: <Timestamp value={execution.finished_at} /> },
               { label: "Rerun of", value: execution.rerun_of_execution_id },

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"runtime"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -62,6 +63,17 @@ func (server *Server) closeBrowserSession(ctx *gin.Context) {
 // this handler is the only thing that reaches it, and the only thing that asks
 // who is watching.
 func (server *Server) streamBrowserDisplay(ctx *gin.Context) {
+	// The browser service is this process's own child, so its host is this one.
+	// A framebuffer is Xvfb and x11vnc, which are X11: on Windows a session runs
+	// fine and there is simply nothing to watch. Saying so beats dialing a port
+	// that will never answer.
+	if runtime.GOOS == "windows" {
+		writeProblem(ctx, http.StatusNotImplemented, dto.Problem{
+			Code:    "display_unavailable",
+			Message: "display streaming is not available on this host",
+		})
+		return
+	}
 	record, err := server.browserSessions.Get(
 		ctx.Request.Context(), principalOf(ctx).OrganizationID,
 		ctx.Param("session_id"),

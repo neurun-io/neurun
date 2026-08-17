@@ -6,88 +6,38 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"log/slog"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
 	"time"
 
-	"github.com/neurun-io/neurun/internal/builder"
-	"github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 	"github.com/neurun-io/neurun/internal/dto"
-	"github.com/neurun-io/neurun/internal/files"
 	"github.com/neurun-io/neurun/internal/ids"
 	"github.com/neurun-io/neurun/internal/repository/database"
-	"github.com/neurun-io/neurun/internal/repository/file"
 )
 
-const (
-	DefaultMaxSourceBytes   = int64(33_554_432)
-	DefaultMaxArtifactBytes = int64(268_435_456)
-	DefaultBuildTimeout     = 5 * time.Minute
-	maximumPageSize         = 200
-)
+const maximumPageSize = 200
 
 type DeploymentOptions struct {
-	// BuildCacheDirectory outlives a build and holds the toolchain caches. Empty
-	// leaves every build cold.
-	BuildCacheDirectory string
-	MaxSourceBytes      int64
-	MaxArtifactBytes    int64
-	BuildTimeout        time.Duration
-	Now                 func() time.Time
-	NewID               func(string) (string, error)
+	Now   func() time.Time
+	NewID func(string) (string, error)
 }
 
-// DeploymentService turns a source archive into a build. It reaches the app
-// repository only to learn which project a deployment belongs to; projects and
-// apps are owned elsewhere.
+// DeploymentService queues deployments and reads them back. Building one is the
+// deployer's work: it claims what is queued here, so a deployment outlives the
+// request that asked for it.
 type DeploymentService struct {
 	apps        *database.AppRepository
 	deployments *database.DeploymentRepository
-	builds      *database.BuildRepository
-	files       file.Repository
-	builders    map[build.Runtime]builder.Builder
-
-	maxSourceBytes   int64
-	maxArtifactBytes int64
-	buildTimeout     time.Duration
-	buildCache       string
-	now              func() time.Time
-	newID            func(string) (string, error)
-	buildMu          sync.Mutex
+	now         func() time.Time
+	newID       func(string) (string, error)
 }
 
 func NewDeploymentService(
 	apps *database.AppRepository,
 	deployments *database.DeploymentRepository,
-	builds *database.BuildRepository,
-	files file.Repository,
-	toolchains map[build.Runtime]builder.Builder,
 	options DeploymentOptions,
 ) (*DeploymentService, error) {
-	switch {
-	case apps == nil || deployments == nil || builds == nil:
+	if apps == nil || deployments == nil {
 		return nil, errors.New("deployment service requires its repositories")
-	case files == nil:
-		return nil, errors.New("deployment service requires a file repository")
-	case len(toolchains) == 0:
-		return nil, errors.New("deployment service requires at least one builder")
-	case options.MaxSourceBytes < 0 || options.MaxArtifactBytes < 0 ||
-		options.BuildTimeout < 0:
-		return nil, errors.New("deployment service limits cannot be negative")
-	}
-	if options.MaxSourceBytes == 0 {
-		options.MaxSourceBytes = DefaultMaxSourceBytes
-	}
-	if options.MaxArtifactBytes == 0 {
-		options.MaxArtifactBytes = DefaultMaxArtifactBytes
-	}
-	if options.BuildTimeout == 0 {
-		options.BuildTimeout = DefaultBuildTimeout
 	}
 	if options.Now == nil {
 		options.Now = time.Now
@@ -96,17 +46,13 @@ func NewDeploymentService(
 		options.NewID = ids.New
 	}
 	return &DeploymentService{
-		apps: apps, deployments: deployments, builds: builds,
-		files: files, builders: toolchains,
-		maxSourceBytes:   options.MaxSourceBytes,
-		maxArtifactBytes: options.MaxArtifactBytes,
-		buildTimeout:     options.BuildTimeout,
-		buildCache:       options.BuildCacheDirectory,
-		now:              options.Now,
-		newID:            options.NewID,
+		apps: apps, deployments: deployments,
+		now: options.Now, newID: options.NewID,
 	}, nil
 }
 
+// Create queues a commit to build. It returns as soon as the row is written:
+// what happens next is a deployer's, and the caller follows the deployment.
 func (service *DeploymentService) Create(
 	ctx context.Context,
 	organizationID string,
@@ -124,42 +70,16 @@ func (service *DeploymentService) Create(
 	}
 	if !request.Runtime.Valid() {
 		return deployment.Deployment{}, fmt.Errorf(
-			"%w: runtime must be python, rust, go or ruby", deployment.ErrInvalid,
+			"%w: runtime must be python, rust, go, ruby or node", deployment.ErrInvalid,
 		)
 	}
-	if request.Source == nil {
-		return deployment.Deployment{}, fmt.Errorf(
-			"%w: source ZIP is required", deployment.ErrInvalid,
-		)
-	}
-	// Spooled, never stored: the archive is the commit's own bytes, which GitHub
-	// still has. The build reads this file and removes it when it finishes.
-	source, digest, cleanup, err := spoolSource(
-		ctx, request.Source, service.maxSourceBytes,
-	)
-	if err != nil {
-		if errors.Is(err, files.ErrByteLimitExceeded) {
-			return deployment.Deployment{}, fmt.Errorf(
-				"%w: source ZIP exceeds %d bytes",
-				deployment.ErrSourceTooLarge, service.maxSourceBytes,
-			)
-		}
-		return deployment.Deployment{}, fmt.Errorf("stage deployment source: %w", err)
-	}
-	scheduled := false
-	defer func() {
-		if !scheduled {
-			cleanup()
-		}
-	}()
-
 	deploymentID, err := service.allocateID("dep")
 	if err != nil {
 		return deployment.Deployment{}, err
 	}
-	now := service.now().UTC().Round(0)
 	record, err := deployment.New(
-		deploymentID, app.ProjectID, app.ID, request.Runtime, now,
+		deploymentID, app.ProjectID, app.ID, request.Runtime,
+		service.now().UTC().Round(0),
 	)
 	if err != nil {
 		return deployment.Deployment{}, err
@@ -168,28 +88,7 @@ func (service *DeploymentService) Create(
 	if err := service.deployments.Save(ctx, record); err != nil {
 		return deployment.Deployment{}, fmt.Errorf("persist queued deployment: %w", err)
 	}
-	service.schedule(record, source, digest.SHA256)
-	scheduled = true
 	return deployment.CloneDeployment(record), nil
-}
-
-// schedule builds on a context of its own, so cancelling the caller cannot
-// abandon a deployment mid-toolchain.
-func (service *DeploymentService) schedule(
-	record deployment.Deployment,
-	sourcePath string,
-	sourceSHA256 string,
-) {
-	go func() {
-		if _, err := service.runBuild(
-			context.Background(), record, sourcePath, sourceSHA256,
-		); err != nil {
-			slog.Error(
-				"deployment build failed",
-				"deployment", record.ID, "app", record.AppID, "error", err,
-			)
-		}
-	}()
 }
 
 func (service *DeploymentService) Get(
@@ -218,299 +117,6 @@ func (service *DeploymentService) List(
 	return service.deployments.List(ctx, organizationID, projectID, appID, limit)
 }
 
-// RecoverInterruptedBuilds marks builds a prior process crash left building as
-// failed. It never retries the build's side effects.
-func (service *DeploymentService) RecoverInterruptedBuilds(
-	ctx context.Context,
-) (int, error) {
-	return service.deployments.RecoverBuilding(
-		ctx,
-		service.now().UTC().Round(0),
-		deployment.Failure{
-			Code:    "build_interrupted",
-			Message: "build was interrupted by a service restart",
-		},
-	)
-}
-
-// runBuild is serialized process-wide: a build spends minutes in a toolchain,
-// and two concurrent ones would race on the same deployment row.
-func (service *DeploymentService) runBuild(
-	ctx context.Context,
-	record deployment.Deployment,
-	sourcePath string,
-	sourceSHA256 string,
-) (deployment.Deployment, error) {
-	service.buildMu.Lock()
-	defer service.buildMu.Unlock()
-	// The archive was spooled for this build and nothing else reads it.
-	defer os.Remove(sourcePath)
-
-	// Unscoped on purpose: this re-reads a row the caller already reached
-	// through an organization-scoped path, to pick up a concurrent write.
-	current, err := service.deployments.GetByIDUnscoped(ctx, record.ID)
-	if err == nil {
-		record = current
-	} else if !errors.Is(err, deployment.ErrNotFound) {
-		return deployment.Deployment{}, err
-	}
-	buildCtx, cancel := context.WithTimeout(ctx, service.buildTimeout)
-	defer cancel()
-	workDirectory, err := os.MkdirTemp("", "neurun-build-*")
-	if err != nil {
-		return service.fail(ctx, record, "build_environment", err)
-	}
-	defer os.RemoveAll(workDirectory)
-
-	if _, err := os.Stat(sourcePath); err != nil {
-		return service.fail(ctx, record, "source_unavailable", err)
-	}
-	toolchain, ok := service.builders[record.Runtime]
-	if !ok {
-		return service.fail(ctx, record, "runtime_unsupported",
-			fmt.Errorf("no builder for runtime %q", record.Runtime))
-	}
-	// The cache is the build environment, kept so the next deployment of this
-	// app compiles what changed rather than everything. It is per app and per
-	// runtime: two apps sharing a target directory would fingerprint against
-	// each other's intermediates, and one runtime's cache stays safe to delete
-	// on its own.
-	//
-	// Absolute, because a toolchain runs with the source as its working
-	// directory and reads this out of the environment: a relative path would
-	// put the cache inside whatever it happens to be compiling.
-	cacheDirectory := ""
-	if service.buildCache != "" {
-		absolute, err := filepath.Abs(filepath.Join(
-			service.buildCache, string(record.Runtime), record.AppID,
-		))
-		if err != nil {
-			return service.fail(ctx, record, "build_environment", err)
-		}
-		cacheDirectory = absolute
-		if err := os.MkdirAll(cacheDirectory, 0o700); err != nil {
-			return service.fail(ctx, record, "build_environment", err)
-		}
-	}
-
-	// Nothing above this point has run a toolchain, so nothing above it can
-	// leave a build behind: those failures are the deployment's alone.
-	if err := service.advance(ctx, &record); err != nil {
-		return deployment.Deployment{}, err
-	}
-	stream := service.follow(ctx, &record)
-	result, buildErr := toolchain.Build(buildCtx, builder.Request{
-		Runtime:           record.Runtime,
-		SourceArchivePath: sourcePath, WorkDirectory: workDirectory,
-		CacheDirectory: cacheDirectory, Logs: stream,
-	})
-	stream.Close()
-	if buildErr != nil {
-		code := "build_failed"
-		if errors.Is(buildErr, context.DeadlineExceeded) ||
-			errors.Is(buildCtx.Err(), context.DeadlineExceeded) {
-			code = "build_timeout"
-		}
-		return service.fail(ctx, record, code, buildErr)
-	}
-	if len(result.Layers) == 0 {
-		return service.fail(ctx, record, "build_failed",
-			errors.New("builder produced no layers"))
-	}
-	if err := service.advance(ctx, &record); err != nil {
-		return deployment.Deployment{}, err
-	}
-	buildID, err := service.allocateID("bld")
-	if err != nil {
-		return deployment.Deployment{}, err
-	}
-	remaining := service.maxArtifactBytes
-	artifacts := make([]build.Artifact, 0, len(result.Layers))
-	for _, layer := range result.Layers {
-		stored, err := service.store(buildCtx, buildID, layer, remaining)
-		if err != nil {
-			return service.fail(ctx, record, "artifact_store_failed", err)
-		}
-		remaining -= stored.SizeBytes
-		artifacts = append(artifacts, stored)
-	}
-	produced, err := build.New(
-		buildID, record.AppID, record.ID, record.Runtime,
-		sourceSHA256, artifacts, service.now().UTC().Round(0),
-	)
-	if err != nil {
-		return deployment.Deployment{}, err
-	}
-	// The build is written first: the deployment points at it, so the row it
-	// references has to exist before the reference does.
-	if err := service.builds.Save(ctx, produced); err != nil {
-		return deployment.Deployment{}, fmt.Errorf("persist build: %w", err)
-	}
-	if err := record.MarkReady(produced, service.now().UTC().Round(0)); err != nil {
-		return deployment.Deployment{}, err
-	}
-	if err := service.deployments.Save(ctx, record); err != nil {
-		return deployment.Deployment{}, fmt.Errorf("persist completed deployment: %w", err)
-	}
-	return record, nil
-}
-
-// logFlush is how far behind the toolchain a reader is allowed to be. A build
-// prints in bursts, and writing the row on every burst would write it hundreds
-// of times for output nobody reads that fast.
-const logFlush = 2 * time.Second
-
-// logStream carries toolchain output onto the deployment while the build is
-// still running, so following a deployment shows it happening rather than
-// showing nothing and then everything.
-type logStream struct {
-	mutex   sync.Mutex
-	record  *deployment.Deployment
-	written bool
-	persist func(deployment.Deployment)
-	stop    chan struct{}
-	stopped chan struct{}
-}
-
-func (service *DeploymentService) follow(
-	ctx context.Context,
-	record *deployment.Deployment,
-) *logStream {
-	stream := &logStream{
-		record: record,
-		persist: func(snapshot deployment.Deployment) {
-			if err := service.deployments.Save(ctx, snapshot); err != nil {
-				slog.Warn(
-					"persist deployment logs",
-					"deployment", snapshot.ID, "error", err,
-				)
-			}
-		},
-		stop:    make(chan struct{}),
-		stopped: make(chan struct{}),
-	}
-	go stream.flushEvery(logFlush)
-	return stream
-}
-
-func (stream *logStream) Write(output []byte) (int, error) {
-	stream.mutex.Lock()
-	defer stream.mutex.Unlock()
-	stream.record.Log(string(output))
-	stream.written = true
-	return len(output), nil
-}
-
-func (stream *logStream) flushEvery(interval time.Duration) {
-	defer close(stream.stopped)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-stream.stop:
-			stream.flush()
-			return
-		case <-ticker.C:
-			stream.flush()
-		}
-	}
-}
-
-func (stream *logStream) flush() {
-	stream.mutex.Lock()
-	if !stream.written {
-		stream.mutex.Unlock()
-		return
-	}
-	stream.written = false
-	snapshot := deployment.CloneDeployment(*stream.record)
-	stream.mutex.Unlock()
-	stream.persist(snapshot)
-}
-
-// Close stops following and leaves the last of the output on the row.
-func (stream *logStream) Close() {
-	close(stream.stop)
-	<-stream.stopped
-}
-
-// advance moves the deployment on to its next stage and records it there, so
-// somebody watching sees which wait they are in.
-func (service *DeploymentService) advance(
-	ctx context.Context,
-	record *deployment.Deployment,
-) error {
-	if err := record.Advance(service.now().UTC().Round(0)); err != nil {
-		return err
-	}
-	if err := service.deployments.Save(ctx, *record); err != nil {
-		return fmt.Errorf("persist deployment stage: %w", err)
-	}
-	return nil
-}
-
-func (service *DeploymentService) fail(
-	ctx context.Context,
-	record deployment.Deployment,
-	code string,
-	cause error,
-) (deployment.Deployment, error) {
-	if err := record.Fail(
-		deployment.Failure{Code: code, Message: boundedError(cause)},
-		service.now().UTC().Round(0),
-	); err != nil {
-		return deployment.Deployment{}, err
-	}
-	// The failure must be recorded even when the request that triggered the
-	// build has already gone away.
-	saveCtx := ctx
-	if saveCtx == nil || saveCtx.Err() != nil {
-		saveCtx = context.WithoutCancel(orBackground(ctx))
-	}
-	if err := service.deployments.Save(saveCtx, record); err != nil {
-		return record, fmt.Errorf("persist failed deployment: %w", err)
-	}
-	return record, nil
-}
-
-// store puts one built layer under the build that made it, and returns the
-// handle. The store hashes what it writes, so the digest describes what
-// actually landed rather than what was staged.
-func (service *DeploymentService) store(
-	ctx context.Context,
-	buildID string,
-	layer builder.Layer,
-	maximumBytes int64,
-) (build.Artifact, error) {
-	info, err := os.Lstat(layer.Path)
-	if err != nil {
-		return build.Artifact{}, fmt.Errorf("inspect built artifact: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return build.Artifact{}, errors.New("built artifact must be a regular file")
-	}
-	artifactID, err := service.allocateID("art")
-	if err != nil {
-		return build.Artifact{}, err
-	}
-	source, err := os.Open(layer.Path)
-	if err != nil {
-		return build.Artifact{}, err
-	}
-	defer source.Close()
-
-	storageKey := build.StorageKeyFor(buildID, artifactID)
-	stored, err := service.files.Put(ctx, storageKey, source, maximumBytes)
-	if err != nil {
-		return build.Artifact{}, err
-	}
-	return build.Artifact{
-		ID: artifactID, Name: layer.Name,
-		SizeBytes: stored.SizeBytes(), SHA256: stored.SHA256(),
-		StorageKey: storageKey, CreatedAt: service.now().UTC().Round(0),
-	}, nil
-}
-
 func (service *DeploymentService) allocateID(prefix string) (string, error) {
 	value, err := service.newID(prefix)
 	if err != nil {
@@ -522,40 +128,6 @@ func (service *DeploymentService) allocateID(prefix string) (string, error) {
 	return value, nil
 }
 
-// spoolSource streams the upload to a private temporary file, hashing as it
-// goes, so the archive is never held in memory and never exceeds its limit.
-func spoolSource(
-	ctx context.Context,
-	source io.Reader,
-	maximumBytes int64,
-) (string, files.CopyResult, func(), error) {
-	file, err := os.CreateTemp("", "neurun-source-*.zip")
-	if err != nil {
-		return "", files.CopyResult{}, func() {}, err
-	}
-	name := file.Name()
-	cleanup := func() { _ = os.Remove(name) }
-	if err := file.Chmod(0o600); err != nil {
-		file.Close()
-		cleanup()
-		return "", files.CopyResult{}, func() {}, err
-	}
-	result, copyErr := files.CopyAndHashContext(ctx, file, source, maximumBytes)
-	if copyErr == nil {
-		copyErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if copyErr != nil {
-		cleanup()
-		return "", result, func() {}, copyErr
-	}
-	if closeErr != nil {
-		cleanup()
-		return "", result, func() {}, closeErr
-	}
-	return name, result, cleanup, nil
-}
-
 func validateLimit(limit int) error {
 	if limit < 1 || limit > maximumPageSize {
 		return fmt.Errorf(
@@ -563,20 +135,6 @@ func validateLimit(limit int) error {
 		)
 	}
 	return nil
-}
-
-func boundedError(err error) string {
-	if err == nil {
-		return "operation failed"
-	}
-	message := strings.TrimSpace(err.Error())
-	if message == "" {
-		return "operation failed"
-	}
-	if len(message) > 4_096 {
-		message = message[:4_096]
-	}
-	return message
 }
 
 func orBackground(ctx context.Context) context.Context {

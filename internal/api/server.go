@@ -364,11 +364,6 @@ func writeError(ctx *gin.Context, err error) {
 			Code:    "resource_conflict",
 			Message: "the resource conflicts with an existing record",
 		})
-	case errors.Is(err, deployment.ErrSourceTooLarge):
-		writeProblem(ctx, http.StatusRequestEntityTooLarge, dto.Problem{
-			Code:    "deployment_too_large",
-			Message: "deployment upload exceeds the configured source limit",
-		})
 	case errors.Is(err, deployment.ErrInvalid),
 		errors.Is(err, deployment.ErrNotReady),
 		errors.Is(err, execution.ErrInvalid),

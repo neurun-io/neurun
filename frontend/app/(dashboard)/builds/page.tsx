@@ -35,7 +35,6 @@ export default function BuildsPage() {
                 <TableHead>Build</TableHead>
                 <TableHead>Runtime</TableHead>
                 <TableHead>Deployment</TableHead>
-                <TableHead>Layers</TableHead>
                 <TableHead>Made</TableHead>
               </TableRow>
             </TableHeader>
@@ -59,9 +58,6 @@ export default function BuildsPage() {
                     ) : (
                       "—"
                     )}
-                  </TableCell>
-                  <TableCell className="font-mono">
-                    {build.artifacts.map((artifact) => artifact.name).join(", ")}
                   </TableCell>
                   <TableCell>
                     <Timestamp value={build.created_at} />

@@ -25,18 +25,6 @@
       "8.0.0",
       "7.0.0"
      ]
-    },
-    {
-     "os_version": "8",
-     "platform_versions": [
-      "0.0.0"
-     ]
-    },
-    {
-     "os_version": "7",
-     "platform_versions": [
-      "0.0.0"
-     ]
     }
    ],
    "gpus": [

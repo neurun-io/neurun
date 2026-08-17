@@ -106,19 +106,18 @@ export default function DeploymentPage() {
           </Panel>
           <Panel label={deployment.failure ? "Failure" : "Build"} className="lg:col-span-2">
             {deployment.build ? (
-              <div className="space-y-2">
-                <Link className="font-mono underline" href={`/builds/${deployment.build.id}`}>
+              <div className="flex items-center justify-between gap-4 font-mono text-sm">
+                <Link className="underline" href={`/builds/${deployment.build.id}`}>
                   {deployment.build.id}
                 </Link>
-                {deployment.build.artifacts.map((artifact) => (
-                  <div
-                    key={artifact.id}
-                    className="flex items-center justify-between border-b border-line py-2 font-mono text-sm last:border-0"
-                  >
-                    <span>{artifact.name}</span>
-                    <span className="text-fg-muted">{formatBytes(artifact.size_bytes)}</span>
-                  </div>
-                ))}
+                <span className="text-fg-muted">
+                  {formatBytes(
+                    deployment.build.artifacts.reduce(
+                      (total, artifact) => total + artifact.size_bytes,
+                      0,
+                    ),
+                  )}
+                </span>
               </div>
             ) : deployment.failure ? (
               <div className="space-y-1">

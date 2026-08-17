@@ -123,6 +123,27 @@ func (service *BrowserService) SaveState(
 	return service.profiles.Update(ctx, record)
 }
 
+// SaveCookies replaces a profile's jar with what a closing session captured,
+// and leaves its DOM storage alone.
+//
+// It overwrites rather than merges, for the same reason SaveState does: the
+// browser hands back the whole jar, so a cookie missing from it was deleted,
+// and merging would resurrect a login the site had already ended.
+func (service *BrowserService) SaveCookies(
+	ctx context.Context,
+	organizationID, profileID string,
+	cookies []browser.Cookie,
+) (browser.Profile, error) {
+	record, err := service.profiles.GetByID(ctx, organizationID, profileID)
+	if err != nil {
+		return browser.Profile{}, err
+	}
+	if err := record.CaptureCookies(cookies, service.now()); err != nil {
+		return browser.Profile{}, err
+	}
+	return service.profiles.Update(ctx, record)
+}
+
 func (service *BrowserService) Delete(
 	ctx context.Context,
 	organizationID, profileID string,

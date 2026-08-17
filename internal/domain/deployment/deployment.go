@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	ErrInvalid        = errors.New("invalid deployment")
-	ErrNotFound       = errors.New("deployment not found")
-	ErrNotReady       = errors.New("deployment is not ready")
-	ErrSourceTooLarge = errors.New("deployment source is too large")
+	ErrInvalid  = errors.New("invalid deployment")
+	ErrNotFound = errors.New("deployment not found")
+	ErrNotReady = errors.New("deployment is not ready")
+	// ErrNoQueued is an idle queue, which is the ordinary state of one.
+	ErrNoQueued = errors.New("no queued deployment")
 )
 
 type Status string

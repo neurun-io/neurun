@@ -229,6 +229,53 @@ func loadDeployment(
 	return record, nil
 }
 
+// ClaimQueued takes the oldest queued deployment and moves it to building.
+// SKIP LOCKED lets several builders claim different rows concurrently, and the
+// row is the claim: a deployment nobody has claimed is one nobody is building.
+func (repository *DeploymentRepository) ClaimQueued(
+	ctx context.Context,
+	now time.Time,
+) (deployment.Deployment, error) {
+	if now.IsZero() {
+		return deployment.Deployment{}, fmt.Errorf(
+			"%w: claim time is required", deployment.ErrInvalid,
+		)
+	}
+	now = postgresTime(now)
+	var claimed deployment.Deployment
+	err := transaction(ctx, repository.pool, func(tx pgx.Tx) error {
+		var found string
+		err := tx.QueryRow(
+			ctx,
+			`SELECT d.id FROM deployments d WHERE d.status = 'queued'
+			 ORDER BY d.created_at ASC, d.id ASC
+			 FOR UPDATE OF d SKIP LOCKED LIMIT 1`,
+		).Scan(&found)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return deployment.ErrNoQueued
+		}
+		if err != nil {
+			return fmt.Errorf("claim queued deployment: %w", err)
+		}
+		record, err := getDeploymentUnscoped(ctx, tx, repository.builds, found)
+		if err != nil {
+			return err
+		}
+		if err := record.Advance(now); err != nil {
+			return err
+		}
+		if err := saveDeployment(ctx, tx, record); err != nil {
+			return err
+		}
+		claimed = record
+		return nil
+	})
+	if err != nil {
+		return deployment.Deployment{}, err
+	}
+	return deployment.CloneDeployment(claimed), nil
+}
+
 func (repository *DeploymentRepository) List(
 	ctx context.Context,
 	organizationID string,
@@ -321,4 +368,3 @@ func (repository *DeploymentRepository) RecoverBuilding(
 	})
 	return recovered, err
 }
-

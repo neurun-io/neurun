@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/neurun-io/neurun/internal/domain/build"
@@ -30,12 +32,20 @@ type ExecuteRequest struct {
 	Input           json.RawMessage
 	MaxResultBytes  int64
 	MaxLogBytes     int64
+	// Logs takes what the handler prints, as it prints it. A run can last
+	// minutes and somebody is watching it; handing the output over at the end
+	// would be handing it over after the interesting part.
+	Logs io.Writer
 }
 
 type ExecuteResult struct {
 	Output json.RawMessage
 	Logs   string
 }
+
+// nullResult is what a handler that returned nothing returns. An execution row
+// carries JSON, and absent is not one of the things JSON can be.
+var nullResult = json.RawMessage("null")
 
 // Runner is the boundary around a language runtime. It is behaviour, not
 // storage: a second runtime plugs in here.
@@ -262,22 +272,28 @@ func (worker *Worker) execute(
 			}()
 		}
 	}
+	stream := worker.follow(ctx, record.ID)
+	defer stream.Close()
 	result, err := runner.Execute(runCtx, ExecuteRequest{
+		Logs:             stream,
 		CodeDirectory:    filepath.Join(work, build.LayerCode),
 		InstallDirectory: filepath.Join(work, build.LayerInstall),
 		Input:            record.Input,
 		CallbackAddress:  worker.options.CallbackAddress,
-		ExecutionToken:  token,
-		MaxResultBytes:  worker.options.MaxResultBytes,
-		MaxLogBytes:     worker.options.MaxLogBytes,
+		ExecutionToken:   token,
+		MaxResultBytes:   worker.options.MaxResultBytes,
+		MaxLogBytes:      worker.options.MaxLogBytes,
 	})
 	if err != nil {
-		code := "handler_failed"
+		code := "failed"
 		switch {
 		case errors.Is(err, context.DeadlineExceeded),
 			errors.Is(runCtx.Err(), context.DeadlineExceeded):
 			code = "execution_timeout"
 		case errors.Is(err, ErrResultTooLarge):
+			// The row carries the output, so one too large for it fails the run.
+			// TODO: put it in the artifact store instead and keep the handle on
+			// the execution, which is what the size limit is really about.
 			code = "result_too_large"
 		}
 		return nil, result.Logs, newFailure(code, err)
@@ -325,4 +341,79 @@ func newFailure(code string, err error) *execution.Failure {
 		message = message[:4096]
 	}
 	return &execution.Failure{Code: code, Message: message}
+}
+
+// logFlush is how far behind the handler a reader is allowed to be. Output
+// arrives in bursts, and writing the row on every burst would write it hundreds
+// of times for output nobody reads that fast.
+const logFlush = 2 * time.Second
+
+// logStream carries handler output onto the execution while it is still
+// running, so following one shows it happening rather than showing nothing and
+// then everything.
+type logStream struct {
+	mutex   sync.Mutex
+	buffer  strings.Builder
+	written bool
+	persist func(string)
+	stop    chan struct{}
+	stopped chan struct{}
+}
+
+func (worker *Worker) follow(ctx context.Context, executionID string) *logStream {
+	stream := &logStream{
+		persist: func(logs string) {
+			if err := worker.executions.SaveLogs(ctx, executionID, logs); err != nil {
+				slog.Warn(
+					"persist execution logs", "execution", executionID, "error", err,
+				)
+			}
+		},
+		stop:    make(chan struct{}),
+		stopped: make(chan struct{}),
+	}
+	go stream.flushEvery(logFlush)
+	return stream
+}
+
+func (stream *logStream) Write(payload []byte) (int, error) {
+	stream.mutex.Lock()
+	defer stream.mutex.Unlock()
+	stream.buffer.Write(payload)
+	stream.written = true
+	return len(payload), nil
+}
+
+func (stream *logStream) flushEvery(interval time.Duration) {
+	defer close(stream.stopped)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stream.stop:
+			return
+		case <-ticker.C:
+			stream.flush()
+		}
+	}
+}
+
+// flush writes what has arrived. The last of it is not written here: the
+// execution is finalized with its logs a moment later, and that write is the
+// one that has to win.
+func (stream *logStream) flush() {
+	stream.mutex.Lock()
+	if !stream.written {
+		stream.mutex.Unlock()
+		return
+	}
+	stream.written = false
+	logs := strings.TrimSpace(stream.buffer.String())
+	stream.mutex.Unlock()
+	stream.persist(logs)
+}
+
+func (stream *logStream) Close() {
+	close(stream.stop)
+	<-stream.stopped
 }

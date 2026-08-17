@@ -72,7 +72,7 @@ func TestFailClearsOutputAndRequiresRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := record.Fail(
-		Failure{Code: "handler_failed", Message: "traceback"},
+		Failure{Code: "failed", Message: "traceback"},
 		"stderr\n", fixtureTime.Add(2*time.Second),
 	); err != nil {
 		t.Fatal(err)

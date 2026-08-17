@@ -86,14 +86,24 @@ func (server *Server) OpenSession(
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, err.Error())
 	}
+	if request.GetLoadStorage() && strings.TrimSpace(request.GetBrowserProfileId()) == "" {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"load_storage needs a browser_profile_id: a profile is where a "+
+				"session's cookies are kept, and a browser without one keeps none",
+		)
+	}
 	// The browser service has no database, so the persona is resolved here and
 	// travels with the request.
-	kind, persona, err := server.persona(
+	kind, persona, jar, err := server.persona(
 		ctx, identity.OrganizationID,
 		request.GetBrowserProfileId(), request.GetBrowser(),
 	)
 	if err != nil {
 		return nil, err
+	}
+	if !request.GetLoadStorage() {
+		jar = nil
 	}
 
 	opened, err := client.Open(ctx, &browserservicepb.OpenRequest{
@@ -105,6 +115,21 @@ func (server *Server) OpenSession(
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "browser service: %v", err)
+	}
+
+	// Before the caller is handed the session, so its first navigation is
+	// already carrying the profile's logins.
+	if len(jar) > 0 {
+		if _, err := client.SetCookies(ctx, &browserservicepb.SetCookiesRequest{
+			SessionId: opened.GetSessionId(),
+			Cookies:   cookieMessages(jar),
+		}); err != nil {
+			// A session that did not get the state it was asked to start from is
+			// not the session the caller wanted, and leaving it would strand a
+			// browser holding someone else's idea of logged in.
+			_, _ = client.Close(ctx, &browserservicepb.CloseRequest{SessionId: opened.GetSessionId()})
+			return nil, status.Errorf(codes.Unavailable, "load cookies: %v", err)
+		}
 	}
 
 	// Registered against the id the service minted, so the dashboard and the
@@ -200,14 +225,28 @@ func (server *Server) CloseSession(
 	if err != nil {
 		return nil, err
 	}
-	if _, err := server.sessions.Get(
-		ctx, identity.OrganizationID, request.GetSessionId(),
-	); err != nil {
+	record, err := server.sessions.Get(ctx, identity.OrganizationID, request.GetSessionId())
+	if err != nil {
 		return nil, status.Error(codes.NotFound, "browser session not found")
+	}
+	if request.GetSaveStorage() && strings.TrimSpace(record.ProfileID) == "" {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"save_storage needs the session to wear a profile: there is nowhere "+
+				"to save what it collected",
+		)
 	}
 	client, err := server.supervisor.Client(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, err.Error())
+	}
+	// Read the jar while there is still a browser holding it.
+	if request.GetSaveStorage() {
+		if err := server.saveCookies(
+			ctx, client, identity.OrganizationID, record.ProfileID, request.GetSessionId(),
+		); err != nil {
+			return nil, err
+		}
 	}
 	if _, err := client.Close(
 		ctx, &browserservicepb.CloseRequest{SessionId: request.GetSessionId()},
@@ -232,34 +271,103 @@ func (server *Server) CloseSession(
 // disagree is one answer too many. Without a profile the caller is saying it
 // does not care to keep anything, and gets a coherent machine drawn for this
 // session alone.
+// The profile's jar comes back with it, because the read that answers what to
+// wear is the same read that says what it remembers.
 func (server *Server) persona(
 	ctx context.Context,
 	organizationID, profileID, requested string,
-) (browser.Browser, []byte, error) {
+) (browser.Browser, []byte, []browser.Cookie, error) {
 	identity := browser.Identity{}
+	var jar []browser.Cookie
 
 	if strings.TrimSpace(profileID) == "" {
 		claimed, err := browser.ParseBrowser(requested)
 		if err != nil {
-			return "", nil, status.Error(codes.InvalidArgument, err.Error())
+			return "", nil, nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 		if identity, err = browser.EphemeralIdentity(claimed); err != nil {
-			return "", nil, status.Errorf(codes.Internal, "mint an identity: %v", err)
+			return "", nil, nil, status.Errorf(codes.Internal, "mint an identity: %v", err)
 		}
 	} else {
 		record, err := server.profiles.Get(ctx, organizationID, profileID)
 		if err != nil {
 			// A profile from another organization reads as absent, never forbidden.
-			return "", nil, status.Error(codes.NotFound, "browser profile not found")
+			return "", nil, nil, status.Error(codes.NotFound, "browser profile not found")
 		}
 		identity = record.Identity
+		jar = record.Cookies
 	}
 
 	document, err := json.Marshal(identity)
 	if err != nil {
-		return "", nil, status.Errorf(codes.Internal, "encode identity: %v", err)
+		return "", nil, nil, status.Errorf(codes.Internal, "encode identity: %v", err)
 	}
-	return identity.Browser, document, nil
+	return identity.Browser, document, jar, nil
+}
+
+// saveCookies reads the session's jar and writes it to the profile.
+//
+// An empty capture is not written. The browser hands back the whole jar, so a
+// write replaces, and a browser that failed to answer looks exactly like one
+// holding nothing — writing that would erase a profile's logins on a bad read.
+// The cost is that a run which genuinely signed out does not persist the
+// signing out, which is the cheaper of the two mistakes.
+func (server *Server) saveCookies(
+	ctx context.Context,
+	client browserservicepb.BrowserServiceClient,
+	organizationID, profileID, sessionID string,
+) error {
+	captured, err := client.GetCookies(
+		ctx, &browserservicepb.GetCookiesRequest{SessionId: sessionID},
+	)
+	if err != nil {
+		return status.Errorf(codes.Unavailable, "capture cookies: %v", err)
+	}
+	if len(captured.GetCookies()) == 0 {
+		slog.Warn("browser session captured no cookies, so the profile is left as it was",
+			"session", sessionID, "profile", profileID)
+		return nil
+	}
+	if _, err := server.profiles.SaveCookies(
+		ctx, organizationID, profileID, domainCookies(captured.GetCookies()),
+	); err != nil {
+		return status.Errorf(codes.Internal, "save cookies: %v", err)
+	}
+	return nil
+}
+
+func cookieMessages(jar []browser.Cookie) []*browserservicepb.Cookie {
+	messages := make([]*browserservicepb.Cookie, 0, len(jar))
+	for _, cookie := range jar {
+		messages = append(messages, &browserservicepb.Cookie{
+			Name:     cookie.Name,
+			Value:    cookie.Value,
+			Domain:   cookie.Domain,
+			Path:     cookie.Path,
+			Expires:  cookie.Expires,
+			Secure:   cookie.Secure,
+			HttpOnly: cookie.HTTPOnly,
+			SameSite: cookie.SameSite,
+		})
+	}
+	return messages
+}
+
+func domainCookies(messages []*browserservicepb.Cookie) []browser.Cookie {
+	jar := make([]browser.Cookie, 0, len(messages))
+	for _, message := range messages {
+		jar = append(jar, browser.Cookie{
+			Name:     message.GetName(),
+			Value:    message.GetValue(),
+			Domain:   message.GetDomain(),
+			Path:     message.GetPath(),
+			Expires:  message.Expires,
+			Secure:   message.GetSecure(),
+			HTTPOnly: message.GetHttpOnly(),
+			SameSite: message.GetSameSite(),
+		})
+	}
+	return jar
 }
 
 // identify turns the token into who the caller is. Nothing else in the request

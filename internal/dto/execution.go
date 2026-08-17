@@ -35,7 +35,7 @@ func NewExecutionResponse(record execution.Execution) ExecutionResponse {
 		ID: record.ID, ProjectID: record.ProjectID,
 		AppID:   record.AppID,
 		BuildID: record.BuildID,
-		Status: record.Status, Input: record.Input, Output: record.Output,
+		Status:  record.Status, Input: record.Input, Output: record.Output,
 		Failure: record.Failure, Logs: record.Logs,
 		CreatedAt: record.CreatedAt, StartedAt: record.StartedAt,
 		FinishedAt:         record.FinishedAt,

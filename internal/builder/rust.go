@@ -2,22 +2,20 @@ package builder
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/neurun-io/neurun/internal/domain/build"
-	"github.com/neurun-io/neurun/internal/files"
 )
 
 type RustOptions struct {
-	CargoExecutable         string
-	MaxArchiveEntries       int
-	MaxArchiveExpandedBytes int64
+	Executable string
 }
 
 // RustBuilder compiles a crate into one executable.
@@ -27,43 +25,21 @@ type RustOptions struct {
 // is the whole difference from Python, where the install layer is a second
 // directory the handler imports from at run time.
 type RustBuilder struct {
-	cargo  string
-	limits files.ArchiveLimits
+	cargo string
 }
 
-func NewRust(options RustOptions) (*RustBuilder, error) {
-	if strings.TrimSpace(options.CargoExecutable) == "" {
-		options.CargoExecutable = "cargo"
+func NewRustBuilder(options RustOptions) (*RustBuilder, error) {
+	if strings.TrimSpace(options.Executable) == "" {
+		options.Executable = "cargo"
 	}
-	if options.MaxArchiveEntries < 0 || options.MaxArchiveExpandedBytes < 0 {
-		return nil, errors.New("builder: archive limits cannot be negative")
-	}
-	return &RustBuilder{
-		cargo: options.CargoExecutable,
-		limits: files.ArchiveLimits{
-			MaxEntries:       options.MaxArchiveEntries,
-			MaxExpandedBytes: options.MaxArchiveExpandedBytes,
-		},
-	}, nil
+	return &RustBuilder{cargo: options.Executable}, nil
 }
 
 func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != build.RuntimeRust {
-		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if strings.TrimSpace(request.SourceArchivePath) == "" ||
-		strings.TrimSpace(request.WorkDirectory) == "" {
-		return Result{}, errors.New("builder: source archive and work directory are required")
-	}
-	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := files.ExtractZIPFile(
-		request.SourceArchivePath, sourceDir, builder.limits,
-	); err != nil {
-		return Result{}, fmt.Errorf("builder: extract source: %w", err)
-	}
+	sourceDir := request.SourceDirectory
 	manifest := filepath.Join(sourceDir, "Cargo.toml")
 	if info, err := os.Lstat(manifest); err != nil || !info.Mode().IsRegular() {
 		return Result{}, errors.New("builder: Cargo.toml was not found at the source root")
@@ -93,7 +69,7 @@ func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result,
 	}
 
 	releaseDir := filepath.Join(cache, "target", "release")
-	binary, err := locateBinary(releaseDir, "")
+	binary, err := builder.locateBinary(ctx, sourceDir, releaseDir, compile.Env)
 	if err != nil {
 		return Result{}, err
 	}
@@ -104,51 +80,59 @@ func (builder *RustBuilder) Build(ctx context.Context, request Request) (Result,
 	return Result{Layers: []Layer{{Name: build.LayerCode, Path: codePath}}}, nil
 }
 
-// locateBinary finds what cargo produced. A named entrypoint must exist under
-// that name; without one, the crate has to produce exactly one executable, so a
-// workspace of several binaries is refused rather than guessed at.
-func locateBinary(releaseDir, entryPoint string) (string, error) {
-	if entryPoint != "" {
-		candidate := filepath.Join(releaseDir, entryPoint)
-		if info, err := os.Lstat(candidate); err == nil && info.Mode().IsRegular() {
-			return candidate, nil
-		}
-		return "", fmt.Errorf("builder: cargo produced no binary named %q", entryPoint)
-	}
-	entries, err := os.ReadDir(releaseDir)
+// locateBinary finds what this crate builds by asking cargo, not by reading the
+// release directory: the target directory is kept warm between builds, so what
+// is lying in it includes binaries earlier builds left behind.
+//
+// The crate has to declare exactly one, since nothing else says which of
+// several a deployment meant.
+func (builder *RustBuilder) locateBinary(
+	ctx context.Context,
+	sourceDir string,
+	releaseDir string,
+	environment []string,
+) (string, error) {
+	metadata := exec.CommandContext(
+		ctx, builder.cargo, "metadata", "--no-deps", "--format-version", "1",
+	)
+	metadata.Dir = sourceDir
+	metadata.Env = environment
+	encoded, err := metadata.Output()
 	if err != nil {
-		return "", fmt.Errorf("builder: read cargo output: %w", err)
+		return "", fmt.Errorf("builder: read cargo metadata: %w", err)
 	}
-	var found []string
-	for _, entry := range entries {
-		if entry.IsDir() || !executableOutput(entry) {
-			continue
+	var described struct {
+		Packages []struct {
+			Targets []struct {
+				Name string   `json:"name"`
+				Kind []string `json:"kind"`
+			} `json:"targets"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(encoded, &described); err != nil {
+		return "", fmt.Errorf("builder: decode cargo metadata: %w", err)
+	}
+	var names []string
+	for _, pkg := range described.Packages {
+		for _, target := range pkg.Targets {
+			if slices.Contains(target.Kind, "bin") {
+				names = append(names, target.Name)
+			}
 		}
-		found = append(found, filepath.Join(releaseDir, entry.Name()))
 	}
-	switch len(found) {
+	switch len(names) {
 	case 1:
-		return found[0], nil
 	case 0:
-		return "", errors.New("builder: cargo produced no binary")
+		return "", errors.New("builder: the crate declares no binary")
 	default:
-		return "", errors.New(
-			"builder: cargo produced several binaries; name one as the entrypoint",
+		return "", fmt.Errorf(
+			"builder: the crate declares several binaries: %s",
+			strings.Join(names, ", "),
 		)
 	}
-}
-
-// executableOutput separates a linked binary from the build metadata cargo
-// leaves beside it — .d dependency files, .pdb symbols, and the like.
-func executableOutput(entry fs.DirEntry) bool {
-	name := entry.Name()
-	if strings.HasPrefix(name, ".") || strings.Contains(name, ".") &&
-		!strings.HasSuffix(name, ".exe") {
-		return false
+	binary := filepath.Join(releaseDir, names[0]+executableExtension())
+	if info, err := os.Lstat(binary); err != nil || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("builder: cargo produced no %s", filepath.Base(binary))
 	}
-	info, err := entry.Info()
-	if err != nil || !info.Mode().IsRegular() {
-		return false
-	}
-	return true
+	return binary, nil
 }

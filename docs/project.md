@@ -17,9 +17,8 @@ Deleting one cascades to its apps, deployments, builds and executions. It does
 irreversible, so the API requires the project's exact name echoed in a
 `confirm` query parameter before it will proceed.
 
-Blob payloads in the artifact store are left behind on purpose: they are
-content-addressed and may be shared with another project's identical upload.
-Reclaiming them is a separate sweep.
+Blob payloads in the artifact store are left behind: the rows that named them
+are gone, so nothing reaches them, and reclaiming them is a separate sweep.
 
 ## Fields
 

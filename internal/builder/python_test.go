@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"archive/zip"
 	"context"
 	"os"
 	"os/exec"
@@ -31,17 +30,24 @@ func TestPythonBuilderProducesStableCodeLayer(t *testing.T) {
 func buildFixture(t *testing.T, python string) string {
 	t.Helper()
 	root := t.TempDir()
-	source := filepath.Join(root, "source.zip")
+	source := filepath.Join(root, "source")
 	work := filepath.Join(root, "work")
-	if err := os.Mkdir(work, 0o700); err != nil {
-		t.Fatal(err)
+	for _, directory := range []string{source, work} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
-	writeZIP(t, source, map[string]string{"main.py": "def handler(event):\n    return event\n", "requirements.txt": ""})
-	builder, err := NewPython(PythonOptions{PythonExecutable: python})
+	writeSource(t, source, map[string]string{
+		"main.py":          "def handler(event):\n    return event\n",
+		"requirements.txt": "",
+	})
+	builder, err := NewPythonBuilder(PythonOptions{Executable: python})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := builder.Build(context.Background(), Request{Runtime: build.RuntimePython, SourceArchivePath: source, WorkDirectory: work})
+	result, err := builder.Build(context.Background(), Request{
+		SourceDirectory: source, WorkDirectory: work,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,26 +66,15 @@ func pythonForTest(t *testing.T) string {
 	return path
 }
 
-func writeZIP(t *testing.T, target string, files map[string]string) {
+func writeSource(t *testing.T, root string, files map[string]string) {
 	t.Helper()
-	output, err := os.Create(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	archive := zip.NewWriter(output)
 	for name, contents := range files {
-		writer, err := archive.Create(name)
-		if err != nil {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := writer.Write([]byte(contents)); err != nil {
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 			t.Fatal(err)
 		}
-	}
-	if err := archive.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := output.Close(); err != nil {
-		t.Fatal(err)
 	}
 }

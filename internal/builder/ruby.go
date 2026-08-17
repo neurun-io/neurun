@@ -2,7 +2,6 @@ package builder
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,55 +9,30 @@ import (
 	"strings"
 
 	"github.com/neurun-io/neurun/internal/domain/build"
-	"github.com/neurun-io/neurun/internal/files"
 )
 
 type RubyOptions struct {
-	BundleExecutable        string
-	MaxArchiveEntries       int
-	MaxArchiveExpandedBytes int64
+	Executable string
 }
 
 // RubyBuilder packages source and gems as two layers, the same shape as Python:
 // the code layer is what the handler is, the install layer is what it loads.
 type RubyBuilder struct {
 	bundle string
-	limits files.ArchiveLimits
 }
 
-func NewRuby(options RubyOptions) (*RubyBuilder, error) {
-	if strings.TrimSpace(options.BundleExecutable) == "" {
-		options.BundleExecutable = "bundle"
+func NewRubyBuilder(options RubyOptions) (*RubyBuilder, error) {
+	if strings.TrimSpace(options.Executable) == "" {
+		options.Executable = "bundle"
 	}
-	if options.MaxArchiveEntries < 0 || options.MaxArchiveExpandedBytes < 0 {
-		return nil, errors.New("builder: archive limits cannot be negative")
-	}
-	return &RubyBuilder{
-		bundle: options.BundleExecutable,
-		limits: files.ArchiveLimits{
-			MaxEntries:       options.MaxArchiveEntries,
-			MaxExpandedBytes: options.MaxArchiveExpandedBytes,
-		},
-	}, nil
+	return &RubyBuilder{bundle: options.Executable}, nil
 }
 
 func (builder *RubyBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != build.RuntimeRuby {
-		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if strings.TrimSpace(request.SourceArchivePath) == "" ||
-		strings.TrimSpace(request.WorkDirectory) == "" {
-		return Result{}, errors.New("builder: source archive and work directory are required")
-	}
-	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := files.ExtractZIPFile(
-		request.SourceArchivePath, sourceDir, builder.limits,
-	); err != nil {
-		return Result{}, fmt.Errorf("builder: extract source: %w", err)
-	}
+	sourceDir := request.SourceDirectory
 	codePath := filepath.Join(request.WorkDirectory, "code-layer.zip")
 	if err := zipDirectory(sourceDir, codePath); err != nil {
 		return Result{}, fmt.Errorf("builder: package code layer: %w", err)

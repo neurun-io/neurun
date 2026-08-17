@@ -22,6 +22,8 @@ const (
 	BrowserService_Open_FullMethodName              = "/neurun.browserservice.v1.BrowserService/Open"
 	BrowserService_Navigate_FullMethodName          = "/neurun.browserservice.v1.BrowserService/Navigate"
 	BrowserService_WaitForNavigation_FullMethodName = "/neurun.browserservice.v1.BrowserService/WaitForNavigation"
+	BrowserService_GetCookies_FullMethodName        = "/neurun.browserservice.v1.BrowserService/GetCookies"
+	BrowserService_SetCookies_FullMethodName        = "/neurun.browserservice.v1.BrowserService/SetCookies"
 	BrowserService_Close_FullMethodName             = "/neurun.browserservice.v1.BrowserService/Close"
 	BrowserService_StreamDisplay_FullMethodName     = "/neurun.browserservice.v1.BrowserService/StreamDisplay"
 )
@@ -45,6 +47,10 @@ type BrowserServiceClient interface {
 	Navigate(ctx context.Context, in *NavigateRequest, opts ...grpc.CallOption) (*NavigateResponse, error)
 	// WaitForNavigation blocks until the session's page has navigated.
 	WaitForNavigation(ctx context.Context, in *WaitForNavigationRequest, opts ...grpc.CallOption) (*WaitForNavigationResponse, error)
+	// GetCookies reads a session's whole jar.
+	GetCookies(ctx context.Context, in *GetCookiesRequest, opts ...grpc.CallOption) (*GetCookiesResponse, error)
+	// SetCookies puts a jar into a session.
+	SetCookies(ctx context.Context, in *SetCookiesRequest, opts ...grpc.CallOption) (*SetCookiesResponse, error)
 	// Close stops the browser.
 	Close(ctx context.Context, in *CloseRequest, opts ...grpc.CallOption) (*CloseResponse, error)
 	// StreamDisplay is a pipe to the session's framebuffer. Each chunk is opaque
@@ -93,6 +99,26 @@ func (c *browserServiceClient) WaitForNavigation(ctx context.Context, in *WaitFo
 	return out, nil
 }
 
+func (c *browserServiceClient) GetCookies(ctx context.Context, in *GetCookiesRequest, opts ...grpc.CallOption) (*GetCookiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCookiesResponse)
+	err := c.cc.Invoke(ctx, BrowserService_GetCookies_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *browserServiceClient) SetCookies(ctx context.Context, in *SetCookiesRequest, opts ...grpc.CallOption) (*SetCookiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetCookiesResponse)
+	err := c.cc.Invoke(ctx, BrowserService_SetCookies_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *browserServiceClient) Close(ctx context.Context, in *CloseRequest, opts ...grpc.CallOption) (*CloseResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CloseResponse)
@@ -135,6 +161,10 @@ type BrowserServiceServer interface {
 	Navigate(context.Context, *NavigateRequest) (*NavigateResponse, error)
 	// WaitForNavigation blocks until the session's page has navigated.
 	WaitForNavigation(context.Context, *WaitForNavigationRequest) (*WaitForNavigationResponse, error)
+	// GetCookies reads a session's whole jar.
+	GetCookies(context.Context, *GetCookiesRequest) (*GetCookiesResponse, error)
+	// SetCookies puts a jar into a session.
+	SetCookies(context.Context, *SetCookiesRequest) (*SetCookiesResponse, error)
 	// Close stops the browser.
 	Close(context.Context, *CloseRequest) (*CloseResponse, error)
 	// StreamDisplay is a pipe to the session's framebuffer. Each chunk is opaque
@@ -161,6 +191,12 @@ func (UnimplementedBrowserServiceServer) Navigate(context.Context, *NavigateRequ
 }
 func (UnimplementedBrowserServiceServer) WaitForNavigation(context.Context, *WaitForNavigationRequest) (*WaitForNavigationResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WaitForNavigation not implemented")
+}
+func (UnimplementedBrowserServiceServer) GetCookies(context.Context, *GetCookiesRequest) (*GetCookiesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCookies not implemented")
+}
+func (UnimplementedBrowserServiceServer) SetCookies(context.Context, *SetCookiesRequest) (*SetCookiesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetCookies not implemented")
 }
 func (UnimplementedBrowserServiceServer) Close(context.Context, *CloseRequest) (*CloseResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Close not implemented")
@@ -243,6 +279,42 @@ func _BrowserService_WaitForNavigation_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BrowserService_GetCookies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCookiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServiceServer).GetCookies(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BrowserService_GetCookies_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServiceServer).GetCookies(ctx, req.(*GetCookiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BrowserService_SetCookies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetCookiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServiceServer).SetCookies(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BrowserService_SetCookies_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServiceServer).SetCookies(ctx, req.(*SetCookiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BrowserService_Close_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CloseRequest)
 	if err := dec(in); err != nil {
@@ -286,6 +358,14 @@ var BrowserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "WaitForNavigation",
 			Handler:    _BrowserService_WaitForNavigation_Handler,
+		},
+		{
+			MethodName: "GetCookies",
+			Handler:    _BrowserService_GetCookies_Handler,
+		},
+		{
+			MethodName: "SetCookies",
+			Handler:    _BrowserService_SetCookies_Handler,
 		},
 		{
 			MethodName: "Close",

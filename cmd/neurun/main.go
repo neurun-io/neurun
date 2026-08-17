@@ -215,43 +215,33 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("configure file storage: %w", err)
 	}
-	pythonBuilder, err := builder.NewPython(builder.PythonOptions{
-		MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
-		MaxArchiveExpandedBytes: cfg.MaxDeploymentExpandedBytes,
-		PythonExecutable:        cfg.PythonExecutable,
-	})
+	pythonBuilder, err := builder.NewPythonBuilder(
+		builder.PythonOptions{Executable: cfg.PythonExecutable},
+	)
 	if err != nil {
 		return fmt.Errorf("configure Python builder: %w", err)
 	}
-	rustBuilder, err := builder.NewRust(builder.RustOptions{
-		MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
-		MaxArchiveExpandedBytes: cfg.MaxDeploymentExpandedBytes,
-		CargoExecutable:         cfg.CargoExecutable,
-	})
+	rustBuilder, err := builder.NewRustBuilder(
+		builder.RustOptions{Executable: cfg.CargoExecutable},
+	)
 	if err != nil {
 		return fmt.Errorf("configure Rust builder: %w", err)
 	}
-	goBuilder, err := builder.NewGo(builder.GoOptions{
-		MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
-		MaxArchiveExpandedBytes: cfg.MaxDeploymentExpandedBytes,
-		GoExecutable:            cfg.GoExecutable,
-	})
+	goBuilder, err := builder.NewGoBuilder(
+		builder.GoOptions{Executable: cfg.GoExecutable},
+	)
 	if err != nil {
 		return fmt.Errorf("configure Go builder: %w", err)
 	}
-	rubyBuilder, err := builder.NewRuby(builder.RubyOptions{
-		MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
-		MaxArchiveExpandedBytes: cfg.MaxDeploymentExpandedBytes,
-		BundleExecutable:        cfg.BundleExecutable,
-	})
+	rubyBuilder, err := builder.NewRubyBuilder(
+		builder.RubyOptions{Executable: cfg.BundleExecutable},
+	)
 	if err != nil {
 		return fmt.Errorf("configure Ruby builder: %w", err)
 	}
-	nodeBuilder, err := builder.NewNode(builder.NodeOptions{
-		MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
-		MaxArchiveExpandedBytes: cfg.MaxDeploymentExpandedBytes,
-		NPMExecutable:           cfg.NPMExecutable,
-	})
+	nodeBuilder, err := builder.NewNodeBuilder(
+		builder.NodeOptions{Executable: cfg.NPMExecutable},
+	)
 	if err != nil {
 		return fmt.Errorf("configure Node builder: %w", err)
 	}
@@ -278,13 +268,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("configure build service: %w", err)
 	}
 	deploymentService, err := service.NewDeploymentService(
-		apps, deployments, builds, files, toolchains,
-		service.DeploymentOptions{
-			BuildCacheDirectory: buildCacheDirectory(cfg),
-			MaxSourceBytes:      cfg.MaxDeploymentSourceBytes,
-			MaxArtifactBytes:    cfg.MaxDeploymentArtifactBytes,
-			BuildTimeout:        cfg.DeploymentBuildTimeout,
-		},
+		apps, deployments, service.DeploymentOptions{},
 	)
 	if err != nil {
 		return fmt.Errorf("configure deployment service: %w", err)
@@ -377,7 +361,21 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("configure browser grpc: %w", err)
 	}
 
-	recoveredBuilds, err := deploymentService.RecoverInterruptedBuilds(ctx)
+	deployer, err := builder.NewDeployer(
+		deployments, builds, files, gitHubService, toolchains,
+		builder.DeployerOptions{
+			PollInterval:            cfg.WorkerPollInterval,
+			BuildTimeout:            cfg.DeploymentBuildTimeout,
+			CacheDirectory:          buildCacheDirectory(cfg),
+			MaxArtifactBytes:        cfg.MaxDeploymentArtifactBytes,
+			MaxArchiveEntries:       cfg.MaxDeploymentArchiveEntries,
+			MaxArchiveExpandedBytes: cfg.MaxDeploymentExpandedBytes,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("configure deployer: %w", err)
+	}
+	recoveredBuilds, err := deployer.Recover(ctx)
 	if err != nil {
 		return fmt.Errorf("recover interrupted builds: %w", err)
 	}
@@ -488,13 +486,19 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		IdleTimeout:  60 * time.Second, MaxHeaderBytes: 32_768,
 		BaseContext: func(net.Listener) context.Context { return runtimeCtx },
 	}
-	errs := make(chan error, 3)
+	errs := make(chan error, 4)
 	var background sync.WaitGroup
-	background.Add(3)
+	background.Add(4)
 	go func() {
 		defer background.Done()
 		if err := executor.Run(runtimeCtx); err != nil && !errors.Is(err, context.Canceled) {
 			sendRuntimeError(errs, fmt.Errorf("execution worker: %w", err))
+		}
+	}()
+	go func() {
+		defer background.Done()
+		if err := deployer.Run(runtimeCtx); err != nil && !errors.Is(err, context.Canceled) {
+			sendRuntimeError(errs, fmt.Errorf("deployment builder: %w", err))
 		}
 	}()
 	go func() {

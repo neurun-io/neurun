@@ -1,31 +1,37 @@
 # Build
 
-One attempt at turning a deployment's source into runnable artifacts.
+What one deployment produced: the layers it made, and enough about them to run
+them.
 
-## States
+A build carries no status and no failure. How it went belongs to the
+[deployment](deployment.md) that ran the toolchain; a deployment that failed
+before the toolchain produced anything has no build at all. Nothing rewrites a
+build once it is written, which is why it has no version column.
 
-- `building` — running. No finish time, no failure.
-- `ready` — produced artifacts, including a code layer. Executions may pin to it.
-- `failed` — carries a failure code and message.
+## Whose it is
 
-A build only ever moves out of `building`, and only once. Finishing a finished
-build is refused, because an execution may already be pinned to it.
+A build names its app and the deployment that made it. Both are columns, not
+joins: an [execution](execution.md) reaches its build directly, and asking how a
+build came to exist is a separate question from running it.
 
-## Numbering
+One deployment produces at most one build — `builds.deployment_id` is unique.
 
-Builds are numbered from 1 within their deployment and must stay contiguous —
-`StartBuild` assigns the next number rather than trusting a caller.
+## Layers
 
-## What it produces
+A code layer always, and an install layer for a runtime that resolves
+dependencies separately: Python with a non-empty `requirements.txt`, Ruby with a
+Gemfile. Compiled runtimes link their dependencies in and ship one binary, so
+they never carry an install layer; Node bundles for the same reason.
 
-A code layer always, and an install layer when the source has a non-empty
-`requirements.txt`. Both are [artifacts](artifact.md).
+Each layer is an [artifact](artifact.md), named for what it is to the runtime —
+that name is the directory a runner unpacks it into.
 
-## Interrupted builds
+## The runnable file
 
-If the process dies mid-build the row is left `building`. On the next start,
-recovery marks it `failed` with `build_interrupted`. It is never retried
-automatically — the side effects of the first attempt already happened.
+Every runtime agrees with its runner on a fixed name rather than a manifest:
+`app` for a compiled binary (`app.exe` on Windows), `app.js` for a Node bundle.
+The builder packages under that name and the runner execs it, and neither
+package imports the other.
 
 ## Fields
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -96,6 +97,30 @@ func (supervisor *Supervisor) alive() bool {
 		supervisor.command.ProcessState == nil
 }
 
+// browserEnvironment is what the browser service is started with.
+//
+// An allowlist rather than this process's environment, for the same reason a
+// handler gets one: everything the control plane holds — the database URL, the
+// object store keys, the GitHub private key — is in here, and the browser is
+// the one process that drives pages an attacker wrote. A crash dump of it
+// should not be worth reading.
+func browserEnvironment() []string {
+	allowed := []string{
+		"PATH", "PATHEXT", "SYSTEMDRIVE", "SYSTEMROOT", "WINDIR",
+		"TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "LOCALAPPDATA",
+		"LANG", "LC_ALL", "DISPLAY", "XAUTHORITY",
+		"SSL_CERT_FILE", "SSL_CERT_DIR",
+		"NEURUN_CHROME_PATH",
+	}
+	environment := make([]string, 0, len(allowed))
+	for _, name := range allowed {
+		if value, ok := os.LookupEnv(name); ok {
+			environment = append(environment, name+"="+value)
+		}
+	}
+	return environment
+}
+
 // start spawns the service on a port the kernel picked and waits for it.
 //
 // Binding loopback is not hardening, it is the design: nothing outside this
@@ -113,6 +138,7 @@ func (supervisor *Supervisor) start(ctx context.Context) error {
 	address := fmt.Sprintf("127.0.0.1:%d", port)
 
 	command := exec.Command(supervisor.executable, "--listen", address)
+	command.Env = browserEnvironment()
 	if err := command.Start(); err != nil {
 		return fmt.Errorf("start browser service: %w", err)
 	}

@@ -12,7 +12,6 @@ import { Panel } from "@/components/neurun/panel";
 import { Timestamp } from "@/components/neurun/timestamp";
 import { Button } from "@/components/ui/button";
 import { useActivateBuildMutation, useAppQuery, useBuildQuery } from "@/lib/api/queries";
-import { formatBytes } from "@/lib/view/units";
 
 export default function BuildPage() {
   const { buildId } = useParams<{ buildId: string }>();
@@ -89,17 +88,6 @@ export default function BuildPage() {
               { label: "Made", value: <Timestamp value={build.created_at} /> },
             ]}
           />
-        </Panel>
-        <Panel label="Layers">
-          {build.artifacts.map((artifact) => (
-            <div
-              key={artifact.id}
-              className="flex items-center justify-between border-b border-line py-2 font-mono text-sm last:border-0"
-            >
-              <span>{artifact.name}</span>
-              <span className="text-fg-muted">{formatBytes(artifact.size_bytes)}</span>
-            </div>
-          ))}
         </Panel>
       </div>
     </div>

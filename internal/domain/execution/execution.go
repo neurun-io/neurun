@@ -68,12 +68,14 @@ func (failure Failure) Validate() error {
 // only. It carries no build structure, so a later deployment cannot alter a
 // finished record.
 type Execution struct {
-	ID                 string          `json:"id"`
-	ProjectID          string          `json:"project_id"`
-	AppID              string          `json:"app_id"`
-	BuildID            string          `json:"build_id"`
-	Status             Status          `json:"status"`
-	Input              json.RawMessage `json:"input"`
+	ID        string          `json:"id"`
+	ProjectID string          `json:"project_id"`
+	AppID     string          `json:"app_id"`
+	BuildID   string          `json:"build_id"`
+	Status    Status          `json:"status"`
+	Input     json.RawMessage `json:"input"`
+	// Output is what the app returned, kept on the row while it is small enough
+	// to belong there. See MaxInlineOutputBytes.
 	Output             json.RawMessage `json:"output,omitempty"`
 	Failure            *Failure        `json:"failure,omitempty"`
 	Logs               string          `json:"logs"`
@@ -82,6 +84,14 @@ type Execution struct {
 	FinishedAt         *time.Time      `json:"finished_at,omitempty"`
 	RerunOfExecutionID string          `json:"rerun_of_execution_id,omitempty"`
 }
+
+// MaxInlineOutputBytes is how much of an app's return value the row itself
+// carries. Anything larger belongs in the artifact store, with the row holding
+// only the handle to it.
+//
+// TODO: spill past this into the artifact store. Until that exists, an app that
+// returns more than this fails rather than silently losing the tail of it.
+const MaxInlineOutputBytes = 4_194_304
 
 // New queues an invocation of buildID.
 func New(
@@ -197,14 +207,21 @@ func (record Execution) Validate() error {
 			return fmt.Errorf("%w: queued execution contains terminal state", ErrInvalid)
 		}
 	case StatusRunning:
+		// Logs are allowed here and nowhere earlier: they arrive while the app
+		// runs, and a reader following one sees them before it ends.
 		if record.StartedAt == nil || record.FinishedAt != nil ||
-			record.Output != nil || record.Failure != nil || record.Logs != "" {
+			record.Output != nil || record.Failure != nil {
 			return fmt.Errorf("%w: running execution state is invalid", ErrInvalid)
 		}
 	case StatusSucceeded:
 		if record.StartedAt == nil || record.FinishedAt == nil ||
 			!json.Valid(record.Output) || record.Failure != nil {
 			return fmt.Errorf("%w: succeeded execution state is invalid", ErrInvalid)
+		}
+		if int64(len(record.Output)) > MaxInlineOutputBytes {
+			return fmt.Errorf(
+				"%w: execution output exceeds what a row carries", ErrInvalid,
+			)
 		}
 	case StatusFailed:
 		if record.StartedAt == nil || record.FinishedAt == nil ||

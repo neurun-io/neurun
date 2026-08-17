@@ -153,6 +153,15 @@ func (service *AppService) ActivateBuild(
 	return service.apps.Update(ctx, organizationID, record)
 }
 
+// OrganizationOf resolves the organization behind an app, which is how a
+// caller holding no principal — a deployer, a webhook — scopes what it reads.
+func (service *AppService) OrganizationOf(
+	ctx context.Context,
+	appID string,
+) (string, error) {
+	return service.apps.OrganizationOf(ctx, appID)
+}
+
 // ConnectedTo lists the apps of one repository, which is what a push has to be
 // matched against.
 func (service *AppService) ConnectedTo(

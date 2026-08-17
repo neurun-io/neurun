@@ -8,31 +8,29 @@
 package dto
 
 import (
-	"io"
 	"time"
 
 	"github.com/neurun-io/neurun/internal/domain/build"
 	"github.com/neurun-io/neurun/internal/domain/deployment"
 )
 
+// CreateDeploymentRequest queues a commit to build. It carries no source: the
+// deployer fetches the commit when it claims the deployment.
 type CreateDeploymentRequest struct {
-	AppID   string
-	Runtime build.Runtime
-	// Source is the archive to build. It is read once, into a temporary file the
-	// build owns, and never stored.
-	Source    io.Reader
+	AppID     string
+	Runtime   build.Runtime
 	CommitSHA string
 	GitRef    string
 }
 
 type DeploymentResponse struct {
-	ID         string            `json:"id"`
-	ProjectID  string            `json:"project_id"`
-	AppID      string            `json:"app_id"`
-	Runtime    build.Runtime     `json:"runtime"`
-	Status     deployment.Status `json:"status"`
-	CommitSHA  string            `json:"commit_sha,omitempty"`
-	GitRef     string            `json:"git_ref,omitempty"`
+	ID        string            `json:"id"`
+	ProjectID string            `json:"project_id"`
+	AppID     string            `json:"app_id"`
+	Runtime   build.Runtime     `json:"runtime"`
+	Status    deployment.Status `json:"status"`
+	CommitSHA string            `json:"commit_sha,omitempty"`
+	GitRef    string            `json:"git_ref,omitempty"`
 	// Build is what it produced, absent until it has. Logs are what the
 	// toolchain printed getting there, and arrive while it still is.
 	Build      *BuildResponse      `json:"build,omitempty"`

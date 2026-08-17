@@ -14,7 +14,7 @@ import (
 
 // BundleName is the file a Node build ships in its code layer. It matches
 // builder.BundleName; the two packages agree on a name rather than a manifest.
-const BundleName = "handler.js"
+const BundleName = "app.js"
 
 type NodeOptions struct {
 	Executable     string
@@ -75,7 +75,7 @@ func (runner *NodeRunner) Execute(
 	configureProcessTree(command)
 	command.Dir = work
 	command.Env = append(childEnvironment(runner.browser, "NODE_ENV=production"), callbackEnvironment(request)...)
-	logs := &limitedBuffer{maximum: request.MaxLogBytes}
+	logs := &limitedBuffer{maximum: request.MaxLogBytes, mirror: request.Logs}
 	command.Stdout, command.Stderr = logs, logs
 	if err := command.Run(); err != nil {
 		if ctx.Err() != nil {
@@ -89,6 +89,14 @@ func (runner *NodeRunner) Execute(
 		)
 	}
 	output, err := os.ReadFile(resultPath)
+	if errors.Is(err, os.ErrNotExist) {
+		// The process exited cleanly and wrote nothing. That is the handler's
+		// side of the contract unmet, not a fault of this host, so it reads as
+		// what it is rather than as a missing file.
+		return ExecuteResult{Logs: logs.String()}, fmt.Errorf(
+			"%w: the handler returned no result", ErrHandlerFailed,
+		)
+	}
 	if err != nil {
 		return ExecuteResult{Logs: logs.String()}, fmt.Errorf(
 			"worker: read handler result: %w", err,
@@ -105,13 +113,13 @@ func (runner *NodeRunner) Execute(
 	return ExecuteResult{Output: json.RawMessage(output), Logs: logs.String()}, nil
 }
 
-// nodeBootstrap requires the bundle and calls the named export. A returned
-// promise is awaited, so an async handler needs no ceremony — the same
-// affordance the Python bootstrap gives a coroutine.
 // nodeHandler is the export the bundle is called through. Nothing configures
 // it: it stands in until the SDK reports what it registered.
 const nodeHandler = "handler"
 
+// nodeBootstrap requires the bundle and calls the named export. A returned
+// promise is awaited, so an async handler needs no ceremony — the same
+// affordance the Python bootstrap gives a coroutine.
 const nodeBootstrap = `
 const fs = require("node:fs");
 

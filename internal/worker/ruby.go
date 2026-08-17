@@ -66,7 +66,7 @@ func (runner *RubyRunner) Execute(
 	configureProcessTree(command)
 	command.Dir = work
 	command.Env = append(childEnvironment(runner.browser, "GEM_PATH="+request.InstallDirectory), callbackEnvironment(request)...)
-	logs := &limitedBuffer{maximum: request.MaxLogBytes}
+	logs := &limitedBuffer{maximum: request.MaxLogBytes, mirror: request.Logs}
 	command.Stdout, command.Stderr = logs, logs
 	if err := command.Run(); err != nil {
 		if ctx.Err() != nil {
@@ -80,6 +80,14 @@ func (runner *RubyRunner) Execute(
 		)
 	}
 	output, err := os.ReadFile(resultPath)
+	if errors.Is(err, os.ErrNotExist) {
+		// The process exited cleanly and wrote nothing. That is the handler's
+		// side of the contract unmet, not a fault of this host, so it reads as
+		// what it is rather than as a missing file.
+		return ExecuteResult{Logs: logs.String()}, fmt.Errorf(
+			"%w: the handler returned no result", ErrHandlerFailed,
+		)
+	}
 	if err != nil {
 		return ExecuteResult{Logs: logs.String()}, fmt.Errorf(
 			"worker: read handler result: %w", err,

@@ -151,6 +151,18 @@ func (record *Profile) Capture(
 	return record.Validate()
 }
 
+// CaptureCookies replaces the jar and leaves the DOM storage where it is.
+//
+// Cookies are all a session carries today, and a whole-state Capture would take
+// the profile's storage with it — an origin the run never visited would be
+// dropped for never having been read.
+func (record *Profile) CaptureCookies(cookies []Cookie, now time.Time) error {
+	record.Cookies = cookies
+	record.UpdatedAt = notBefore(now, record.CreatedAt)
+	record.normalize()
+	return record.Validate()
+}
+
 // normalize keeps the empty collections non-nil, because the columns are jsonb
 // with array and object CHECKs and a nil slice marshals to null.
 func (record *Profile) normalize() {

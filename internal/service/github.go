@@ -321,8 +321,10 @@ func (service *GitHubService) Deploy(
 	)
 }
 
-// build downloads one commit and hands it to the deployment service exactly as
-// an upload would arrive, which is also what starts the build.
+// build queues one commit. The archive is downloaded here only to settle which
+// runtime it is — a push carries no runtime, and the repository is the only
+// thing that knows: Cargo.toml is a Rust crate whoever pushed it. The deployer
+// fetches the commit again when it claims the deployment.
 func (service *GitHubService) build(
 	ctx context.Context,
 	organizationID string,
@@ -347,14 +349,6 @@ func (service *GitHubService) build(
 	); err != nil {
 		return deployment.Deployment{}, err
 	}
-	file, err := os.Open(archive)
-	if err != nil {
-		return deployment.Deployment{}, fmt.Errorf("stage github source: %w", err)
-	}
-	defer file.Close()
-
-	// A push carries no runtime, and the repository is the only thing that knows
-	// what it is: Cargo.toml is a Rust crate whoever pushed it.
 	names, err := files.ZIPNames(archive)
 	if err != nil {
 		return deployment.Deployment{}, err
@@ -364,12 +358,48 @@ func (service *GitHubService) build(
 		return deployment.Deployment{}, err
 	}
 	return service.deployments.Create(ctx, organizationID, dto.CreateDeploymentRequest{
-		AppID:      app.ID,
-		Runtime:    runtime,
-		Source:     file,
-		CommitSHA:  commit,
-		GitRef:     ref,
+		AppID:     app.ID,
+		Runtime:   runtime,
+		CommitSHA: commit,
+		GitRef:    ref,
 	})
+}
+
+// Fetch downloads the commit a deployment names, which is what the deployer
+// asks for when it claims one. The organization comes from the app rather than
+// the caller: a deployer holds no principal to scope to.
+func (service *GitHubService) Fetch(
+	ctx context.Context,
+	appID string,
+	commitSHA string,
+	targetPath string,
+) error {
+	if !service.Configured() {
+		return github.ErrNotConfigured
+	}
+	organizationID, err := service.apps.OrganizationOf(ctx, appID)
+	if err != nil {
+		return err
+	}
+	app, err := service.apps.Get(ctx, organizationID, appID)
+	if err != nil {
+		return err
+	}
+	if app.Repository == "" {
+		return githubdomain.ErrNotConnected
+	}
+	parsed, err := github.ParseRepo(app.Repository)
+	if err != nil {
+		return err
+	}
+	installation, err := service.installations.ByOrganization(ctx, organizationID)
+	if err != nil {
+		return err
+	}
+	_, err = service.client.Source(
+		ctx, installation.InstallationID, parsed, commitSHA, targetPath,
+	)
+	return err
 }
 
 // Retry builds the same commit again. It deploys what the original deployment

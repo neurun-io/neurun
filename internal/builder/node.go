@@ -12,17 +12,14 @@ import (
 	esbuild "github.com/evanw/esbuild/pkg/api"
 
 	"github.com/neurun-io/neurun/internal/domain/build"
-	"github.com/neurun-io/neurun/internal/files"
 )
 
 // BundleName is the single file a Node build ships. Like the compiled runtimes,
 // the name is fixed so the runner needs no manifest to find it.
-const BundleName = "handler.js"
+const BundleName = "app.js"
 
 type NodeOptions struct {
-	NPMExecutable           string
-	MaxArchiveEntries       int
-	MaxArchiveExpandedBytes int64
+	Executable string
 }
 
 // NodeBuilder installs dependencies and bundles them into one file.
@@ -37,43 +34,21 @@ type NodeOptions struct {
 // esbuild is linked in rather than shelled out to, so the version is the
 // server's and an image without it is not a class of failure.
 type NodeBuilder struct {
-	npm    string
-	limits files.ArchiveLimits
+	npm string
 }
 
-func NewNode(options NodeOptions) (*NodeBuilder, error) {
-	if strings.TrimSpace(options.NPMExecutable) == "" {
-		options.NPMExecutable = "npm"
+func NewNodeBuilder(options NodeOptions) (*NodeBuilder, error) {
+	if strings.TrimSpace(options.Executable) == "" {
+		options.Executable = "npm"
 	}
-	if options.MaxArchiveEntries < 0 || options.MaxArchiveExpandedBytes < 0 {
-		return nil, errors.New("builder: archive limits cannot be negative")
-	}
-	return &NodeBuilder{
-		npm: options.NPMExecutable,
-		limits: files.ArchiveLimits{
-			MaxEntries:       options.MaxArchiveEntries,
-			MaxExpandedBytes: options.MaxArchiveExpandedBytes,
-		},
-	}, nil
+	return &NodeBuilder{npm: options.Executable}, nil
 }
 
 func (builder *NodeBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != build.RuntimeNode {
-		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if strings.TrimSpace(request.SourceArchivePath) == "" ||
-		strings.TrimSpace(request.WorkDirectory) == "" {
-		return Result{}, errors.New("builder: source archive and work directory are required")
-	}
-	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := files.ExtractZIPFile(
-		request.SourceArchivePath, sourceDir, builder.limits,
-	); err != nil {
-		return Result{}, fmt.Errorf("builder: extract source: %w", err)
-	}
+	sourceDir := request.SourceDirectory
 	if info, err := os.Lstat(filepath.Join(sourceDir, "package.json")); err != nil ||
 		!info.Mode().IsRegular() {
 		return Result{}, errors.New("builder: package.json was not found at the source root")

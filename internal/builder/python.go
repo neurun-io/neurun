@@ -15,46 +15,28 @@ import (
 	"time"
 
 	"github.com/neurun-io/neurun/internal/domain/build"
-	"github.com/neurun-io/neurun/internal/files"
 )
 
 type PythonOptions struct {
-	PythonExecutable        string
-	MaxArchiveEntries       int
-	MaxArchiveExpandedBytes int64
+	Executable string
 }
 
 type PythonBuilder struct {
 	python string
-	limits files.ArchiveLimits
 }
 
-func NewPython(options PythonOptions) (*PythonBuilder, error) {
-	if strings.TrimSpace(options.PythonExecutable) == "" {
-		options.PythonExecutable = "python"
+func NewPythonBuilder(options PythonOptions) (*PythonBuilder, error) {
+	if strings.TrimSpace(options.Executable) == "" {
+		options.Executable = "python"
 	}
-	if options.MaxArchiveEntries < 0 || options.MaxArchiveExpandedBytes < 0 {
-		return nil, errors.New("builder: archive limits cannot be negative")
-	}
-	return &PythonBuilder{python: options.PythonExecutable, limits: files.ArchiveLimits{
-		MaxEntries: options.MaxArchiveEntries, MaxExpandedBytes: options.MaxArchiveExpandedBytes,
-	}}, nil
+	return &PythonBuilder{python: options.Executable}, nil
 }
 
 func (builder *PythonBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != build.RuntimePython {
-		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if strings.TrimSpace(request.SourceArchivePath) == "" || strings.TrimSpace(request.WorkDirectory) == "" {
-		return Result{}, errors.New("builder: source archive and work directory are required")
-	}
-	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := files.ExtractZIPFile(request.SourceArchivePath, sourceDir, builder.limits); err != nil {
-		return Result{}, fmt.Errorf("builder: extract source: %w", err)
-	}
+	sourceDir := request.SourceDirectory
 	compile := exec.CommandContext(ctx, builder.python, "-m", "compileall", "-q", sourceDir)
 	compile.Env = append(os.Environ(), "PYTHONPYCACHEPREFIX="+filepath.Join(request.WorkDirectory, "pycache"))
 	if err := request.run("compile Python source", compile); err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/neurun-io/neurun/internal/domain/execution"
+	"github.com/neurun-io/neurun/internal/ids"
 )
 
 const executionSelect = `SELECT e.id, a.project_id, e.app_id, e.build_id,
@@ -157,6 +158,28 @@ func (repository *ExecutionRepository) List(
 		records = append(records, row.record)
 	}
 	return records, nil
+}
+
+// SaveLogs writes what a running execution has printed so far, so somebody
+// watching sees it arrive. Only a running row is touched: output that lands
+// after the terminal write has nowhere to go, and must not reopen it.
+func (repository *ExecutionRepository) SaveLogs(
+	ctx context.Context,
+	executionID string,
+	logs string,
+) error {
+	if err := ids.Validate("execution_id", executionID); err != nil {
+		return fmt.Errorf("%w: %v", execution.ErrInvalid, err)
+	}
+	if _, err := repository.pool.Exec(
+		ctx,
+		`UPDATE executions SET logs = $2, version = version + 1
+		 WHERE id = $1 AND status = 'running'`,
+		executionID, logs,
+	); err != nil {
+		return fmt.Errorf("save execution logs: %w", err)
+	}
+	return nil
 }
 
 // Finalize writes a terminal execution, refusing the write if the stored record

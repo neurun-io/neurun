@@ -23,6 +23,7 @@ const (
 	Browser_Navigate_FullMethodName          = "/neurun.browser.v1.Browser/Navigate"
 	Browser_WaitForNavigation_FullMethodName = "/neurun.browser.v1.Browser/WaitForNavigation"
 	Browser_CloseSession_FullMethodName      = "/neurun.browser.v1.Browser/CloseSession"
+	Browser_ReportResult_FullMethodName      = "/neurun.browser.v1.Browser/ReportResult"
 )
 
 // BrowserClient is the client API for Browser service.
@@ -50,6 +51,12 @@ type BrowserClient interface {
 	WaitForNavigation(ctx context.Context, in *WaitForNavigationRequest, opts ...grpc.CallOption) (*WaitForNavigationResponse, error)
 	// CloseSession stops the browser and drops the session.
 	CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error)
+	// ReportResult hands back what the app produced.
+	//
+	// The token says which execution this is, so an app cannot report for another
+	// one. Reporting is what produces a result: an execution that exits without
+	// reporting produced none, and fails saying so.
+	ReportResult(ctx context.Context, in *ReportResultRequest, opts ...grpc.CallOption) (*ReportResultResponse, error)
 }
 
 type browserClient struct {
@@ -100,6 +107,16 @@ func (c *browserClient) CloseSession(ctx context.Context, in *CloseSessionReques
 	return out, nil
 }
 
+func (c *browserClient) ReportResult(ctx context.Context, in *ReportResultRequest, opts ...grpc.CallOption) (*ReportResultResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportResultResponse)
+	err := c.cc.Invoke(ctx, Browser_ReportResult_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BrowserServer is the server API for Browser service.
 // All implementations must embed UnimplementedBrowserServer
 // for forward compatibility.
@@ -125,6 +142,12 @@ type BrowserServer interface {
 	WaitForNavigation(context.Context, *WaitForNavigationRequest) (*WaitForNavigationResponse, error)
 	// CloseSession stops the browser and drops the session.
 	CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error)
+	// ReportResult hands back what the app produced.
+	//
+	// The token says which execution this is, so an app cannot report for another
+	// one. Reporting is what produces a result: an execution that exits without
+	// reporting produced none, and fails saying so.
+	ReportResult(context.Context, *ReportResultRequest) (*ReportResultResponse, error)
 	mustEmbedUnimplementedBrowserServer()
 }
 
@@ -146,6 +169,9 @@ func (UnimplementedBrowserServer) WaitForNavigation(context.Context, *WaitForNav
 }
 func (UnimplementedBrowserServer) CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloseSession not implemented")
+}
+func (UnimplementedBrowserServer) ReportResult(context.Context, *ReportResultRequest) (*ReportResultResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportResult not implemented")
 }
 func (UnimplementedBrowserServer) mustEmbedUnimplementedBrowserServer() {}
 func (UnimplementedBrowserServer) testEmbeddedByValue()                 {}
@@ -240,6 +266,24 @@ func _Browser_CloseSession_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Browser_ReportResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportResultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServer).ReportResult(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Browser_ReportResult_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServer).ReportResult(ctx, req.(*ReportResultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Browser_ServiceDesc is the grpc.ServiceDesc for Browser service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -262,6 +306,10 @@ var Browser_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CloseSession",
 			Handler:    _Browser_CloseSession_Handler,
+		},
+		{
+			MethodName: "ReportResult",
+			Handler:    _Browser_ReportResult_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

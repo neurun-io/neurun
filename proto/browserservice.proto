@@ -22,6 +22,12 @@ service BrowserService {
   // WaitForNavigation blocks until the session's page has navigated.
   rpc WaitForNavigation(WaitForNavigationRequest) returns (WaitForNavigationResponse);
 
+  // GetCookies reads a session's whole jar.
+  rpc GetCookies(GetCookiesRequest) returns (GetCookiesResponse);
+
+  // SetCookies puts a jar into a session.
+  rpc SetCookies(SetCookiesRequest) returns (SetCookiesResponse);
+
   // Close stops the browser.
   rpc Close(CloseRequest) returns (CloseResponse);
 
@@ -31,6 +37,20 @@ service BrowserService {
   // The session is named in the neurun-session-id metadata rather than in every
   // chunk, because it is a property of the stream and not of a frame.
   rpc StreamDisplay(stream DisplayChunk) returns (stream DisplayChunk);
+}
+
+// Cookie is one cookie as the browser holds it, in the profile's own shape so
+// the control plane relays it without reinterpreting anything.
+message Cookie {
+  string name = 1;
+  string value = 2;
+  string domain = 3;
+  string path = 4;
+  // Unix seconds. Absent for a session cookie.
+  optional double expires = 5;
+  bool secure = 6;
+  bool http_only = 7;
+  string same_site = 8;
 }
 
 message OpenRequest {
@@ -85,6 +105,23 @@ enum WaitUntil {
   WAIT_UNTIL_NETWORK_ALMOST_IDLE = 4;
   WAIT_UNTIL_NETWORK_IDLE = 5;
 }
+
+message GetCookiesRequest {
+  string session_id = 1;
+}
+
+message GetCookiesResponse {
+  // The whole jar. Empty is ambiguous by nature — a browser holding nothing
+  // and a browser that would not say look the same from here.
+  repeated Cookie cookies = 1;
+}
+
+message SetCookiesRequest {
+  string session_id = 1;
+  repeated Cookie cookies = 2;
+}
+
+message SetCookiesResponse {}
 
 message CloseRequest {
   string session_id = 1;

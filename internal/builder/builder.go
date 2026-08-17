@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-
-	"github.com/neurun-io/neurun/internal/domain/build"
 )
 
 type Request struct {
-	Runtime           build.Runtime
-	SourceArchivePath string
+	// SourceDirectory holds the commit, already extracted. Unpacking is the
+	// deployment's job — a builder is handed source and runs a toolchain over
+	// it, the way a runner is handed a build and runs it.
+	SourceDirectory string
 	// WorkDirectory is scratch for one build and is deleted after it.
 	WorkDirectory string
 	// CacheDirectory outlives the build. Toolchain caches belong here and

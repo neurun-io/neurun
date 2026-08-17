@@ -12,10 +12,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 var (
-	ErrHandlerFailed  = errors.New("worker: Python handler failed")
+	ErrHandlerFailed  = errors.New("worker: handler failed")
 	ErrResultTooLarge = errors.New("worker: handler result is too large")
 )
 
@@ -66,7 +67,7 @@ func (runner *PythonRunner) Execute(ctx context.Context, request ExecuteRequest)
 	configureProcessTree(command)
 	command.Dir = work
 	command.Env = append(pythonEnvironment(runner.browser), callbackEnvironment(request)...)
-	logs := &limitedBuffer{maximum: request.MaxLogBytes}
+	logs := &limitedBuffer{maximum: request.MaxLogBytes, mirror: request.Logs}
 	command.Stdout, command.Stderr = logs, logs
 	if err := command.Run(); err != nil {
 		if ctx.Err() != nil {
@@ -78,6 +79,14 @@ func (runner *PythonRunner) Execute(ctx context.Context, request ExecuteRequest)
 		return ExecuteResult{Logs: logs.String()}, fmt.Errorf("%w: %s", ErrHandlerFailed, failureMessage(err, logs.String()))
 	}
 	output, err := os.ReadFile(resultPath)
+	if errors.Is(err, os.ErrNotExist) {
+		// The process exited cleanly and wrote nothing. That is the handler's
+		// side of the contract unmet, not a fault of this host, so it reads as
+		// what it is rather than as a missing file.
+		return ExecuteResult{Logs: logs.String()}, fmt.Errorf(
+			"%w: the handler returned no result", ErrHandlerFailed,
+		)
+	}
 	if err != nil {
 		return ExecuteResult{Logs: logs.String()}, fmt.Errorf("worker: read handler result: %w", err)
 	}
@@ -128,13 +137,21 @@ func pythonEnvironment(browser string) []string {
 	)
 }
 
+// limitedBuffer keeps the head of what a handler printed, up to a cap, and
+// mirrors it to whoever is following the execution as it arrives.
+//
+// A command's stdout and stderr are two pipes drained by two goroutines, so the
+// lock is not optional.
 type limitedBuffer struct {
+	mutex   sync.Mutex
 	buffer  bytes.Buffer
 	maximum int64
 	written int64
+	mirror  io.Writer
 }
 
 func (target *limitedBuffer) Write(payload []byte) (int, error) {
+	target.mutex.Lock()
 	target.written += int64(len(payload))
 	remaining := target.maximum - int64(target.buffer.Len())
 	if remaining > 0 {
@@ -144,9 +161,17 @@ func (target *limitedBuffer) Write(payload []byte) (int, error) {
 			_, _ = target.buffer.Write(payload)
 		}
 	}
+	mirror := target.mirror
+	target.mutex.Unlock()
+	if mirror != nil {
+		_, _ = mirror.Write(payload)
+	}
 	return len(payload), nil
 }
+
 func (target *limitedBuffer) String() string {
+	target.mutex.Lock()
+	defer target.mutex.Unlock()
 	value := strings.TrimSpace(target.buffer.String())
 	if target.written > int64(target.buffer.Len()) {
 		value += "\n[logs truncated]"

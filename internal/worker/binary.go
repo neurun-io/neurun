@@ -8,13 +8,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 // BinaryName is the file a compiled build ships in its code layer. It matches
-// builder.CompiledBinaryName; the two packages agree on a name rather than on a
-// manifest, and neither imports the other.
-const BinaryName = "handler"
+// builder.CompiledBinaryName, extension and all; the two packages agree on a
+// name rather than on a manifest, and neither imports the other.
+var BinaryName = "app" + executableExtension()
+
+func executableExtension() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
+}
 
 // BinaryRunner executes a compiled handler — Rust or Go, which differ only in
 // what produced the file.
@@ -69,7 +77,7 @@ func (runner *BinaryRunner) Execute(
 	configureProcessTree(command)
 	command.Dir = work
 	command.Env = append(childEnvironment(runner.browser), callbackEnvironment(request)...)
-	logs := &limitedBuffer{maximum: request.MaxLogBytes}
+	logs := &limitedBuffer{maximum: request.MaxLogBytes, mirror: request.Logs}
 	command.Stdout, command.Stderr = logs, logs
 	if err := command.Run(); err != nil {
 		if ctx.Err() != nil {
@@ -80,6 +88,13 @@ func (runner *BinaryRunner) Execute(
 		)
 	}
 	output, err := os.ReadFile(resultPath)
+	if errors.Is(err, os.ErrNotExist) {
+		// A compiled handler has no bootstrap to write the file for it, so the
+		// result is optional and the exit code is the whole contract. A run that
+		// finished with nothing to say returns what an interpreted handler
+		// returning nothing returns.
+		return ExecuteResult{Output: nullResult, Logs: logs.String()}, nil
+	}
 	if err != nil {
 		return ExecuteResult{Logs: logs.String()}, fmt.Errorf(
 			"worker: read handler result: %w", err,

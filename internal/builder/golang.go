@@ -10,55 +10,30 @@ import (
 	"strings"
 
 	"github.com/neurun-io/neurun/internal/domain/build"
-	"github.com/neurun-io/neurun/internal/files"
 )
 
 type GoOptions struct {
-	GoExecutable            string
-	MaxArchiveEntries       int
-	MaxArchiveExpandedBytes int64
+	Executable string
 }
 
 // GoBuilder compiles a module into one executable. Like Rust and unlike Python,
 // it emits no install layer: the dependencies are linked in.
 type GoBuilder struct {
 	golang string
-	limits files.ArchiveLimits
 }
 
-func NewGo(options GoOptions) (*GoBuilder, error) {
-	if strings.TrimSpace(options.GoExecutable) == "" {
-		options.GoExecutable = "go"
+func NewGoBuilder(options GoOptions) (*GoBuilder, error) {
+	if strings.TrimSpace(options.Executable) == "" {
+		options.Executable = "go"
 	}
-	if options.MaxArchiveEntries < 0 || options.MaxArchiveExpandedBytes < 0 {
-		return nil, errors.New("builder: archive limits cannot be negative")
-	}
-	return &GoBuilder{
-		golang: options.GoExecutable,
-		limits: files.ArchiveLimits{
-			MaxEntries:       options.MaxArchiveEntries,
-			MaxExpandedBytes: options.MaxArchiveExpandedBytes,
-		},
-	}, nil
+	return &GoBuilder{golang: options.Executable}, nil
 }
 
 func (builder *GoBuilder) Build(ctx context.Context, request Request) (Result, error) {
-	if request.Runtime != build.RuntimeGo {
-		return Result{}, fmt.Errorf("builder: unsupported runtime %q", request.Runtime)
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if strings.TrimSpace(request.SourceArchivePath) == "" ||
-		strings.TrimSpace(request.WorkDirectory) == "" {
-		return Result{}, errors.New("builder: source archive and work directory are required")
-	}
-	sourceDir := filepath.Join(request.WorkDirectory, "source")
-	if _, err := files.ExtractZIPFile(
-		request.SourceArchivePath, sourceDir, builder.limits,
-	); err != nil {
-		return Result{}, fmt.Errorf("builder: extract source: %w", err)
-	}
+	sourceDir := request.SourceDirectory
 	if info, err := os.Lstat(filepath.Join(sourceDir, "go.mod")); err != nil ||
 		!info.Mode().IsRegular() {
 		return Result{}, errors.New("builder: go.mod was not found at the source root")
