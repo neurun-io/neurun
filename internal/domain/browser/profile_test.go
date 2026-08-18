@@ -71,16 +71,17 @@ func TestNewSeedsAnIdentityWhenNoneIsGiven(t *testing.T) {
 func TestEphemeralIdentityHonoursTheBrowser(t *testing.T) {
 	t.Parallel()
 
-	identity, err := EphemeralIdentity(BrowserSafari)
+	identity, err := EphemeralIdentity(BrowserChrome)
 	if err != nil {
 		t.Fatalf("EphemeralIdentity: %v", err)
 	}
-	if identity.Browser != BrowserSafari {
-		t.Errorf("browser = %q, want safari", identity.Browser)
+	if identity.Browser != BrowserChrome {
+		t.Errorf("browser = %q, want chrome", identity.Browser)
 	}
-	// Safari ships on one desktop, so anything else is the binding coming loose.
-	if identity.OS != OSMacintosh {
-		t.Errorf("os = %q, want Macintosh", identity.OS)
+	// Chrome is the only browser the catalogue offers, and Linux is the only
+	// desktop it ships on, so anything else is the binding coming loose.
+	if identity.OS != OSLinux {
+		t.Errorf("os = %q, want Linux", identity.OS)
 	}
 	if err := identity.Validate(); err != nil {
 		t.Errorf("ephemeral identity is invalid: %v", err)

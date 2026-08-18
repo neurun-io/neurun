@@ -74,14 +74,12 @@ func TestCatalogOffersOnlyValidValues(t *testing.T) {
 
 // Every handset has to be able to produce a whole identity on its own, because
 // choosing one is what fills the screen, card, cores and memory. A device
-// missing any of them would offer a profile the API then refuses.
+// missing any of them would offer a profile the API then refuses. A catalogue
+// that offers no mobile OS carries no devices at all, which is not a gap.
 func TestCatalogDevicesAreComplete(t *testing.T) {
 	t.Parallel()
 
 	catalog, _ := IdentityCatalog()
-	if len(catalog.Devices) == 0 {
-		t.Fatal("catalog has no devices")
-	}
 
 	for _, device := range catalog.Devices {
 		if !device.OS.Valid() || device.Name == "" {

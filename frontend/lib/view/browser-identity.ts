@@ -299,7 +299,7 @@ export function withRatio(draft: IdentityDraft, ratio: string): IdentityDraft {
 export function catalogDraft(catalog: IdentityCatalog): IdentityDraft {
   const screen = catalog.screens[0];
   const base: IdentityDraft = {
-    os: "Windows",
+    os: "Linux",
     device: "",
     os_version: "",
     device_model: "",
@@ -350,7 +350,7 @@ export function toDraft(
   catalog?: IdentityCatalog,
 ): IdentityDraft {
   return {
-    os: identity.os ?? "Windows",
+    os: identity.os ?? "Linux",
     // The record stores a model, not a handset; the catalogue says which phone
     // shipped that model, so an edit reopens on the device it was built from.
     device: catalog ? (deviceForModel(catalog, identity.device_model) ?? "") : "",
