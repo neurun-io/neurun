@@ -40,12 +40,15 @@ NEW_PID=$!
 disown
 echo "$NEW_PID" >"$PIDFILE"
 
-for _ in $(seq 1 20); do
+for _ in $(seq 1 120); do
   if curl -fsS "http://127.0.0.1:1267/healthz" >/dev/null 2>&1; then
     echo "neurun is serving (pid $NEW_PID)"
     exit 0
   fi
-  sleep 0.5
+  # Migrations run on every start; against a remote database they can take
+  # the better part of a minute, so this waits rather than declaring an early
+  # failure while they are still running.
+  sleep 1
 done
 
 echo "neurun did not become healthy after restart — check $LOG" >&2
