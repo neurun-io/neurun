@@ -72,10 +72,11 @@ jobs:
       - name: Build
         working-directory: frontend
         env:
-          # The dashboard's own origin is a separate port on the same host — see
-          # deploy/bootstrap.sh. No GitHub App is configured on this deployment
-          # yet, so the slug is left empty rather than naming one that isn't there.
-          NEXT_PUBLIC_NEURUN_API_URL: http://${{ secrets.INTERSERVER_HOST }}
+          # The API sits on its own port behind nginx; the dashboard takes the
+          # default one — see deploy/bootstrap.sh. No GitHub App is configured
+          # on this deployment yet, so the slug is left empty rather than
+          # naming one that isn't there.
+          NEXT_PUBLIC_NEURUN_API_URL: http://${{ secrets.INTERSERVER_HOST }}:8080
           NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG: ""
         run: |
           npm ci
