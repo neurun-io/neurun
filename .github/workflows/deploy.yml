@@ -1,0 +1,58 @@
+name: deploy vps
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -trimpath \
+            -ldflags="-s -w \
+              -X github.com/neurun-io/neurun/internal/buildinfo.Version=${GITHUB_SHA::12} \
+              -X github.com/neurun-io/neurun/internal/buildinfo.Commit=${GITHUB_SHA} \
+              -X github.com/neurun-io/neurun/internal/buildinfo.BuiltAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o neurun ./cmd/neurun
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.INTERSERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.INTERSERVER_HOST_KEY }}" > ~/.ssh/known_hosts
+
+      - name: Upload binary and deploy script
+        run: |
+          scp -i ~/.ssh/id_ed25519 neurun \
+            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}:/var/apps/neurun/neurun.new"
+          scp -i ~/.ssh/id_ed25519 deploy/redeploy.sh \
+            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}:/var/apps/neurun/redeploy.sh"
+
+      - name: Terminate and re-serve
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}" \
+            "chmod 700 /var/apps/neurun/redeploy.sh && /var/apps/neurun/redeploy.sh"
