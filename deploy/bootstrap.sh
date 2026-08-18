@@ -6,16 +6,17 @@
 set -euo pipefail
 
 APP_DIR=/var/apps/neurun
+DASHBOARD_DIR=/var/apps/dashboard
 CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
 
 # --- app user & directories ---
-# The server itself runs as this unprivileged user; root (this script, and the
-# CI deploy) only ever prepares files for it to run.
+# Both processes run as this unprivileged user; root (this script, and the CI
+# deploy) only ever prepares files for it to run.
 id -u neurun >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin neurun
-mkdir -p "$APP_DIR/data"
-touch "$APP_DIR/neurun.log"
-chown -R neurun:neurun "$APP_DIR"
-chmod 750 "$APP_DIR"
+mkdir -p "$APP_DIR/data" "$DASHBOARD_DIR"
+touch "$APP_DIR/neurun.log" "$DASHBOARD_DIR/dashboard.log"
+chown -R neurun:neurun "$APP_DIR" "$DASHBOARD_DIR"
+chmod 750 "$APP_DIR" "$DASHBOARD_DIR"
 
 # --- Redis: official repo for the latest release, sessions cache only ---
 if ! command -v redis-server >/dev/null; then
@@ -71,26 +72,57 @@ server {
     }
 }
 EOF
+
+# The dashboard is a separate origin on its own port, same as local dev
+# (localhost:1267 API / localhost:3001 dashboard) — the session cookie is
+# SameSite=Strict, which still rides between ports on the same host since site
+# matching ignores port, so this needs CORS but not a shared origin.
+cat >/etc/nginx/conf.d/dashboard.conf <<'EOF'
+server {
+    listen 3000;
+    server_name _;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
 rm -f /etc/nginx/conf.d/default.conf
 nginx -t
 systemctl enable --now nginx
 systemctl reload nginx
 
+# --- Node.js runtime for the dashboard's standalone server. CI builds it;
+# this box only ever runs `node server.js`. ---
+if ! command -v node >/dev/null; then
+  curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+  apt-get install -y nodejs
+fi
+
 # --- firewall: allow SSH before enabling, or this locks itself out ---
 ufw allow OpenSSH
 ufw allow 80/tcp
+ufw allow 3000/tcp
 ufw --force enable
 
 # --- starter .env: written once, never overwritten by a later bootstrap run ---
 if [ ! -f "$APP_DIR/.env" ]; then
+  HOST_IP=$(curl -fsS -4 ifconfig.me || hostname -I | awk '{print $1}')
   cat >"$APP_DIR/.env" <<EOF
 NEURUN_HTTP_ADDR=127.0.0.1:1267
-NEURUN_PUBLIC_URL=http://$(curl -fsS -4 ifconfig.me || hostname -I | awk '{print $1}')
+NEURUN_PUBLIC_URL=http://$HOST_IP
 NEURUN_DATA_DIRECTORY=$APP_DIR/data
 NEURUN_REDIS_URL=redis://localhost:6379/0
 NEURUN_PYTHON_EXECUTABLE=python3
 NEURUN_SESSION_COOKIE_SECURE=false
 NEURUN_DEFAULT_PROJECT_ID=prj_default
+# The dashboard's own origin — it calls this API cross-origin, with credentials.
+NEURUN_ALLOWED_ORIGINS=http://$HOST_IP:3000
 
 # Required — neurun will not start until this is set.
 # NEURUN_DATABASE_URL=postgres://user:password@host:5432/neurun?sslmode=disable

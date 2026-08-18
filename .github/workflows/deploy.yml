@@ -56,3 +56,50 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 \
             "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}" \
             "chmod 700 /var/apps/neurun/redeploy.sh && /var/apps/neurun/redeploy.sh"
+
+  deploy-dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "lts/*"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build
+        working-directory: frontend
+        env:
+          # The dashboard's own origin is a separate port on the same host — see
+          # deploy/bootstrap.sh. No GitHub App is configured on this deployment
+          # yet, so the slug is left empty rather than naming one that isn't there.
+          NEXT_PUBLIC_NEURUN_API_URL: http://${{ secrets.INTERSERVER_HOST }}
+          NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG: ""
+        run: |
+          npm ci
+          npm run build
+          cp -r public .next/standalone/public
+          cp -r .next/static .next/standalone/.next/static
+          tar -czf ../dashboard.tar.gz -C .next/standalone .
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.INTERSERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.INTERSERVER_HOST_KEY }}" > ~/.ssh/known_hosts
+
+      - name: Upload build and deploy script
+        run: |
+          scp -i ~/.ssh/id_ed25519 dashboard.tar.gz \
+            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}:/var/apps/dashboard/dashboard.new.tar.gz"
+          scp -i ~/.ssh/id_ed25519 deploy/redeploy-dashboard.sh \
+            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}:/var/apps/dashboard/redeploy-dashboard.sh"
+
+      - name: Terminate and re-serve
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}" \
+            "chmod 700 /var/apps/dashboard/redeploy-dashboard.sh && /var/apps/dashboard/redeploy-dashboard.sh"
