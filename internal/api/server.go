@@ -41,6 +41,10 @@ const (
 	// A display is a signed-in browser rendered as pixels, which is more than
 	// the profile endpoints ever return.
 	ScopeBrowserSessionsRead = "browser_sessions:read"
+	// Opening a browser spends a host's memory and drives a real machine onto
+	// the internet under an identity of ours, and every command moves a pointer
+	// or types into a page that is often signed in. None of that is reading.
+	ScopeBrowserSessionsWrite = "browser_sessions:write"
 	// Reading a profile's state returns live cookies, so it takes the write
 	// scope rather than the read one.
 	ScopeBrowserProfilesRead  = "browser_profiles:read"
@@ -65,6 +69,7 @@ type ServerOptions struct {
 	GitHub              *service.GitHubService
 	Browsers            *service.BrowserService
 	BrowserSessions     *service.BrowserSessionService
+	BrowserDriver       *service.BrowserDriverService
 	AllowedOrigins      []string
 	Ready               ReadyCheck
 	MaximumBodyBytes    int64
@@ -83,6 +88,7 @@ type Server struct {
 	gitHub              *service.GitHubService
 	browsers            *service.BrowserService
 	browserSessions     *service.BrowserSessionService
+	browserDriver       *service.BrowserDriverService
 	allowedOrigins      []string
 	ready               ReadyCheck
 	maximumBodyBytes    int64
@@ -126,6 +132,7 @@ func NewServer(options ServerOptions) (*Server, error) {
 		gitHub:              options.GitHub,
 		browsers:            options.Browsers,
 		browserSessions:     options.BrowserSessions,
+		browserDriver:       options.BrowserDriver,
 		allowedOrigins:      options.AllowedOrigins,
 		ready:               options.Ready,
 		maximumBodyBytes:    options.MaximumBodyBytes,
@@ -218,11 +225,28 @@ func (server *Server) routes() *gin.Engine {
 	v1.POST("/github/deployments", server.scoped(ScopeDeploymentsWrite), server.deployRef)
 
 	v1.GET("/browser-sessions", server.scoped(ScopeBrowserSessionsRead), server.listBrowserSessions)
+	v1.POST("/browser-sessions", server.scoped(ScopeBrowserSessionsWrite), server.openBrowserSession)
 	v1.GET("/browser-sessions/:session_id", server.scoped(ScopeBrowserSessionsRead), server.getBrowserSession)
-	v1.DELETE("/browser-sessions/:session_id", server.scoped(ScopeBrowserSessionsRead), server.closeBrowserSession)
+	v1.DELETE("/browser-sessions/:session_id", server.scoped(ScopeBrowserSessionsWrite), server.closeBrowserSession)
 	// The upgrade happens inside the authenticated group, so the credential is
 	// checked before a frame moves rather than after.
 	v1.GET("/browser-sessions/:session_id/display", server.scoped(ScopeBrowserSessionsRead), server.streamBrowserDisplay)
+
+	// The same commands the SDK gets, for a caller holding an API key instead of
+	// an execution token. One command per route, named after what it does, so a
+	// reader of the route table can see what a browser can be told to do.
+	v1.POST("/browser-sessions/:session_id/navigate", server.scoped(ScopeBrowserSessionsWrite), server.navigateBrowserSession)
+	v1.POST("/browser-sessions/:session_id/wait-for-navigation", server.scoped(ScopeBrowserSessionsWrite), server.waitForBrowserNavigation)
+	v1.GET("/browser-sessions/:session_id/node", server.scoped(ScopeBrowserSessionsRead), server.getBrowserNode)
+	v1.POST("/browser-sessions/:session_id/mouse-move", server.scoped(ScopeBrowserSessionsWrite), server.moveBrowserMouse)
+	v1.POST("/browser-sessions/:session_id/click", server.scoped(ScopeBrowserSessionsWrite), server.clickBrowserMouse)
+	v1.POST("/browser-sessions/:session_id/type", server.scoped(ScopeBrowserSessionsWrite), server.typeIntoBrowser)
+	v1.POST("/browser-sessions/:session_id/scroll", server.scoped(ScopeBrowserSessionsWrite), server.scrollBrowser)
+	v1.POST("/browser-sessions/:session_id/scroll-to", server.scoped(ScopeBrowserSessionsWrite), server.scrollBrowserTo)
+	// Cookie values are secrets, so reading them takes the write scope — the
+	// same rule the profile state endpoints follow.
+	v1.GET("/browser-sessions/:session_id/cookies", server.scoped(ScopeBrowserSessionsWrite), server.getBrowserCookies)
+	v1.PUT("/browser-sessions/:session_id/cookies", server.scoped(ScopeBrowserSessionsWrite), server.setBrowserCookies)
 
 	v1.GET("/organizations", sessionOnly(), server.listOrganizations)
 	// Deliberately unscoped: an account with no organization holds no scopes,
@@ -335,6 +359,9 @@ func writeError(ctx *gin.Context, err error) {
 		return
 	}
 	if writeBrowserSessionError(ctx, err) {
+		return
+	}
+	if writeBrowserDriverError(ctx, err) {
 		return
 	}
 	switch {

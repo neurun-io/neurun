@@ -2,7 +2,6 @@ package browsergrpc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
@@ -28,27 +27,25 @@ const TokenMetadata = "neurun-execution-token"
 // id, and never learns that a browser service exists or where it listens. That
 // is what makes a session something the dashboard can list and watch, instead of
 // something happening on a port only the tenant's code knows about.
+//
+// What it adds over the driver underneath is who is asking. The execution token
+// is the only thing in a request that is trusted, and resolving it is the first
+// thing every method does.
 type Server struct {
 	browserpb.UnimplementedBrowserServer
 
-	sessions   *service.BrowserSessionService
-	profiles   *service.BrowserService
-	tokens     *service.ExecutionTokenService
-	supervisor *Supervisor
+	driver *service.BrowserDriverService
+	tokens *service.ExecutionTokenService
 }
 
 func NewServer(
-	sessions *service.BrowserSessionService,
-	profiles *service.BrowserService,
+	driver *service.BrowserDriverService,
 	tokens *service.ExecutionTokenService,
-	supervisor *Supervisor,
 ) (*Server, error) {
-	if sessions == nil || profiles == nil || tokens == nil || supervisor == nil {
+	if driver == nil || tokens == nil {
 		return nil, errors.New("browser grpc server requires its dependencies")
 	}
-	return &Server{
-		sessions: sessions, profiles: profiles, tokens: tokens, supervisor: supervisor,
-	}, nil
+	return &Server{driver: driver, tokens: tokens}, nil
 }
 
 // Serve listens on addr, which must be loopback.
@@ -82,73 +79,15 @@ func (server *Server) OpenSession(
 	if err != nil {
 		return nil, err
 	}
-	client, err := server.supervisor.Client(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Unavailable, err.Error())
-	}
-	if request.GetLoadStorage() && strings.TrimSpace(request.GetBrowserProfileId()) == "" {
-		return nil, status.Error(
-			codes.InvalidArgument,
-			"load_storage needs a browser_profile_id: a profile is where a "+
-				"session's cookies are kept, and a browser without one keeps none",
-		)
-	}
-	// The browser service has no database, so the persona is resolved here and
-	// travels with the request.
-	kind, persona, jar, err := server.persona(
-		ctx, identity.OrganizationID,
-		request.GetBrowserProfileId(), request.GetBrowser(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	if !request.GetLoadStorage() {
-		jar = nil
-	}
-
-	opened, err := client.Open(ctx, &browserservicepb.OpenRequest{
-		Browser:          string(kind),
-		BrowserProfileId: request.GetBrowserProfileId(),
-		AppId:            identity.AppID,
-		ExecutionId:      identity.ExecutionID,
-		Identity:         persona,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "browser service: %v", err)
-	}
-
-	// Before the caller is handed the session, so its first navigation is
-	// already carrying the profile's logins.
-	if len(jar) > 0 {
-		if _, err := client.SetCookies(ctx, &browserservicepb.SetCookiesRequest{
-			SessionId: opened.GetSessionId(),
-			Cookies:   cookieMessages(jar),
-		}); err != nil {
-			// A session that did not get the state it was asked to start from is
-			// not the session the caller wanted, and leaving it would strand a
-			// browser holding someone else's idea of logged in.
-			_, _ = client.Close(ctx, &browserservicepb.CloseRequest{SessionId: opened.GetSessionId()})
-			return nil, status.Errorf(codes.Unavailable, "load cookies: %v", err)
-		}
-	}
-
-	// Registered against the id the service minted, so the dashboard and the
-	// service agree on what to call it.
-	record, err := server.sessions.Adopt(ctx, identity.OrganizationID, service.AdoptRequest{
-		SessionID:   opened.GetSessionId(),
+	record, err := server.driver.Open(ctx, identity.OrganizationID, service.OpenBrowserRequest{
+		Browser:     request.GetBrowser(),
+		ProfileID:   request.GetBrowserProfileId(),
+		LoadStorage: request.GetLoadStorage(),
 		AppID:       identity.AppID,
 		ExecutionID: identity.ExecutionID,
-		ProfileID:   request.GetBrowserProfileId(),
-		Browser:     kind,
-		// Every session has a framebuffer, and it is reached through the browser
-		// service itself — it multiplexes them all behind one port.
-		DisplayAddress: server.supervisor.Address(),
 	})
 	if err != nil {
-		// The browser is already up; leaving it would strand a process nothing
-		// can reach.
-		_, _ = client.Close(ctx, &browserservicepb.CloseRequest{SessionId: opened.GetSessionId()})
-		return nil, status.Errorf(codes.Internal, "register session: %v", err)
+		return nil, statusOf(err)
 	}
 	return sessionMessage(record), nil
 }
@@ -167,7 +106,7 @@ func (server *Server) Navigate(
 		Referer:   request.Referer,
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "browser service: %v", err)
+		return nil, relayed(err)
 	}
 	return &browserpb.NavigateResponse{}, nil
 }
@@ -187,34 +126,167 @@ func (server *Server) WaitForNavigation(
 		TimeoutMs: request.GetTimeoutMs(),
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "browser service: %v", err)
+		return nil, relayed(err)
 	}
 	return &browserpb.WaitForNavigationResponse{}, nil
 }
 
-// driving authorizes a command against a session and returns the client to
-// relay it with.
-//
-// Scoped before relaying: a session id from another organization reads as absent
-// rather than as forbidden. The lookup doubles as the lease refresh — a session
-// being driven is a session that is alive, so activity keeps it listed instead
-// of a timer expiring one mid-run.
-func (server *Server) driving(
+func (server *Server) GetNode(
 	ctx context.Context,
-	sessionID string,
-) (browserservicepb.BrowserServiceClient, error) {
-	identity, err := server.identify(ctx)
+	request *browserpb.GetNodeRequest,
+) (*browserpb.GetNodeResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
 	if err != nil {
 		return nil, err
 	}
-	if _, err := server.sessions.Touch(ctx, identity.OrganizationID, sessionID); err != nil {
-		return nil, status.Error(codes.NotFound, "browser session not found")
-	}
-	client, err := server.supervisor.Client(ctx)
+	found, err := client.GetNode(ctx, &browserservicepb.GetNodeRequest{
+		SessionId: request.GetSessionId(),
+		Selector:  request.GetSelector(),
+		TimeoutMs: request.GetTimeoutMs(),
+	})
 	if err != nil {
-		return nil, status.Error(codes.Unavailable, err.Error())
+		return nil, relayed(err)
 	}
-	return client, nil
+	return &browserpb.GetNodeResponse{Node: nodeMessage(found.GetNode())}, nil
+}
+
+func (server *Server) HumanMouseMove(
+	ctx context.Context,
+	request *browserpb.HumanMouseMoveRequest,
+) (*browserpb.HumanMouseMoveResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	_, err = client.HumanMouseMove(ctx, &browserservicepb.HumanMouseMoveRequest{
+		SessionId: request.GetSessionId(),
+		X:         request.X,
+		Y:         request.Y,
+		Selector:  request.GetSelector(),
+	})
+	if err != nil {
+		return nil, relayed(err)
+	}
+	return &browserpb.HumanMouseMoveResponse{}, nil
+}
+
+func (server *Server) HumanMouseClick(
+	ctx context.Context,
+	request *browserpb.HumanMouseClickRequest,
+) (*browserpb.HumanMouseClickResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	_, err = client.HumanMouseClick(ctx, &browserservicepb.HumanMouseClickRequest{
+		SessionId: request.GetSessionId(),
+		X:         request.X,
+		Y:         request.Y,
+		Selector:  request.GetSelector(),
+		// The two enums are the same enum, declared twice, so the number carries.
+		Button:  browserservicepb.MouseButton(request.GetButton()),
+		Count:   request.GetCount(),
+		DelayMs: request.GetDelayMs(),
+	})
+	if err != nil {
+		return nil, relayed(err)
+	}
+	return &browserpb.HumanMouseClickResponse{}, nil
+}
+
+func (server *Server) HumanType(
+	ctx context.Context,
+	request *browserpb.HumanTypeRequest,
+) (*browserpb.HumanTypeResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	_, err = client.HumanType(ctx, &browserservicepb.HumanTypeRequest{
+		SessionId:  request.GetSessionId(),
+		Text:       request.GetText(),
+		Selector:   request.GetSelector(),
+		DelayMinMs: request.GetDelayMinMs(),
+		DelayMaxMs: request.GetDelayMaxMs(),
+	})
+	if err != nil {
+		return nil, relayed(err)
+	}
+	return &browserpb.HumanTypeResponse{}, nil
+}
+
+func (server *Server) HumanScrollY(
+	ctx context.Context,
+	request *browserpb.HumanScrollYRequest,
+) (*browserpb.HumanScrollYResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	_, err = client.HumanScrollY(ctx, &browserservicepb.HumanScrollYRequest{
+		SessionId: request.GetSessionId(),
+		DeltaY:    request.GetDeltaY(),
+	})
+	if err != nil {
+		return nil, relayed(err)
+	}
+	return &browserpb.HumanScrollYResponse{}, nil
+}
+
+func (server *Server) HumanScrollYTo(
+	ctx context.Context,
+	request *browserpb.HumanScrollYToRequest,
+) (*browserpb.HumanScrollYToResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	_, err = client.HumanScrollYTo(ctx, &browserservicepb.HumanScrollYToRequest{
+		SessionId: request.GetSessionId(),
+		Selector:  request.GetSelector(),
+		Align:     browserservicepb.ScrollAlign(request.GetAlign()),
+	})
+	if err != nil {
+		return nil, relayed(err)
+	}
+	return &browserpb.HumanScrollYToResponse{}, nil
+}
+
+func (server *Server) GetCookies(
+	ctx context.Context,
+	request *browserpb.GetCookiesRequest,
+) (*browserpb.GetCookiesResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	captured, err := client.GetCookies(ctx, &browserservicepb.GetCookiesRequest{
+		SessionId: request.GetSessionId(),
+	})
+	if err != nil {
+		return nil, relayed(err)
+	}
+	return &browserpb.GetCookiesResponse{
+		Cookies: publicCookies(captured.GetCookies()),
+	}, nil
+}
+
+func (server *Server) SetCookies(
+	ctx context.Context,
+	request *browserpb.SetCookiesRequest,
+) (*browserpb.SetCookiesResponse, error) {
+	client, err := server.driving(ctx, request.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	_, err = client.SetCookies(ctx, &browserservicepb.SetCookiesRequest{
+		SessionId: request.GetSessionId(),
+		Cookies:   serviceCookies(request.GetCookies()),
+	})
+	if err != nil {
+		return nil, relayed(err)
+	}
+	return &browserpb.SetCookiesResponse{}, nil
 }
 
 func (server *Server) CloseSession(
@@ -225,149 +297,120 @@ func (server *Server) CloseSession(
 	if err != nil {
 		return nil, err
 	}
-	record, err := server.sessions.Get(ctx, identity.OrganizationID, request.GetSessionId())
-	if err != nil {
-		return nil, status.Error(codes.NotFound, "browser session not found")
-	}
-	if request.GetSaveStorage() && strings.TrimSpace(record.ProfileID) == "" {
-		return nil, status.Error(
-			codes.InvalidArgument,
-			"save_storage needs the session to wear a profile: there is nowhere "+
-				"to save what it collected",
-		)
-	}
-	client, err := server.supervisor.Client(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Unavailable, err.Error())
-	}
-	// Read the jar while there is still a browser holding it.
-	if request.GetSaveStorage() {
-		if err := server.saveCookies(
-			ctx, client, identity.OrganizationID, record.ProfileID, request.GetSessionId(),
-		); err != nil {
-			return nil, err
-		}
-	}
-	if _, err := client.Close(
-		ctx, &browserservicepb.CloseRequest{SessionId: request.GetSessionId()},
+	if err := server.driver.Close(
+		ctx, identity.OrganizationID, request.GetSessionId(), request.GetSaveStorage(),
 	); err != nil {
-		// The browser may already be gone; the record must not outlive it either
-		// way, so this is logged rather than returned.
-		slog.Warn("browser service close failed",
-			"session", request.GetSessionId(), "error", err)
-	}
-	if err := server.sessions.Close(
-		ctx, identity.OrganizationID, request.GetSessionId(),
-	); err != nil {
-		return nil, status.Errorf(codes.Internal, "close session: %v", err)
+		return nil, statusOf(err)
 	}
 	return &browserpb.CloseSessionResponse{}, nil
 }
 
-// persona resolves what the browser will wear, and which browser that makes it.
-//
-// A named profile answers both: its identity says chrome or safari, so the
-// browser field in the request is not consulted at all — two answers that could
-// disagree is one answer too many. Without a profile the caller is saying it
-// does not care to keep anything, and gets a coherent machine drawn for this
-// session alone.
-// The profile's jar comes back with it, because the read that answers what to
-// wear is the same read that says what it remembers.
-func (server *Server) persona(
+// driving authorizes a command against a session and returns the client to
+// relay it with. The lookup doubles as the lease refresh.
+func (server *Server) driving(
 	ctx context.Context,
-	organizationID, profileID, requested string,
-) (browser.Browser, []byte, []browser.Cookie, error) {
-	identity := browser.Identity{}
-	var jar []browser.Cookie
-
-	if strings.TrimSpace(profileID) == "" {
-		claimed, err := browser.ParseBrowser(requested)
-		if err != nil {
-			return "", nil, nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-		if identity, err = browser.EphemeralIdentity(claimed); err != nil {
-			return "", nil, nil, status.Errorf(codes.Internal, "mint an identity: %v", err)
-		}
-	} else {
-		record, err := server.profiles.Get(ctx, organizationID, profileID)
-		if err != nil {
-			// A profile from another organization reads as absent, never forbidden.
-			return "", nil, nil, status.Error(codes.NotFound, "browser profile not found")
-		}
-		identity = record.Identity
-		jar = record.Cookies
-	}
-
-	document, err := json.Marshal(identity)
+	sessionID string,
+) (browserservicepb.BrowserServiceClient, error) {
+	identity, err := server.identify(ctx)
 	if err != nil {
-		return "", nil, nil, status.Errorf(codes.Internal, "encode identity: %v", err)
+		return nil, err
 	}
-	return identity.Browser, document, jar, nil
+	client, err := server.driver.Driving(ctx, identity.OrganizationID, sessionID)
+	if err != nil {
+		return nil, statusOf(err)
+	}
+	return client, nil
 }
 
-// saveCookies reads the session's jar and writes it to the profile.
+// relayed turns a browser service failure into one for the caller.
 //
-// An empty capture is not written. The browser hands back the whole jar, so a
-// write replaces, and a browser that failed to answer looks exactly like one
-// holding nothing — writing that would erase a profile's logins on a bad read.
-// The cost is that a run which genuinely signed out does not persist the
-// signing out, which is the cheaper of the two mistakes.
-func (server *Server) saveCookies(
-	ctx context.Context,
-	client browserservicepb.BrowserServiceClient,
-	organizationID, profileID, sessionID string,
-) error {
-	captured, err := client.GetCookies(
-		ctx, &browserservicepb.GetCookiesRequest{SessionId: sessionID},
-	)
-	if err != nil {
-		return status.Errorf(codes.Unavailable, "capture cookies: %v", err)
+// A command the browser refused is the browser's answer, not this hop's, so its
+// code and message are kept: a selector that matched nothing has to read as
+// NotFound rather than as the service being down. Anything without a status is
+// the hop itself failing, and that is Unavailable.
+func relayed(err error) error {
+	if answered, ok := status.FromError(err); ok {
+		return answered.Err()
 	}
-	if len(captured.GetCookies()) == 0 {
-		slog.Warn("browser session captured no cookies, so the profile is left as it was",
-			"session", sessionID, "profile", profileID)
+	return status.Errorf(codes.Unavailable, "browser service: %v", err)
+}
+
+// statusOf gives a domain failure its gRPC code.
+func statusOf(err error) error {
+	switch {
+	case errors.Is(err, browser.ErrSessionNotFound), errors.Is(err, browser.ErrNotFound):
+		return status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, browser.ErrInvalid):
+		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, browser.ErrUnavailable):
+		return status.Error(codes.Unavailable, err.Error())
+	default:
+		return status.Error(codes.Internal, err.Error())
+	}
+}
+
+// nodeMessage carries an element across the two contracts. Absent stays absent:
+// a response with no node is what a selector that matched nothing looks like.
+func nodeMessage(found *browserservicepb.Node) *browserpb.Node {
+	if found == nil {
 		return nil
 	}
-	if _, err := server.profiles.SaveCookies(
-		ctx, organizationID, profileID, domainCookies(captured.GetCookies()),
-	); err != nil {
-		return status.Errorf(codes.Internal, "save cookies: %v", err)
+	attributes := make([]*browserpb.Attribute, 0, len(found.GetAttributes()))
+	for _, attribute := range found.GetAttributes() {
+		attributes = append(attributes, &browserpb.Attribute{
+			Name:  attribute.GetName(),
+			Value: attribute.GetValue(),
+		})
 	}
-	return nil
+	return &browserpb.Node{
+		NodeId:     found.GetNodeId(),
+		LocalName:  found.GetLocalName(),
+		NodeType:   found.GetNodeType(),
+		Attributes: attributes,
+		Text:       found.GetText(),
+		Html:       found.GetHtml(),
+		X:          found.GetX(),
+		Y:          found.GetY(),
+		Width:      found.GetWidth(),
+		Height:     found.GetHeight(),
+	}
 }
 
-func cookieMessages(jar []browser.Cookie) []*browserservicepb.Cookie {
-	messages := make([]*browserservicepb.Cookie, 0, len(jar))
+// publicCookies and serviceCookies are the same jar in the two contracts. They
+// exist because the messages are declared twice rather than shared, which is
+// what keeps the public contract from moving whenever the internal one does.
+func publicCookies(jar []*browserservicepb.Cookie) []*browserpb.Cookie {
+	messages := make([]*browserpb.Cookie, 0, len(jar))
 	for _, cookie := range jar {
-		messages = append(messages, &browserservicepb.Cookie{
-			Name:     cookie.Name,
-			Value:    cookie.Value,
-			Domain:   cookie.Domain,
-			Path:     cookie.Path,
+		messages = append(messages, &browserpb.Cookie{
+			Name:     cookie.GetName(),
+			Value:    cookie.GetValue(),
+			Domain:   cookie.GetDomain(),
+			Path:     cookie.GetPath(),
 			Expires:  cookie.Expires,
-			Secure:   cookie.Secure,
-			HttpOnly: cookie.HTTPOnly,
-			SameSite: cookie.SameSite,
+			Secure:   cookie.GetSecure(),
+			HttpOnly: cookie.GetHttpOnly(),
+			SameSite: cookie.GetSameSite(),
 		})
 	}
 	return messages
 }
 
-func domainCookies(messages []*browserservicepb.Cookie) []browser.Cookie {
-	jar := make([]browser.Cookie, 0, len(messages))
-	for _, message := range messages {
-		jar = append(jar, browser.Cookie{
-			Name:     message.GetName(),
-			Value:    message.GetValue(),
-			Domain:   message.GetDomain(),
-			Path:     message.GetPath(),
-			Expires:  message.Expires,
-			Secure:   message.GetSecure(),
-			HTTPOnly: message.GetHttpOnly(),
-			SameSite: message.GetSameSite(),
+func serviceCookies(jar []*browserpb.Cookie) []*browserservicepb.Cookie {
+	messages := make([]*browserservicepb.Cookie, 0, len(jar))
+	for _, cookie := range jar {
+		messages = append(messages, &browserservicepb.Cookie{
+			Name:     cookie.GetName(),
+			Value:    cookie.GetValue(),
+			Domain:   cookie.GetDomain(),
+			Path:     cookie.GetPath(),
+			Expires:  cookie.Expires,
+			Secure:   cookie.GetSecure(),
+			HttpOnly: cookie.GetHttpOnly(),
+			SameSite: cookie.GetSameSite(),
 		})
 	}
-	return jar
+	return messages
 }
 
 // identify turns the token into who the caller is. Nothing else in the request
@@ -402,7 +445,7 @@ func sessionMessage(record browser.Session) *browserpb.Session {
 		BrowserProfileId: record.ProfileID,
 		Browser:          string(record.Browser),
 		Status:           string(record.Status),
-		StartedAt:        record.StartedAt.UnixMilli(),
+		StartedAt:        record.StartedAt.Unix(),
 	}
 }
 

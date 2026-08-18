@@ -481,6 +481,234 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/browser-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The organization's live sessions, newest first. */
+        get: operations["listBrowserSessions"];
+        put?: never;
+        /** @description Opens a browser and returns the session. A session opened here belongs to the organization and names no app and no execution: an API key is not a run. It is driven by the command endpoints below and must be closed — one left idle leaves the list when its lease expires, but the browser behind it runs until then. */
+        post: operations["openBrowserSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getBrowserSession"];
+        put?: never;
+        post?: never;
+        /** @description Stops the browser and drops the session. Both: forgetting the record without stopping the browser would leave a process nothing can reach again. */
+        delete: operations["closeBrowserSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/display": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        /** @description A WebSocket carrying RFB, for a viewer such as noVNC. Not an HTTP response: the 101 upgrade happens inside the authenticated group, so a refused viewer never sees a frame. A host with no framebuffer answers 501 rather than dialing a port nothing is serving. */
+        get: operations["streamBrowserDisplay"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/navigate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Drives the session to a URL. */
+        post: operations["navigateBrowserSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/wait-for-navigation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Blocks until the page the session is on has navigated. */
+        post: operations["waitForBrowserNavigation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/node": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        /** @description Describes the first element a selector matches. A read of the page, so a GET, and the selector is short enough to live in the query string. */
+        get: operations["getBrowserNode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/mouse-move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Walks the pointer somewhere the way a hand would — along a Bezier curve drawn fresh for this move, at a pace that varies step to step. A selector or a point is required; a move to nowhere means nothing. */
+        post: operations["moveBrowserMouse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/click": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Walks the pointer somewhere and presses it. With neither a selector nor a point it presses where the pointer already is, which is what a second click on something just clicked means. */
+        post: operations["clickBrowserMouse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/type": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Types, one key at a time, at a hand's pace. Each key is held for a length drawn fresh for it, and the gap before the next follows from that. */
+        post: operations["typeIntoBrowser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/scroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Turns the wheel down the page, eased to a stop rather than arriving in one jump. */
+        post: operations["scrollBrowser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/scroll-to": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Scrolls until an element rests where it was asked for. */
+        post: operations["scrollBrowserTo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/browser-sessions/{session_id}/cookies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        /** @description The browser's whole jar, browser-wide rather than per-origin — a partial read written back would delete the rest. Values are not redacted the way a profile's are, which is why this takes browser_sessions:write. */
+        get: operations["getBrowserCookies"];
+        /** @description Puts a jar into the browser, on top of what it already holds. */
+        put: operations["setBrowserCookies"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/browser-profiles": {
         parameters: {
             query?: never;
@@ -823,6 +1051,52 @@ export interface components {
          * @enum {string}
          */
         BrowserKind: "chrome" | "safari";
+        /**
+         * @description One browser that is open now. Live state, not a record: it lives under a lease, so a worker that dies takes its sessions with it rather than leaving rows that claim to be running, and nothing reads a closed one. Driving a session renews the lease, which is why there is no heartbeat.
+         *     Where the browser runs is never in the response. A viewer names a session and asks the control plane to stream it — nothing is happening on a port a client knows about.
+         */
+        BrowserSession: {
+            id: string;
+            /** @description The app whose execution opened it. Empty for a session opened through this API: an API key is not a run. */
+            app_id: string;
+            execution_id?: string;
+            /** @description The profile it wears, absent for a plain browser. */
+            browser_profile_id?: string;
+            browser: components["schemas"]["BrowserKind"];
+            /** @enum {string} */
+            status: "starting" | "live" | "failed";
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description One element as the browser found it. Children are not carried: ask for one by selector instead, because a subtree is a response nobody sized. */
+        BrowserNode: {
+            /** @description The browser's own id for it, valid until the document changes. Reported so two matches can be told apart, not so one can be addressed — every command names an element by selector. */
+            node_id: number;
+            /** @description The tag, as the DOM spells a local name: lower case for HTML. */
+            local_name: string;
+            /** @description The DOM's own numbering: 1 is an element, 3 is text. */
+            node_type: number;
+            attributes: {
+                [key: string]: string;
+            };
+            /** @description What a reader would see, which is not what the markup holds. */
+            text: string;
+            html: string;
+            /** @description The bounding box, in viewport coordinates, at the moment of the read. A scroll moves it, so it is worth no more than that instant. */
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+        };
+        /** @description Where a pointer command is aimed. A selector wins over a point: an element knows where it is, and a caller holding a rectangle from before the last scroll does not. */
+        BrowserPointer: {
+            selector?: string;
+            /** @description Viewport coordinates. Absent is not the same as zero, which is a corner of the page somebody might mean. x and y go together. */
+            x?: number;
+            y?: number;
+        };
         /** @description A browser persona. Cookie values and the identity proxy are secrets and are never returned here; GET .../state returns them. */
         BrowserProfile: {
             id: string;
@@ -1107,6 +1381,7 @@ export interface components {
         Limit: number;
         DeploymentID: string;
         ExecutionID: string;
+        SessionId: string;
     };
     requestBodies: never;
     headers: never;
@@ -2093,6 +2368,438 @@ export interface operations {
                     "application/json": components["schemas"]["IdentityCatalog"];
                 };
             };
+        };
+    };
+    listBrowserSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live browser sessions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        browser_sessions: components["schemas"]["BrowserSession"][];
+                    };
+                };
+            };
+        };
+    };
+    openBrowserSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Read only when no profile is named: a profile's identity already says which browser it is, and two answers that could disagree is one answer too many. */
+                    browser?: components["schemas"]["BrowserKind"];
+                    /** @description The profile to wear. Absent still gets a persona — one is drawn for the session — it just is not kept, along with the cookies it collected. */
+                    browser_profile_id?: string;
+                    /** @description Start from what the profile remembers. Needs a profile named above; there is nothing to load without one. */
+                    load_storage?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Session opened. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserSession"];
+                };
+            };
+            422: components["responses"]["Problem"];
+            502: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getBrowserSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Browser session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserSession"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    closeBrowserSession: {
+        parameters: {
+            query?: {
+                /** @description Capture what the browser holds into the profile it wears. The capture replaces the profile's state rather than merging into it, so a cookie the browser no longer has is a cookie the profile no longer has. Needs the session to wear a profile. */
+                save_storage?: boolean;
+            };
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session closed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    streamBrowserDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching to the RFB stream. */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            501: components["responses"]["Problem"];
+            502: components["responses"]["Problem"];
+        };
+    };
+    navigateBrowserSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    url: string;
+                    /** @description Absent sends no Referer, which is not the same as sending an empty one. */
+                    referer?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Navigated. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            502: components["responses"]["Problem"];
+        };
+    };
+    waitForBrowserNavigation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description How far into the navigation to wait. Absent is load.
+                     * @enum {string}
+                     */
+                    wait_until?: "commit" | "dom_content_loaded" | "load" | "network_almost_idle" | "network_idle";
+                    /** @description Zero leaves the browser's own timeout in place. */
+                    timeout_ms?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description The navigation happened. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            504: components["responses"]["Problem"];
+        };
+    };
+    getBrowserNode: {
+        parameters: {
+            query: {
+                /** @description A CSS selector. */
+                selector: string;
+                /** @description How long to keep looking. Absent looks once, which is the difference between an element that is not there and one that is not there yet. */
+                timeout_ms?: number;
+            };
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The element. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserNode"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    moveBrowserMouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserPointer"];
+            };
+        };
+        responses: {
+            /** @description The pointer moved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    clickBrowserMouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserPointer"] & {
+                    /**
+                     * @description Absent is left.
+                     * @enum {string}
+                     */
+                    button?: "left" | "middle" | "right" | "back" | "forward";
+                    /** @description Absent is one click. Two is a double click, with a pause between that is drawn rather than fixed. */
+                    count?: number;
+                    /** @description How long the button is held. Absent leaves it to be drawn per click, which is the point — a press that is always the same length is the tell. */
+                    delay_ms?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Clicked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    typeIntoBrowser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text: string;
+                    /** @description An element to type into. It is clicked, humanly, and the click is what focuses it — a page that would not accept the click would not have accepted the typing either. Absent, the text goes wherever focus already is. */
+                    selector?: string;
+                    /** @description How long each key is held, drawn from this range. Both absent is an average typist, roughly 60 to 140 ms; a faster one is nearer 30 to 80, a careful one 100 to 250. */
+                    delay_min_ms?: number;
+                    delay_max_ms?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Typed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    scrollBrowser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Down is positive. Only the y axis: the browser's own scroll takes an x distance and drops it. */
+                    delta_y: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Scrolled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    scrollBrowserTo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    selector: string;
+                    /**
+                     * @description Where in the viewport the element comes to rest. Absent is center, which is where a person scrolls something they mean to look at.
+                     * @enum {string}
+                     */
+                    align?: "top" | "center" | "bottom";
+                };
+            };
+        };
+        responses: {
+            /** @description Scrolled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getBrowserCookies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The jar. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        cookies: components["schemas"]["Cookie"][];
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    setBrowserCookies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    cookies: components["schemas"]["Cookie"][];
+                };
+            };
+        };
+        responses: {
+            /** @description The jar went in. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
     listBrowserProfiles: {

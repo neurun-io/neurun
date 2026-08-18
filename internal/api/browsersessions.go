@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -44,15 +46,55 @@ func (server *Server) getBrowserSession(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, dto.NewBrowserSessionResponse(record))
 }
 
+// closeBrowserSession stops the browser and drops the session.
+//
+// It goes through the driver rather than only forgetting the record, because a
+// forgotten record leaves a browser running that nothing can reach again — the
+// process would live until the host restarts. Without a driver configured there
+// is no browser to stop and forgetting is all there is.
+//
+// `save_storage` captures what the browser holds into the profile it wears,
+// replacing what was there rather than merging into it, so a cookie the browser
+// no longer has is a cookie the profile no longer has. It needs a profile.
 func (server *Server) closeBrowserSession(ctx *gin.Context) {
-	if err := server.browserSessions.Close(
-		ctx.Request.Context(), principalOf(ctx).OrganizationID,
-		ctx.Param("session_id"),
-	); err != nil {
+	saveStorage, ok := queryFlag(ctx, "save_storage")
+	if !ok {
+		return
+	}
+	organizationID := principalOf(ctx).OrganizationID
+	sessionID := ctx.Param("session_id")
+
+	var err error
+	if server.browserDriver != nil {
+		err = server.browserDriver.Close(
+			ctx.Request.Context(), organizationID, sessionID, saveStorage,
+		)
+	} else if saveStorage {
+		invalidRequest(ctx, "browsers are not configured on this server, so "+
+			"there is nothing holding state to save")
+		return
+	} else {
+		err = server.browserSessions.Close(ctx.Request.Context(), organizationID, sessionID)
+	}
+	if err != nil {
 		writeError(ctx, err)
 		return
 	}
 	ctx.Status(http.StatusNoContent)
+}
+
+// queryFlag reads an optional boolean query parameter.
+func queryFlag(ctx *gin.Context, name string) (bool, bool) {
+	raw := strings.TrimSpace(ctx.Query(name))
+	if raw == "" {
+		return false, true
+	}
+	parsed, err := strconv.ParseBool(raw)
+	if err != nil {
+		invalidQuery(ctx, name+" must be true or false")
+		return false, false
+	}
+	return parsed, true
 }
 
 // streamBrowserDisplay pipes the session's VNC server to the operator.

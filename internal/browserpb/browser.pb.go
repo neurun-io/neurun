@@ -80,6 +80,123 @@ func (WaitUntil) EnumDescriptor() ([]byte, []int) {
 	return file_proto_browser_proto_rawDescGZIP(), []int{0}
 }
 
+// MouseButton mirrors the browser's buttons. Unspecified is left, which is the
+// button anyone means when they do not say. The numbers are deliberately not
+// the browser's own — it starts left at zero, and zero here has to mean
+// unspecified — so this is translated by name rather than cast.
+type MouseButton int32
+
+const (
+	MouseButton_MOUSE_BUTTON_UNSPECIFIED MouseButton = 0
+	MouseButton_MOUSE_BUTTON_LEFT        MouseButton = 1
+	MouseButton_MOUSE_BUTTON_MIDDLE      MouseButton = 2
+	MouseButton_MOUSE_BUTTON_RIGHT       MouseButton = 3
+	MouseButton_MOUSE_BUTTON_BACK        MouseButton = 4
+	MouseButton_MOUSE_BUTTON_FORWARD     MouseButton = 5
+)
+
+// Enum value maps for MouseButton.
+var (
+	MouseButton_name = map[int32]string{
+		0: "MOUSE_BUTTON_UNSPECIFIED",
+		1: "MOUSE_BUTTON_LEFT",
+		2: "MOUSE_BUTTON_MIDDLE",
+		3: "MOUSE_BUTTON_RIGHT",
+		4: "MOUSE_BUTTON_BACK",
+		5: "MOUSE_BUTTON_FORWARD",
+	}
+	MouseButton_value = map[string]int32{
+		"MOUSE_BUTTON_UNSPECIFIED": 0,
+		"MOUSE_BUTTON_LEFT":        1,
+		"MOUSE_BUTTON_MIDDLE":      2,
+		"MOUSE_BUTTON_RIGHT":       3,
+		"MOUSE_BUTTON_BACK":        4,
+		"MOUSE_BUTTON_FORWARD":     5,
+	}
+)
+
+func (x MouseButton) Enum() *MouseButton {
+	p := new(MouseButton)
+	*p = x
+	return p
+}
+
+func (x MouseButton) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MouseButton) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_browser_proto_enumTypes[1].Descriptor()
+}
+
+func (MouseButton) Type() protoreflect.EnumType {
+	return &file_proto_browser_proto_enumTypes[1]
+}
+
+func (x MouseButton) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MouseButton.Descriptor instead.
+func (MouseButton) EnumDescriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{1}
+}
+
+// ScrollAlign is where in the viewport an element should come to rest.
+// Unspecified is the centre, which is where a person scrolls something they
+// mean to look at.
+type ScrollAlign int32
+
+const (
+	ScrollAlign_SCROLL_ALIGN_UNSPECIFIED ScrollAlign = 0
+	ScrollAlign_SCROLL_ALIGN_TOP         ScrollAlign = 1
+	ScrollAlign_SCROLL_ALIGN_CENTER      ScrollAlign = 2
+	ScrollAlign_SCROLL_ALIGN_BOTTOM      ScrollAlign = 3
+)
+
+// Enum value maps for ScrollAlign.
+var (
+	ScrollAlign_name = map[int32]string{
+		0: "SCROLL_ALIGN_UNSPECIFIED",
+		1: "SCROLL_ALIGN_TOP",
+		2: "SCROLL_ALIGN_CENTER",
+		3: "SCROLL_ALIGN_BOTTOM",
+	}
+	ScrollAlign_value = map[string]int32{
+		"SCROLL_ALIGN_UNSPECIFIED": 0,
+		"SCROLL_ALIGN_TOP":         1,
+		"SCROLL_ALIGN_CENTER":      2,
+		"SCROLL_ALIGN_BOTTOM":      3,
+	}
+)
+
+func (x ScrollAlign) Enum() *ScrollAlign {
+	p := new(ScrollAlign)
+	*p = x
+	return p
+}
+
+func (x ScrollAlign) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ScrollAlign) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_browser_proto_enumTypes[2].Descriptor()
+}
+
+func (ScrollAlign) Type() protoreflect.EnumType {
+	return &file_proto_browser_proto_enumTypes[2]
+}
+
+func (x ScrollAlign) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ScrollAlign.Descriptor instead.
+func (ScrollAlign) EnumDescriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{2}
+}
+
 type ReportResultRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// What the app returned, as JSON. The worker checks it against the
@@ -526,6 +643,1117 @@ func (*WaitForNavigationResponse) Descriptor() ([]byte, []int) {
 	return file_proto_browser_proto_rawDescGZIP(), []int{7}
 }
 
+type GetNodeRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// A CSS selector. The first element it matches is the one described.
+	Selector string `protobuf:"bytes,2,opt,name=selector,proto3" json:"selector,omitempty"`
+	// How long to keep looking. Zero looks once, which is the difference between
+	// an element that is not there and one that is not there yet.
+	TimeoutMs     uint32 `protobuf:"varint,3,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetNodeRequest) Reset() {
+	*x = GetNodeRequest{}
+	mi := &file_proto_browser_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetNodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNodeRequest) ProtoMessage() {}
+
+func (x *GetNodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNodeRequest.ProtoReflect.Descriptor instead.
+func (*GetNodeRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetNodeRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *GetNodeRequest) GetSelector() string {
+	if x != nil {
+		return x.Selector
+	}
+	return ""
+}
+
+func (x *GetNodeRequest) GetTimeoutMs() uint32 {
+	if x != nil {
+		return x.TimeoutMs
+	}
+	return 0
+}
+
+type GetNodeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Node          *Node                  `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetNodeResponse) Reset() {
+	*x = GetNodeResponse{}
+	mi := &file_proto_browser_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetNodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNodeResponse) ProtoMessage() {}
+
+func (x *GetNodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNodeResponse.ProtoReflect.Descriptor instead.
+func (*GetNodeResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetNodeResponse) GetNode() *Node {
+	if x != nil {
+		return x.Node
+	}
+	return nil
+}
+
+// Node is an element as the browser found it, flattened. Children are not
+// carried: a caller that wants one asks for it by selector, and a subtree is a
+// response nobody sized.
+type Node struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The browser's own id for it, valid until the document changes. Reported so
+	// a caller can tell two matches apart, not so it can address one — every
+	// command here names an element by selector.
+	NodeId int64 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	// The tag, as the DOM spells a local name: lower case for HTML.
+	LocalName string `protobuf:"bytes,2,opt,name=local_name,json=localName,proto3" json:"local_name,omitempty"`
+	// The DOM's own numbering: 1 is an element, 3 is text.
+	NodeType   uint32       `protobuf:"varint,3,opt,name=node_type,json=nodeType,proto3" json:"node_type,omitempty"`
+	Attributes []*Attribute `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty"`
+	// What a reader would see, which is not the same as what the markup holds.
+	Text string `protobuf:"bytes,5,opt,name=text,proto3" json:"text,omitempty"`
+	Html string `protobuf:"bytes,6,opt,name=html,proto3" json:"html,omitempty"`
+	// The bounding box, in viewport coordinates, at the moment of the read. A
+	// scroll moves it, so it is worth no more than the instant it was taken.
+	X             float64 `protobuf:"fixed64,7,opt,name=x,proto3" json:"x,omitempty"`
+	Y             float64 `protobuf:"fixed64,8,opt,name=y,proto3" json:"y,omitempty"`
+	Width         float64 `protobuf:"fixed64,9,opt,name=width,proto3" json:"width,omitempty"`
+	Height        float64 `protobuf:"fixed64,10,opt,name=height,proto3" json:"height,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Node) Reset() {
+	*x = Node{}
+	mi := &file_proto_browser_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Node) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Node) ProtoMessage() {}
+
+func (x *Node) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Node.ProtoReflect.Descriptor instead.
+func (*Node) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *Node) GetNodeId() int64 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
+func (x *Node) GetLocalName() string {
+	if x != nil {
+		return x.LocalName
+	}
+	return ""
+}
+
+func (x *Node) GetNodeType() uint32 {
+	if x != nil {
+		return x.NodeType
+	}
+	return 0
+}
+
+func (x *Node) GetAttributes() []*Attribute {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
+func (x *Node) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *Node) GetHtml() string {
+	if x != nil {
+		return x.Html
+	}
+	return ""
+}
+
+func (x *Node) GetX() float64 {
+	if x != nil {
+		return x.X
+	}
+	return 0
+}
+
+func (x *Node) GetY() float64 {
+	if x != nil {
+		return x.Y
+	}
+	return 0
+}
+
+func (x *Node) GetWidth() float64 {
+	if x != nil {
+		return x.Width
+	}
+	return 0
+}
+
+func (x *Node) GetHeight() float64 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+type Attribute struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Attribute) Reset() {
+	*x = Attribute{}
+	mi := &file_proto_browser_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Attribute) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Attribute) ProtoMessage() {}
+
+func (x *Attribute) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Attribute.ProtoReflect.Descriptor instead.
+func (*Attribute) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *Attribute) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Attribute) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+type HumanMouseMoveRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// Viewport coordinates. Absent is not the same as zero, which is a corner of
+	// the page somebody might mean.
+	X *float64 `protobuf:"fixed64,2,opt,name=x,proto3,oneof" json:"x,omitempty"`
+	Y *float64 `protobuf:"fixed64,3,opt,name=y,proto3,oneof" json:"y,omitempty"`
+	// An element to move to instead. Its centre replaces x and y, because an
+	// element knows where it is and a caller holding a stale rectangle does not.
+	Selector      string `protobuf:"bytes,4,opt,name=selector,proto3" json:"selector,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanMouseMoveRequest) Reset() {
+	*x = HumanMouseMoveRequest{}
+	mi := &file_proto_browser_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanMouseMoveRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanMouseMoveRequest) ProtoMessage() {}
+
+func (x *HumanMouseMoveRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanMouseMoveRequest.ProtoReflect.Descriptor instead.
+func (*HumanMouseMoveRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *HumanMouseMoveRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *HumanMouseMoveRequest) GetX() float64 {
+	if x != nil && x.X != nil {
+		return *x.X
+	}
+	return 0
+}
+
+func (x *HumanMouseMoveRequest) GetY() float64 {
+	if x != nil && x.Y != nil {
+		return *x.Y
+	}
+	return 0
+}
+
+func (x *HumanMouseMoveRequest) GetSelector() string {
+	if x != nil {
+		return x.Selector
+	}
+	return ""
+}
+
+type HumanMouseMoveResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanMouseMoveResponse) Reset() {
+	*x = HumanMouseMoveResponse{}
+	mi := &file_proto_browser_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanMouseMoveResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanMouseMoveResponse) ProtoMessage() {}
+
+func (x *HumanMouseMoveResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanMouseMoveResponse.ProtoReflect.Descriptor instead.
+func (*HumanMouseMoveResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{13}
+}
+
+type HumanMouseClickRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	X         *float64               `protobuf:"fixed64,2,opt,name=x,proto3,oneof" json:"x,omitempty"`
+	Y         *float64               `protobuf:"fixed64,3,opt,name=y,proto3,oneof" json:"y,omitempty"`
+	// An element to click. Its centre replaces x and y.
+	Selector string      `protobuf:"bytes,4,opt,name=selector,proto3" json:"selector,omitempty"`
+	Button   MouseButton `protobuf:"varint,5,opt,name=button,proto3,enum=neurun.browser.v1.MouseButton" json:"button,omitempty"`
+	// Zero is one click. Two is a double click, with a pause between that is
+	// drawn rather than fixed.
+	Count uint32 `protobuf:"varint,6,opt,name=count,proto3" json:"count,omitempty"`
+	// How long the button is held. Zero leaves it to be drawn per click, which is
+	// the point — a hold that is always the same is the tell.
+	DelayMs       uint32 `protobuf:"varint,7,opt,name=delay_ms,json=delayMs,proto3" json:"delay_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanMouseClickRequest) Reset() {
+	*x = HumanMouseClickRequest{}
+	mi := &file_proto_browser_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanMouseClickRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanMouseClickRequest) ProtoMessage() {}
+
+func (x *HumanMouseClickRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanMouseClickRequest.ProtoReflect.Descriptor instead.
+func (*HumanMouseClickRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *HumanMouseClickRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *HumanMouseClickRequest) GetX() float64 {
+	if x != nil && x.X != nil {
+		return *x.X
+	}
+	return 0
+}
+
+func (x *HumanMouseClickRequest) GetY() float64 {
+	if x != nil && x.Y != nil {
+		return *x.Y
+	}
+	return 0
+}
+
+func (x *HumanMouseClickRequest) GetSelector() string {
+	if x != nil {
+		return x.Selector
+	}
+	return ""
+}
+
+func (x *HumanMouseClickRequest) GetButton() MouseButton {
+	if x != nil {
+		return x.Button
+	}
+	return MouseButton_MOUSE_BUTTON_UNSPECIFIED
+}
+
+func (x *HumanMouseClickRequest) GetCount() uint32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *HumanMouseClickRequest) GetDelayMs() uint32 {
+	if x != nil {
+		return x.DelayMs
+	}
+	return 0
+}
+
+type HumanMouseClickResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanMouseClickResponse) Reset() {
+	*x = HumanMouseClickResponse{}
+	mi := &file_proto_browser_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanMouseClickResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanMouseClickResponse) ProtoMessage() {}
+
+func (x *HumanMouseClickResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanMouseClickResponse.ProtoReflect.Descriptor instead.
+func (*HumanMouseClickResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{15}
+}
+
+type HumanTypeRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Text      string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	// An element to type into. It is clicked, the same way the browser clicks
+	// anything, and the click is what focuses it — a page that would not accept
+	// the click would not have accepted the typing either.
+	Selector string `protobuf:"bytes,3,opt,name=selector,proto3" json:"selector,omitempty"`
+	// The gap between keys, drawn fresh for each one from this range. Both zero
+	// is an average typist. A range with min above max is refused rather than
+	// reordered.
+	DelayMinMs    uint32 `protobuf:"varint,4,opt,name=delay_min_ms,json=delayMinMs,proto3" json:"delay_min_ms,omitempty"`
+	DelayMaxMs    uint32 `protobuf:"varint,5,opt,name=delay_max_ms,json=delayMaxMs,proto3" json:"delay_max_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanTypeRequest) Reset() {
+	*x = HumanTypeRequest{}
+	mi := &file_proto_browser_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanTypeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanTypeRequest) ProtoMessage() {}
+
+func (x *HumanTypeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanTypeRequest.ProtoReflect.Descriptor instead.
+func (*HumanTypeRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *HumanTypeRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *HumanTypeRequest) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *HumanTypeRequest) GetSelector() string {
+	if x != nil {
+		return x.Selector
+	}
+	return ""
+}
+
+func (x *HumanTypeRequest) GetDelayMinMs() uint32 {
+	if x != nil {
+		return x.DelayMinMs
+	}
+	return 0
+}
+
+func (x *HumanTypeRequest) GetDelayMaxMs() uint32 {
+	if x != nil {
+		return x.DelayMaxMs
+	}
+	return 0
+}
+
+type HumanTypeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanTypeResponse) Reset() {
+	*x = HumanTypeResponse{}
+	mi := &file_proto_browser_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanTypeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanTypeResponse) ProtoMessage() {}
+
+func (x *HumanTypeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanTypeResponse.ProtoReflect.Descriptor instead.
+func (*HumanTypeResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{17}
+}
+
+type HumanScrollYRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// Down is positive. Only the y axis: the browser's scroll takes an x distance
+	// and drops it, and a field nothing reads is worse than no field.
+	DeltaY        int32 `protobuf:"zigzag32,2,opt,name=delta_y,json=deltaY,proto3" json:"delta_y,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanScrollYRequest) Reset() {
+	*x = HumanScrollYRequest{}
+	mi := &file_proto_browser_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanScrollYRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanScrollYRequest) ProtoMessage() {}
+
+func (x *HumanScrollYRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanScrollYRequest.ProtoReflect.Descriptor instead.
+func (*HumanScrollYRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *HumanScrollYRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *HumanScrollYRequest) GetDeltaY() int32 {
+	if x != nil {
+		return x.DeltaY
+	}
+	return 0
+}
+
+type HumanScrollYResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanScrollYResponse) Reset() {
+	*x = HumanScrollYResponse{}
+	mi := &file_proto_browser_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanScrollYResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanScrollYResponse) ProtoMessage() {}
+
+func (x *HumanScrollYResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanScrollYResponse.ProtoReflect.Descriptor instead.
+func (*HumanScrollYResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{19}
+}
+
+type HumanScrollYToRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Selector      string                 `protobuf:"bytes,2,opt,name=selector,proto3" json:"selector,omitempty"`
+	Align         ScrollAlign            `protobuf:"varint,3,opt,name=align,proto3,enum=neurun.browser.v1.ScrollAlign" json:"align,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanScrollYToRequest) Reset() {
+	*x = HumanScrollYToRequest{}
+	mi := &file_proto_browser_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanScrollYToRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanScrollYToRequest) ProtoMessage() {}
+
+func (x *HumanScrollYToRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanScrollYToRequest.ProtoReflect.Descriptor instead.
+func (*HumanScrollYToRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *HumanScrollYToRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *HumanScrollYToRequest) GetSelector() string {
+	if x != nil {
+		return x.Selector
+	}
+	return ""
+}
+
+func (x *HumanScrollYToRequest) GetAlign() ScrollAlign {
+	if x != nil {
+		return x.Align
+	}
+	return ScrollAlign_SCROLL_ALIGN_UNSPECIFIED
+}
+
+type HumanScrollYToResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HumanScrollYToResponse) Reset() {
+	*x = HumanScrollYToResponse{}
+	mi := &file_proto_browser_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HumanScrollYToResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HumanScrollYToResponse) ProtoMessage() {}
+
+func (x *HumanScrollYToResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HumanScrollYToResponse.ProtoReflect.Descriptor instead.
+func (*HumanScrollYToResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{21}
+}
+
+// Cookie is one cookie as the browser holds it, in the profile's own shape.
+type Cookie struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Name   string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Value  string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	Domain string                 `protobuf:"bytes,3,opt,name=domain,proto3" json:"domain,omitempty"`
+	Path   string                 `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`
+	// Unix seconds. Absent for a session cookie.
+	Expires       *float64 `protobuf:"fixed64,5,opt,name=expires,proto3,oneof" json:"expires,omitempty"`
+	Secure        bool     `protobuf:"varint,6,opt,name=secure,proto3" json:"secure,omitempty"`
+	HttpOnly      bool     `protobuf:"varint,7,opt,name=http_only,json=httpOnly,proto3" json:"http_only,omitempty"`
+	SameSite      string   `protobuf:"bytes,8,opt,name=same_site,json=sameSite,proto3" json:"same_site,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Cookie) Reset() {
+	*x = Cookie{}
+	mi := &file_proto_browser_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Cookie) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Cookie) ProtoMessage() {}
+
+func (x *Cookie) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Cookie.ProtoReflect.Descriptor instead.
+func (*Cookie) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *Cookie) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Cookie) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *Cookie) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
+}
+
+func (x *Cookie) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *Cookie) GetExpires() float64 {
+	if x != nil && x.Expires != nil {
+		return *x.Expires
+	}
+	return 0
+}
+
+func (x *Cookie) GetSecure() bool {
+	if x != nil {
+		return x.Secure
+	}
+	return false
+}
+
+func (x *Cookie) GetHttpOnly() bool {
+	if x != nil {
+		return x.HttpOnly
+	}
+	return false
+}
+
+func (x *Cookie) GetSameSite() string {
+	if x != nil {
+		return x.SameSite
+	}
+	return ""
+}
+
+type GetCookiesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCookiesRequest) Reset() {
+	*x = GetCookiesRequest{}
+	mi := &file_proto_browser_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCookiesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCookiesRequest) ProtoMessage() {}
+
+func (x *GetCookiesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCookiesRequest.ProtoReflect.Descriptor instead.
+func (*GetCookiesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *GetCookiesRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type GetCookiesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The whole jar. Empty is ambiguous by nature — a browser holding nothing
+	// and a browser that would not say look the same from here.
+	Cookies       []*Cookie `protobuf:"bytes,1,rep,name=cookies,proto3" json:"cookies,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCookiesResponse) Reset() {
+	*x = GetCookiesResponse{}
+	mi := &file_proto_browser_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCookiesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCookiesResponse) ProtoMessage() {}
+
+func (x *GetCookiesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCookiesResponse.ProtoReflect.Descriptor instead.
+func (*GetCookiesResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *GetCookiesResponse) GetCookies() []*Cookie {
+	if x != nil {
+		return x.Cookies
+	}
+	return nil
+}
+
+type SetCookiesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Cookies       []*Cookie              `protobuf:"bytes,2,rep,name=cookies,proto3" json:"cookies,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetCookiesRequest) Reset() {
+	*x = SetCookiesRequest{}
+	mi := &file_proto_browser_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetCookiesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetCookiesRequest) ProtoMessage() {}
+
+func (x *SetCookiesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetCookiesRequest.ProtoReflect.Descriptor instead.
+func (*SetCookiesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *SetCookiesRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *SetCookiesRequest) GetCookies() []*Cookie {
+	if x != nil {
+		return x.Cookies
+	}
+	return nil
+}
+
+type SetCookiesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetCookiesResponse) Reset() {
+	*x = SetCookiesResponse{}
+	mi := &file_proto_browser_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetCookiesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetCookiesResponse) ProtoMessage() {}
+
+func (x *SetCookiesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_browser_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetCookiesResponse.ProtoReflect.Descriptor instead.
+func (*SetCookiesResponse) Descriptor() ([]byte, []int) {
+	return file_proto_browser_proto_rawDescGZIP(), []int{26}
+}
+
 type CloseSessionRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
@@ -538,7 +1766,7 @@ type CloseSessionRequest struct {
 
 func (x *CloseSessionRequest) Reset() {
 	*x = CloseSessionRequest{}
-	mi := &file_proto_browser_proto_msgTypes[8]
+	mi := &file_proto_browser_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -550,7 +1778,7 @@ func (x *CloseSessionRequest) String() string {
 func (*CloseSessionRequest) ProtoMessage() {}
 
 func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_browser_proto_msgTypes[8]
+	mi := &file_proto_browser_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -563,7 +1791,7 @@ func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseSessionRequest.ProtoReflect.Descriptor instead.
 func (*CloseSessionRequest) Descriptor() ([]byte, []int) {
-	return file_proto_browser_proto_rawDescGZIP(), []int{8}
+	return file_proto_browser_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CloseSessionRequest) GetSessionId() string {
@@ -588,7 +1816,7 @@ type CloseSessionResponse struct {
 
 func (x *CloseSessionResponse) Reset() {
 	*x = CloseSessionResponse{}
-	mi := &file_proto_browser_proto_msgTypes[9]
+	mi := &file_proto_browser_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -600,7 +1828,7 @@ func (x *CloseSessionResponse) String() string {
 func (*CloseSessionResponse) ProtoMessage() {}
 
 func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_browser_proto_msgTypes[9]
+	mi := &file_proto_browser_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -613,7 +1841,7 @@ func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseSessionResponse.ProtoReflect.Descriptor instead.
 func (*CloseSessionResponse) Descriptor() ([]byte, []int) {
-	return file_proto_browser_proto_rawDescGZIP(), []int{9}
+	return file_proto_browser_proto_rawDescGZIP(), []int{28}
 }
 
 var File_proto_browser_proto protoreflect.FileDescriptor
@@ -652,7 +1880,96 @@ const file_proto_browser_proto_rawDesc = "" +
 	"wait_until\x18\x02 \x01(\x0e2\x1c.neurun.browser.v1.WaitUntilR\twaitUntil\x12\x1d\n" +
 	"\n" +
 	"timeout_ms\x18\x03 \x01(\rR\ttimeoutMs\"\x1b\n" +
-	"\x19WaitForNavigationResponse\"W\n" +
+	"\x19WaitForNavigationResponse\"j\n" +
+	"\x0eGetNodeRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1a\n" +
+	"\bselector\x18\x02 \x01(\tR\bselector\x12\x1d\n" +
+	"\n" +
+	"timeout_ms\x18\x03 \x01(\rR\ttimeoutMs\">\n" +
+	"\x0fGetNodeResponse\x12+\n" +
+	"\x04node\x18\x01 \x01(\v2\x17.neurun.browser.v1.NodeR\x04node\"\x8b\x02\n" +
+	"\x04Node\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\x03R\x06nodeId\x12\x1d\n" +
+	"\n" +
+	"local_name\x18\x02 \x01(\tR\tlocalName\x12\x1b\n" +
+	"\tnode_type\x18\x03 \x01(\rR\bnodeType\x12<\n" +
+	"\n" +
+	"attributes\x18\x04 \x03(\v2\x1c.neurun.browser.v1.AttributeR\n" +
+	"attributes\x12\x12\n" +
+	"\x04text\x18\x05 \x01(\tR\x04text\x12\x12\n" +
+	"\x04html\x18\x06 \x01(\tR\x04html\x12\f\n" +
+	"\x01x\x18\a \x01(\x01R\x01x\x12\f\n" +
+	"\x01y\x18\b \x01(\x01R\x01y\x12\x14\n" +
+	"\x05width\x18\t \x01(\x01R\x05width\x12\x16\n" +
+	"\x06height\x18\n" +
+	" \x01(\x01R\x06height\"5\n" +
+	"\tAttribute\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\x84\x01\n" +
+	"\x15HumanMouseMoveRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x11\n" +
+	"\x01x\x18\x02 \x01(\x01H\x00R\x01x\x88\x01\x01\x12\x11\n" +
+	"\x01y\x18\x03 \x01(\x01H\x01R\x01y\x88\x01\x01\x12\x1a\n" +
+	"\bselector\x18\x04 \x01(\tR\bselectorB\x04\n" +
+	"\x02_xB\x04\n" +
+	"\x02_y\"\x18\n" +
+	"\x16HumanMouseMoveResponse\"\xee\x01\n" +
+	"\x16HumanMouseClickRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x11\n" +
+	"\x01x\x18\x02 \x01(\x01H\x00R\x01x\x88\x01\x01\x12\x11\n" +
+	"\x01y\x18\x03 \x01(\x01H\x01R\x01y\x88\x01\x01\x12\x1a\n" +
+	"\bselector\x18\x04 \x01(\tR\bselector\x126\n" +
+	"\x06button\x18\x05 \x01(\x0e2\x1e.neurun.browser.v1.MouseButtonR\x06button\x12\x14\n" +
+	"\x05count\x18\x06 \x01(\rR\x05count\x12\x19\n" +
+	"\bdelay_ms\x18\a \x01(\rR\adelayMsB\x04\n" +
+	"\x02_xB\x04\n" +
+	"\x02_y\"\x19\n" +
+	"\x17HumanMouseClickResponse\"\xa5\x01\n" +
+	"\x10HumanTypeRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12\x1a\n" +
+	"\bselector\x18\x03 \x01(\tR\bselector\x12 \n" +
+	"\fdelay_min_ms\x18\x04 \x01(\rR\n" +
+	"delayMinMs\x12 \n" +
+	"\fdelay_max_ms\x18\x05 \x01(\rR\n" +
+	"delayMaxMs\"\x13\n" +
+	"\x11HumanTypeResponse\"M\n" +
+	"\x13HumanScrollYRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x17\n" +
+	"\adelta_y\x18\x02 \x01(\x11R\x06deltaY\"\x16\n" +
+	"\x14HumanScrollYResponse\"\x88\x01\n" +
+	"\x15HumanScrollYToRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1a\n" +
+	"\bselector\x18\x02 \x01(\tR\bselector\x124\n" +
+	"\x05align\x18\x03 \x01(\x0e2\x1e.neurun.browser.v1.ScrollAlignR\x05align\"\x18\n" +
+	"\x16HumanScrollYToResponse\"\xdb\x01\n" +
+	"\x06Cookie\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12\x16\n" +
+	"\x06domain\x18\x03 \x01(\tR\x06domain\x12\x12\n" +
+	"\x04path\x18\x04 \x01(\tR\x04path\x12\x1d\n" +
+	"\aexpires\x18\x05 \x01(\x01H\x00R\aexpires\x88\x01\x01\x12\x16\n" +
+	"\x06secure\x18\x06 \x01(\bR\x06secure\x12\x1b\n" +
+	"\thttp_only\x18\a \x01(\bR\bhttpOnly\x12\x1b\n" +
+	"\tsame_site\x18\b \x01(\tR\bsameSiteB\n" +
+	"\n" +
+	"\b_expires\"2\n" +
+	"\x11GetCookiesRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"I\n" +
+	"\x12GetCookiesResponse\x123\n" +
+	"\acookies\x18\x01 \x03(\v2\x19.neurun.browser.v1.CookieR\acookies\"g\n" +
+	"\x11SetCookiesRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x123\n" +
+	"\acookies\x18\x02 \x03(\v2\x19.neurun.browser.v1.CookieR\acookies\"\x14\n" +
+	"\x12SetCookiesResponse\"W\n" +
 	"\x13CloseSessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12!\n" +
@@ -664,11 +1981,33 @@ const file_proto_browser_proto_rawDesc = "" +
 	"\x1dWAIT_UNTIL_DOM_CONTENT_LOADED\x10\x02\x12\x13\n" +
 	"\x0fWAIT_UNTIL_LOAD\x10\x03\x12\"\n" +
 	"\x1eWAIT_UNTIL_NETWORK_ALMOST_IDLE\x10\x04\x12\x1b\n" +
-	"\x17WAIT_UNTIL_NETWORK_IDLE\x10\x052\xe2\x03\n" +
+	"\x17WAIT_UNTIL_NETWORK_IDLE\x10\x05*\xa4\x01\n" +
+	"\vMouseButton\x12\x1c\n" +
+	"\x18MOUSE_BUTTON_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11MOUSE_BUTTON_LEFT\x10\x01\x12\x17\n" +
+	"\x13MOUSE_BUTTON_MIDDLE\x10\x02\x12\x16\n" +
+	"\x12MOUSE_BUTTON_RIGHT\x10\x03\x12\x15\n" +
+	"\x11MOUSE_BUTTON_BACK\x10\x04\x12\x18\n" +
+	"\x14MOUSE_BUTTON_FORWARD\x10\x05*s\n" +
+	"\vScrollAlign\x12\x1c\n" +
+	"\x18SCROLL_ALIGN_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10SCROLL_ALIGN_TOP\x10\x01\x12\x17\n" +
+	"\x13SCROLL_ALIGN_CENTER\x10\x02\x12\x17\n" +
+	"\x13SCROLL_ALIGN_BOTTOM\x10\x032\xdb\t\n" +
 	"\aBrowser\x12P\n" +
 	"\vOpenSession\x12%.neurun.browser.v1.OpenSessionRequest\x1a\x1a.neurun.browser.v1.Session\x12S\n" +
 	"\bNavigate\x12\".neurun.browser.v1.NavigateRequest\x1a#.neurun.browser.v1.NavigateResponse\x12n\n" +
-	"\x11WaitForNavigation\x12+.neurun.browser.v1.WaitForNavigationRequest\x1a,.neurun.browser.v1.WaitForNavigationResponse\x12_\n" +
+	"\x11WaitForNavigation\x12+.neurun.browser.v1.WaitForNavigationRequest\x1a,.neurun.browser.v1.WaitForNavigationResponse\x12P\n" +
+	"\aGetNode\x12!.neurun.browser.v1.GetNodeRequest\x1a\".neurun.browser.v1.GetNodeResponse\x12e\n" +
+	"\x0eHumanMouseMove\x12(.neurun.browser.v1.HumanMouseMoveRequest\x1a).neurun.browser.v1.HumanMouseMoveResponse\x12h\n" +
+	"\x0fHumanMouseClick\x12).neurun.browser.v1.HumanMouseClickRequest\x1a*.neurun.browser.v1.HumanMouseClickResponse\x12V\n" +
+	"\tHumanType\x12#.neurun.browser.v1.HumanTypeRequest\x1a$.neurun.browser.v1.HumanTypeResponse\x12_\n" +
+	"\fHumanScrollY\x12&.neurun.browser.v1.HumanScrollYRequest\x1a'.neurun.browser.v1.HumanScrollYResponse\x12e\n" +
+	"\x0eHumanScrollYTo\x12(.neurun.browser.v1.HumanScrollYToRequest\x1a).neurun.browser.v1.HumanScrollYToResponse\x12Y\n" +
+	"\n" +
+	"GetCookies\x12$.neurun.browser.v1.GetCookiesRequest\x1a%.neurun.browser.v1.GetCookiesResponse\x12Y\n" +
+	"\n" +
+	"SetCookies\x12$.neurun.browser.v1.SetCookiesRequest\x1a%.neurun.browser.v1.SetCookiesResponse\x12_\n" +
 	"\fCloseSession\x12&.neurun.browser.v1.CloseSessionRequest\x1a'.neurun.browser.v1.CloseSessionResponse\x12_\n" +
 	"\fReportResult\x12&.neurun.browser.v1.ReportResultRequest\x1a'.neurun.browser.v1.ReportResultResponseB:Z8github.com/neurun-io/neurun/internal/browserpb;browserpbb\x06proto3"
 
@@ -684,38 +2023,81 @@ func file_proto_browser_proto_rawDescGZIP() []byte {
 	return file_proto_browser_proto_rawDescData
 }
 
-var file_proto_browser_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_browser_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_proto_browser_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_proto_browser_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_proto_browser_proto_goTypes = []any{
 	(WaitUntil)(0),                    // 0: neurun.browser.v1.WaitUntil
-	(*ReportResultRequest)(nil),       // 1: neurun.browser.v1.ReportResultRequest
-	(*ReportResultResponse)(nil),      // 2: neurun.browser.v1.ReportResultResponse
-	(*OpenSessionRequest)(nil),        // 3: neurun.browser.v1.OpenSessionRequest
-	(*Session)(nil),                   // 4: neurun.browser.v1.Session
-	(*NavigateRequest)(nil),           // 5: neurun.browser.v1.NavigateRequest
-	(*NavigateResponse)(nil),          // 6: neurun.browser.v1.NavigateResponse
-	(*WaitForNavigationRequest)(nil),  // 7: neurun.browser.v1.WaitForNavigationRequest
-	(*WaitForNavigationResponse)(nil), // 8: neurun.browser.v1.WaitForNavigationResponse
-	(*CloseSessionRequest)(nil),       // 9: neurun.browser.v1.CloseSessionRequest
-	(*CloseSessionResponse)(nil),      // 10: neurun.browser.v1.CloseSessionResponse
+	(MouseButton)(0),                  // 1: neurun.browser.v1.MouseButton
+	(ScrollAlign)(0),                  // 2: neurun.browser.v1.ScrollAlign
+	(*ReportResultRequest)(nil),       // 3: neurun.browser.v1.ReportResultRequest
+	(*ReportResultResponse)(nil),      // 4: neurun.browser.v1.ReportResultResponse
+	(*OpenSessionRequest)(nil),        // 5: neurun.browser.v1.OpenSessionRequest
+	(*Session)(nil),                   // 6: neurun.browser.v1.Session
+	(*NavigateRequest)(nil),           // 7: neurun.browser.v1.NavigateRequest
+	(*NavigateResponse)(nil),          // 8: neurun.browser.v1.NavigateResponse
+	(*WaitForNavigationRequest)(nil),  // 9: neurun.browser.v1.WaitForNavigationRequest
+	(*WaitForNavigationResponse)(nil), // 10: neurun.browser.v1.WaitForNavigationResponse
+	(*GetNodeRequest)(nil),            // 11: neurun.browser.v1.GetNodeRequest
+	(*GetNodeResponse)(nil),           // 12: neurun.browser.v1.GetNodeResponse
+	(*Node)(nil),                      // 13: neurun.browser.v1.Node
+	(*Attribute)(nil),                 // 14: neurun.browser.v1.Attribute
+	(*HumanMouseMoveRequest)(nil),     // 15: neurun.browser.v1.HumanMouseMoveRequest
+	(*HumanMouseMoveResponse)(nil),    // 16: neurun.browser.v1.HumanMouseMoveResponse
+	(*HumanMouseClickRequest)(nil),    // 17: neurun.browser.v1.HumanMouseClickRequest
+	(*HumanMouseClickResponse)(nil),   // 18: neurun.browser.v1.HumanMouseClickResponse
+	(*HumanTypeRequest)(nil),          // 19: neurun.browser.v1.HumanTypeRequest
+	(*HumanTypeResponse)(nil),         // 20: neurun.browser.v1.HumanTypeResponse
+	(*HumanScrollYRequest)(nil),       // 21: neurun.browser.v1.HumanScrollYRequest
+	(*HumanScrollYResponse)(nil),      // 22: neurun.browser.v1.HumanScrollYResponse
+	(*HumanScrollYToRequest)(nil),     // 23: neurun.browser.v1.HumanScrollYToRequest
+	(*HumanScrollYToResponse)(nil),    // 24: neurun.browser.v1.HumanScrollYToResponse
+	(*Cookie)(nil),                    // 25: neurun.browser.v1.Cookie
+	(*GetCookiesRequest)(nil),         // 26: neurun.browser.v1.GetCookiesRequest
+	(*GetCookiesResponse)(nil),        // 27: neurun.browser.v1.GetCookiesResponse
+	(*SetCookiesRequest)(nil),         // 28: neurun.browser.v1.SetCookiesRequest
+	(*SetCookiesResponse)(nil),        // 29: neurun.browser.v1.SetCookiesResponse
+	(*CloseSessionRequest)(nil),       // 30: neurun.browser.v1.CloseSessionRequest
+	(*CloseSessionResponse)(nil),      // 31: neurun.browser.v1.CloseSessionResponse
 }
 var file_proto_browser_proto_depIdxs = []int32{
 	0,  // 0: neurun.browser.v1.WaitForNavigationRequest.wait_until:type_name -> neurun.browser.v1.WaitUntil
-	3,  // 1: neurun.browser.v1.Browser.OpenSession:input_type -> neurun.browser.v1.OpenSessionRequest
-	5,  // 2: neurun.browser.v1.Browser.Navigate:input_type -> neurun.browser.v1.NavigateRequest
-	7,  // 3: neurun.browser.v1.Browser.WaitForNavigation:input_type -> neurun.browser.v1.WaitForNavigationRequest
-	9,  // 4: neurun.browser.v1.Browser.CloseSession:input_type -> neurun.browser.v1.CloseSessionRequest
-	1,  // 5: neurun.browser.v1.Browser.ReportResult:input_type -> neurun.browser.v1.ReportResultRequest
-	4,  // 6: neurun.browser.v1.Browser.OpenSession:output_type -> neurun.browser.v1.Session
-	6,  // 7: neurun.browser.v1.Browser.Navigate:output_type -> neurun.browser.v1.NavigateResponse
-	8,  // 8: neurun.browser.v1.Browser.WaitForNavigation:output_type -> neurun.browser.v1.WaitForNavigationResponse
-	10, // 9: neurun.browser.v1.Browser.CloseSession:output_type -> neurun.browser.v1.CloseSessionResponse
-	2,  // 10: neurun.browser.v1.Browser.ReportResult:output_type -> neurun.browser.v1.ReportResultResponse
-	6,  // [6:11] is the sub-list for method output_type
-	1,  // [1:6] is the sub-list for method input_type
-	1,  // [1:1] is the sub-list for extension type_name
-	1,  // [1:1] is the sub-list for extension extendee
-	0,  // [0:1] is the sub-list for field type_name
+	13, // 1: neurun.browser.v1.GetNodeResponse.node:type_name -> neurun.browser.v1.Node
+	14, // 2: neurun.browser.v1.Node.attributes:type_name -> neurun.browser.v1.Attribute
+	1,  // 3: neurun.browser.v1.HumanMouseClickRequest.button:type_name -> neurun.browser.v1.MouseButton
+	2,  // 4: neurun.browser.v1.HumanScrollYToRequest.align:type_name -> neurun.browser.v1.ScrollAlign
+	25, // 5: neurun.browser.v1.GetCookiesResponse.cookies:type_name -> neurun.browser.v1.Cookie
+	25, // 6: neurun.browser.v1.SetCookiesRequest.cookies:type_name -> neurun.browser.v1.Cookie
+	5,  // 7: neurun.browser.v1.Browser.OpenSession:input_type -> neurun.browser.v1.OpenSessionRequest
+	7,  // 8: neurun.browser.v1.Browser.Navigate:input_type -> neurun.browser.v1.NavigateRequest
+	9,  // 9: neurun.browser.v1.Browser.WaitForNavigation:input_type -> neurun.browser.v1.WaitForNavigationRequest
+	11, // 10: neurun.browser.v1.Browser.GetNode:input_type -> neurun.browser.v1.GetNodeRequest
+	15, // 11: neurun.browser.v1.Browser.HumanMouseMove:input_type -> neurun.browser.v1.HumanMouseMoveRequest
+	17, // 12: neurun.browser.v1.Browser.HumanMouseClick:input_type -> neurun.browser.v1.HumanMouseClickRequest
+	19, // 13: neurun.browser.v1.Browser.HumanType:input_type -> neurun.browser.v1.HumanTypeRequest
+	21, // 14: neurun.browser.v1.Browser.HumanScrollY:input_type -> neurun.browser.v1.HumanScrollYRequest
+	23, // 15: neurun.browser.v1.Browser.HumanScrollYTo:input_type -> neurun.browser.v1.HumanScrollYToRequest
+	26, // 16: neurun.browser.v1.Browser.GetCookies:input_type -> neurun.browser.v1.GetCookiesRequest
+	28, // 17: neurun.browser.v1.Browser.SetCookies:input_type -> neurun.browser.v1.SetCookiesRequest
+	30, // 18: neurun.browser.v1.Browser.CloseSession:input_type -> neurun.browser.v1.CloseSessionRequest
+	3,  // 19: neurun.browser.v1.Browser.ReportResult:input_type -> neurun.browser.v1.ReportResultRequest
+	6,  // 20: neurun.browser.v1.Browser.OpenSession:output_type -> neurun.browser.v1.Session
+	8,  // 21: neurun.browser.v1.Browser.Navigate:output_type -> neurun.browser.v1.NavigateResponse
+	10, // 22: neurun.browser.v1.Browser.WaitForNavigation:output_type -> neurun.browser.v1.WaitForNavigationResponse
+	12, // 23: neurun.browser.v1.Browser.GetNode:output_type -> neurun.browser.v1.GetNodeResponse
+	16, // 24: neurun.browser.v1.Browser.HumanMouseMove:output_type -> neurun.browser.v1.HumanMouseMoveResponse
+	18, // 25: neurun.browser.v1.Browser.HumanMouseClick:output_type -> neurun.browser.v1.HumanMouseClickResponse
+	20, // 26: neurun.browser.v1.Browser.HumanType:output_type -> neurun.browser.v1.HumanTypeResponse
+	22, // 27: neurun.browser.v1.Browser.HumanScrollY:output_type -> neurun.browser.v1.HumanScrollYResponse
+	24, // 28: neurun.browser.v1.Browser.HumanScrollYTo:output_type -> neurun.browser.v1.HumanScrollYToResponse
+	27, // 29: neurun.browser.v1.Browser.GetCookies:output_type -> neurun.browser.v1.GetCookiesResponse
+	29, // 30: neurun.browser.v1.Browser.SetCookies:output_type -> neurun.browser.v1.SetCookiesResponse
+	31, // 31: neurun.browser.v1.Browser.CloseSession:output_type -> neurun.browser.v1.CloseSessionResponse
+	4,  // 32: neurun.browser.v1.Browser.ReportResult:output_type -> neurun.browser.v1.ReportResultResponse
+	20, // [20:33] is the sub-list for method output_type
+	7,  // [7:20] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_proto_browser_proto_init() }
@@ -724,13 +2106,16 @@ func file_proto_browser_proto_init() {
 		return
 	}
 	file_proto_browser_proto_msgTypes[4].OneofWrappers = []any{}
+	file_proto_browser_proto_msgTypes[12].OneofWrappers = []any{}
+	file_proto_browser_proto_msgTypes[14].OneofWrappers = []any{}
+	file_proto_browser_proto_msgTypes[22].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_browser_proto_rawDesc), len(file_proto_browser_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   10,
+			NumEnums:      3,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

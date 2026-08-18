@@ -12,6 +12,13 @@ import (
 // same way — which is deliberate, so an identifier cannot be probed.
 var ErrSessionNotFound = errors.New("browser session not found")
 
+// ErrUnavailable is the browser itself failing to answer — it would not start,
+// it is gone, or the service in front of it is. It is separate from ErrInvalid
+// because nothing the caller sent was wrong, and separate from ErrNotFound
+// because the session is real; retrying is the sensible response to it and is
+// not to either of the others.
+var ErrUnavailable = errors.New("browser is unavailable")
+
 // SessionStatus is where a session is in its life. There is no terminal state
 // kept anywhere: a session that ends stops existing, because nothing reads a
 // closed one.
@@ -76,9 +83,13 @@ func NewSession(
 }
 
 func (record Session) Validate() error {
-	if record.ID == "" || record.OrganizationID == "" || record.AppID == "" {
+	// No app is required. A session an execution opened names the app it is
+	// running, and one an operator opened over the API names nothing — there is
+	// no app behind an API key, and demanding one would only get a made-up
+	// value written down.
+	if record.ID == "" || record.OrganizationID == "" {
 		return fmt.Errorf(
-			"%w: session requires an id, an organization and an app", ErrInvalid,
+			"%w: session requires an id and an organization", ErrInvalid,
 		)
 	}
 	if !record.Browser.Valid() {

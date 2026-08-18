@@ -736,6 +736,377 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/IdentityCatalog"}
+  /v1/browser-sessions:
+    get:
+      operationId: listBrowserSessions
+      description: The organization's live sessions, newest first.
+      responses:
+        "200":
+          description: Live browser sessions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [browser_sessions]
+                properties:
+                  browser_sessions:
+                    type: array
+                    items: {$ref: "#/components/schemas/BrowserSession"}
+    post:
+      operationId: openBrowserSession
+      description: >-
+        Opens a browser and returns the session. A session opened here belongs
+        to the organization and names no app and no execution: an API key is not
+        a run. It is driven by the command endpoints below and must be closed —
+        one left idle leaves the list when its lease expires, but the browser
+        behind it runs until then.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                browser:
+                  allOf: [{$ref: "#/components/schemas/BrowserKind"}]
+                  description: >-
+                    Read only when no profile is named: a profile's identity
+                    already says which browser it is, and two answers that could
+                    disagree is one answer too many.
+                browser_profile_id:
+                  type: string
+                  description: >-
+                    The profile to wear. Absent still gets a persona — one is
+                    drawn for the session — it just is not kept, along with the
+                    cookies it collected.
+                load_storage:
+                  type: boolean
+                  description: >-
+                    Start from what the profile remembers. Needs a profile named
+                    above; there is nothing to load without one.
+      responses:
+        "201":
+          description: Session opened.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserSession"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "502": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      operationId: getBrowserSession
+      responses:
+        "200":
+          description: Browser session.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserSession"}
+        "404": {$ref: "#/components/responses/Problem"}
+    delete:
+      operationId: closeBrowserSession
+      description: >-
+        Stops the browser and drops the session. Both: forgetting the record
+        without stopping the browser would leave a process nothing can reach
+        again.
+      parameters:
+        - name: save_storage
+          in: query
+          required: false
+          schema: {type: boolean}
+          description: >-
+            Capture what the browser holds into the profile it wears. The
+            capture replaces the profile's state rather than merging into it, so
+            a cookie the browser no longer has is a cookie the profile no longer
+            has. Needs the session to wear a profile.
+      responses:
+        "204": {description: Session closed.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/display:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      operationId: streamBrowserDisplay
+      description: >-
+        A WebSocket carrying RFB, for a viewer such as noVNC. Not an HTTP
+        response: the 101 upgrade happens inside the authenticated group, so a
+        refused viewer never sees a frame. A host with no framebuffer answers
+        501 rather than dialing a port nothing is serving.
+      responses:
+        "101": {description: Switching to the RFB stream.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "501": {$ref: "#/components/responses/Problem"}
+        "502": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/navigate:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: navigateBrowserSession
+      description: Drives the session to a URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [url]
+              properties:
+                url: {type: string}
+                referer:
+                  type: string
+                  description: >-
+                    Absent sends no Referer, which is not the same as sending an
+                    empty one.
+      responses:
+        "204": {description: Navigated.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "502": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/wait-for-navigation:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: waitForBrowserNavigation
+      description: Blocks until the page the session is on has navigated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                wait_until:
+                  type: string
+                  enum: [commit, dom_content_loaded, load, network_almost_idle, network_idle]
+                  description: How far into the navigation to wait. Absent is load.
+                timeout_ms:
+                  type: integer
+                  description: Zero leaves the browser's own timeout in place.
+      responses:
+        "204": {description: The navigation happened.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "504": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/node:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      operationId: getBrowserNode
+      description: >-
+        Describes the first element a selector matches. A read of the page, so a
+        GET, and the selector is short enough to live in the query string.
+      parameters:
+        - name: selector
+          in: query
+          required: true
+          schema: {type: string}
+          description: A CSS selector.
+        - name: timeout_ms
+          in: query
+          required: false
+          schema: {type: integer}
+          description: >-
+            How long to keep looking. Absent looks once, which is the difference
+            between an element that is not there and one that is not there yet.
+      responses:
+        "200":
+          description: The element.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserNode"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/mouse-move:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: moveBrowserMouse
+      description: >-
+        Walks the pointer somewhere the way a hand would — along a Bezier curve
+        drawn fresh for this move, at a pace that varies step to step. A
+        selector or a point is required; a move to nowhere means nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BrowserPointer"}
+      responses:
+        "204": {description: The pointer moved.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/click:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: clickBrowserMouse
+      description: >-
+        Walks the pointer somewhere and presses it. With neither a selector nor
+        a point it presses where the pointer already is, which is what a second
+        click on something just clicked means.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/BrowserPointer"
+                - type: object
+                  properties:
+                    button:
+                      type: string
+                      enum: [left, middle, right, back, forward]
+                      description: Absent is left.
+                    count:
+                      type: integer
+                      description: >-
+                        Absent is one click. Two is a double click, with a pause
+                        between that is drawn rather than fixed.
+                    delay_ms:
+                      type: integer
+                      description: >-
+                        How long the button is held. Absent leaves it to be drawn
+                        per click, which is the point — a press that is always the
+                        same length is the tell.
+      responses:
+        "204": {description: Clicked.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/type:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: typeIntoBrowser
+      description: >-
+        Types, one key at a time, at a hand's pace. Each key is held for a
+        length drawn fresh for it, and the gap before the next follows from that.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [text]
+              properties:
+                text: {type: string}
+                selector:
+                  type: string
+                  description: >-
+                    An element to type into. It is clicked, humanly, and the
+                    click is what focuses it — a page that would not accept the
+                    click would not have accepted the typing either. Absent, the
+                    text goes wherever focus already is.
+                delay_min_ms:
+                  type: integer
+                  description: >-
+                    How long each key is held, drawn from this range. Both absent
+                    is an average typist, roughly 60 to 140 ms; a faster one is
+                    nearer 30 to 80, a careful one 100 to 250.
+                delay_max_ms: {type: integer}
+      responses:
+        "204": {description: Typed.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/scroll:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: scrollBrowser
+      description: >-
+        Turns the wheel down the page, eased to a stop rather than arriving in
+        one jump.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [delta_y]
+              properties:
+                delta_y:
+                  type: integer
+                  description: >-
+                    Down is positive. Only the y axis: the browser's own scroll
+                    takes an x distance and drops it.
+      responses:
+        "204": {description: Scrolled.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/scroll-to:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: scrollBrowserTo
+      description: Scrolls until an element rests where it was asked for.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [selector]
+              properties:
+                selector: {type: string}
+                align:
+                  type: string
+                  enum: [top, center, bottom]
+                  description: >-
+                    Where in the viewport the element comes to rest. Absent is
+                    center, which is where a person scrolls something they mean
+                    to look at.
+      responses:
+        "204": {description: Scrolled.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /v1/browser-sessions/{session_id}/cookies:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      operationId: getBrowserCookies
+      description: >-
+        The browser's whole jar, browser-wide rather than per-origin — a partial
+        read written back would delete the rest. Values are not redacted the way
+        a profile's are, which is why this takes browser_sessions:write.
+      responses:
+        "200":
+          description: The jar.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cookies]
+                properties:
+                  cookies:
+                    type: array
+                    items: {$ref: "#/components/schemas/Cookie"}
+        "404": {$ref: "#/components/responses/Problem"}
+    put:
+      operationId: setBrowserCookies
+      description: Puts a jar into the browser, on top of what it already holds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [cookies]
+              properties:
+                cookies:
+                  type: array
+                  items: {$ref: "#/components/schemas/Cookie"}
+      responses:
+        "204": {description: The jar went in.}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
   /v1/browser-profiles:
     get:
       operationId: listBrowserProfiles
@@ -1102,6 +1473,11 @@ components:
       in: path
       required: true
       schema: {type: string}
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema: {type: string}
   responses:
     Problem:
       description: Request could not be completed.
@@ -1231,6 +1607,81 @@ components:
         Chrome is the only browser that launches; Safari is a Chrome wearing
         Safari, which is what a site reads either way.
       enum: [chrome, safari]
+    BrowserSession:
+      type: object
+      description: >-
+        One browser that is open now. Live state, not a record: it lives under a
+        lease, so a worker that dies takes its sessions with it rather than
+        leaving rows that claim to be running, and nothing reads a closed one.
+        Driving a session renews the lease, which is why there is no heartbeat.
+
+        Where the browser runs is never in the response. A viewer names a
+        session and asks the control plane to stream it — nothing is happening
+        on a port a client knows about.
+      required: [id, app_id, browser, status, started_at, updated_at]
+      properties:
+        id: {type: string}
+        app_id:
+          type: string
+          description: >-
+            The app whose execution opened it. Empty for a session opened
+            through this API: an API key is not a run.
+        execution_id: {type: string}
+        browser_profile_id:
+          type: string
+          description: The profile it wears, absent for a plain browser.
+        browser: {$ref: "#/components/schemas/BrowserKind"}
+        status: {type: string, enum: [starting, live, failed]}
+        started_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    BrowserNode:
+      type: object
+      description: >-
+        One element as the browser found it. Children are not carried: ask for
+        one by selector instead, because a subtree is a response nobody sized.
+      required: [node_id, local_name, node_type, attributes, text, html, x, y, width, height]
+      properties:
+        node_id:
+          type: integer
+          description: >-
+            The browser's own id for it, valid until the document changes.
+            Reported so two matches can be told apart, not so one can be
+            addressed — every command names an element by selector.
+        local_name:
+          type: string
+          description: "The tag, as the DOM spells a local name: lower case for HTML."
+        node_type:
+          type: integer
+          description: "The DOM's own numbering: 1 is an element, 3 is text."
+        attributes:
+          type: object
+          additionalProperties: {type: string}
+        text:
+          type: string
+          description: What a reader would see, which is not what the markup holds.
+        html: {type: string}
+        x:
+          type: number
+          description: >-
+            The bounding box, in viewport coordinates, at the moment of the
+            read. A scroll moves it, so it is worth no more than that instant.
+        y: {type: number}
+        width: {type: number}
+        height: {type: number}
+    BrowserPointer:
+      type: object
+      description: >-
+        Where a pointer command is aimed. A selector wins over a point: an
+        element knows where it is, and a caller holding a rectangle from before
+        the last scroll does not.
+      properties:
+        selector: {type: string}
+        x:
+          type: number
+          description: >-
+            Viewport coordinates. Absent is not the same as zero, which is a
+            corner of the page somebody might mean. x and y go together.
+        y: {type: number}
     BrowserProfile:
       type: object
       description: >-

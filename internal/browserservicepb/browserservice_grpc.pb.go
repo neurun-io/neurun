@@ -22,6 +22,12 @@ const (
 	BrowserService_Open_FullMethodName              = "/neurun.browserservice.v1.BrowserService/Open"
 	BrowserService_Navigate_FullMethodName          = "/neurun.browserservice.v1.BrowserService/Navigate"
 	BrowserService_WaitForNavigation_FullMethodName = "/neurun.browserservice.v1.BrowserService/WaitForNavigation"
+	BrowserService_GetNode_FullMethodName           = "/neurun.browserservice.v1.BrowserService/GetNode"
+	BrowserService_HumanMouseMove_FullMethodName    = "/neurun.browserservice.v1.BrowserService/HumanMouseMove"
+	BrowserService_HumanMouseClick_FullMethodName   = "/neurun.browserservice.v1.BrowserService/HumanMouseClick"
+	BrowserService_HumanType_FullMethodName         = "/neurun.browserservice.v1.BrowserService/HumanType"
+	BrowserService_HumanScrollY_FullMethodName      = "/neurun.browserservice.v1.BrowserService/HumanScrollY"
+	BrowserService_HumanScrollYTo_FullMethodName    = "/neurun.browserservice.v1.BrowserService/HumanScrollYTo"
 	BrowserService_GetCookies_FullMethodName        = "/neurun.browserservice.v1.BrowserService/GetCookies"
 	BrowserService_SetCookies_FullMethodName        = "/neurun.browserservice.v1.BrowserService/SetCookies"
 	BrowserService_Close_FullMethodName             = "/neurun.browserservice.v1.BrowserService/Close"
@@ -47,6 +53,18 @@ type BrowserServiceClient interface {
 	Navigate(ctx context.Context, in *NavigateRequest, opts ...grpc.CallOption) (*NavigateResponse, error)
 	// WaitForNavigation blocks until the session's page has navigated.
 	WaitForNavigation(ctx context.Context, in *WaitForNavigationRequest, opts ...grpc.CallOption) (*WaitForNavigationResponse, error)
+	// GetNode reads the first element a selector matches.
+	GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeResponse, error)
+	// HumanMouseMove walks the pointer somewhere the way a hand would.
+	HumanMouseMove(ctx context.Context, in *HumanMouseMoveRequest, opts ...grpc.CallOption) (*HumanMouseMoveResponse, error)
+	// HumanMouseClick walks the pointer somewhere and presses it.
+	HumanMouseClick(ctx context.Context, in *HumanMouseClickRequest, opts ...grpc.CallOption) (*HumanMouseClickResponse, error)
+	// HumanType types, one key at a time, at a hand's pace.
+	HumanType(ctx context.Context, in *HumanTypeRequest, opts ...grpc.CallOption) (*HumanTypeResponse, error)
+	// HumanScrollY turns the wheel down the page.
+	HumanScrollY(ctx context.Context, in *HumanScrollYRequest, opts ...grpc.CallOption) (*HumanScrollYResponse, error)
+	// HumanScrollYTo turns the wheel until an element is where it was asked for.
+	HumanScrollYTo(ctx context.Context, in *HumanScrollYToRequest, opts ...grpc.CallOption) (*HumanScrollYToResponse, error)
 	// GetCookies reads a session's whole jar.
 	GetCookies(ctx context.Context, in *GetCookiesRequest, opts ...grpc.CallOption) (*GetCookiesResponse, error)
 	// SetCookies puts a jar into a session.
@@ -93,6 +111,66 @@ func (c *browserServiceClient) WaitForNavigation(ctx context.Context, in *WaitFo
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WaitForNavigationResponse)
 	err := c.cc.Invoke(ctx, BrowserService_WaitForNavigation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *browserServiceClient) GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetNodeResponse)
+	err := c.cc.Invoke(ctx, BrowserService_GetNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *browserServiceClient) HumanMouseMove(ctx context.Context, in *HumanMouseMoveRequest, opts ...grpc.CallOption) (*HumanMouseMoveResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HumanMouseMoveResponse)
+	err := c.cc.Invoke(ctx, BrowserService_HumanMouseMove_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *browserServiceClient) HumanMouseClick(ctx context.Context, in *HumanMouseClickRequest, opts ...grpc.CallOption) (*HumanMouseClickResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HumanMouseClickResponse)
+	err := c.cc.Invoke(ctx, BrowserService_HumanMouseClick_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *browserServiceClient) HumanType(ctx context.Context, in *HumanTypeRequest, opts ...grpc.CallOption) (*HumanTypeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HumanTypeResponse)
+	err := c.cc.Invoke(ctx, BrowserService_HumanType_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *browserServiceClient) HumanScrollY(ctx context.Context, in *HumanScrollYRequest, opts ...grpc.CallOption) (*HumanScrollYResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HumanScrollYResponse)
+	err := c.cc.Invoke(ctx, BrowserService_HumanScrollY_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *browserServiceClient) HumanScrollYTo(ctx context.Context, in *HumanScrollYToRequest, opts ...grpc.CallOption) (*HumanScrollYToResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HumanScrollYToResponse)
+	err := c.cc.Invoke(ctx, BrowserService_HumanScrollYTo_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +239,18 @@ type BrowserServiceServer interface {
 	Navigate(context.Context, *NavigateRequest) (*NavigateResponse, error)
 	// WaitForNavigation blocks until the session's page has navigated.
 	WaitForNavigation(context.Context, *WaitForNavigationRequest) (*WaitForNavigationResponse, error)
+	// GetNode reads the first element a selector matches.
+	GetNode(context.Context, *GetNodeRequest) (*GetNodeResponse, error)
+	// HumanMouseMove walks the pointer somewhere the way a hand would.
+	HumanMouseMove(context.Context, *HumanMouseMoveRequest) (*HumanMouseMoveResponse, error)
+	// HumanMouseClick walks the pointer somewhere and presses it.
+	HumanMouseClick(context.Context, *HumanMouseClickRequest) (*HumanMouseClickResponse, error)
+	// HumanType types, one key at a time, at a hand's pace.
+	HumanType(context.Context, *HumanTypeRequest) (*HumanTypeResponse, error)
+	// HumanScrollY turns the wheel down the page.
+	HumanScrollY(context.Context, *HumanScrollYRequest) (*HumanScrollYResponse, error)
+	// HumanScrollYTo turns the wheel until an element is where it was asked for.
+	HumanScrollYTo(context.Context, *HumanScrollYToRequest) (*HumanScrollYToResponse, error)
 	// GetCookies reads a session's whole jar.
 	GetCookies(context.Context, *GetCookiesRequest) (*GetCookiesResponse, error)
 	// SetCookies puts a jar into a session.
@@ -191,6 +281,24 @@ func (UnimplementedBrowserServiceServer) Navigate(context.Context, *NavigateRequ
 }
 func (UnimplementedBrowserServiceServer) WaitForNavigation(context.Context, *WaitForNavigationRequest) (*WaitForNavigationResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WaitForNavigation not implemented")
+}
+func (UnimplementedBrowserServiceServer) GetNode(context.Context, *GetNodeRequest) (*GetNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetNode not implemented")
+}
+func (UnimplementedBrowserServiceServer) HumanMouseMove(context.Context, *HumanMouseMoveRequest) (*HumanMouseMoveResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HumanMouseMove not implemented")
+}
+func (UnimplementedBrowserServiceServer) HumanMouseClick(context.Context, *HumanMouseClickRequest) (*HumanMouseClickResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HumanMouseClick not implemented")
+}
+func (UnimplementedBrowserServiceServer) HumanType(context.Context, *HumanTypeRequest) (*HumanTypeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HumanType not implemented")
+}
+func (UnimplementedBrowserServiceServer) HumanScrollY(context.Context, *HumanScrollYRequest) (*HumanScrollYResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HumanScrollY not implemented")
+}
+func (UnimplementedBrowserServiceServer) HumanScrollYTo(context.Context, *HumanScrollYToRequest) (*HumanScrollYToResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HumanScrollYTo not implemented")
 }
 func (UnimplementedBrowserServiceServer) GetCookies(context.Context, *GetCookiesRequest) (*GetCookiesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCookies not implemented")
@@ -279,6 +387,114 @@ func _BrowserService_WaitForNavigation_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BrowserService_GetNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServiceServer).GetNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BrowserService_GetNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServiceServer).GetNode(ctx, req.(*GetNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BrowserService_HumanMouseMove_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HumanMouseMoveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServiceServer).HumanMouseMove(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BrowserService_HumanMouseMove_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServiceServer).HumanMouseMove(ctx, req.(*HumanMouseMoveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BrowserService_HumanMouseClick_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HumanMouseClickRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServiceServer).HumanMouseClick(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BrowserService_HumanMouseClick_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServiceServer).HumanMouseClick(ctx, req.(*HumanMouseClickRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BrowserService_HumanType_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HumanTypeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServiceServer).HumanType(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BrowserService_HumanType_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServiceServer).HumanType(ctx, req.(*HumanTypeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BrowserService_HumanScrollY_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HumanScrollYRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServiceServer).HumanScrollY(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BrowserService_HumanScrollY_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServiceServer).HumanScrollY(ctx, req.(*HumanScrollYRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BrowserService_HumanScrollYTo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HumanScrollYToRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrowserServiceServer).HumanScrollYTo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BrowserService_HumanScrollYTo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrowserServiceServer).HumanScrollYTo(ctx, req.(*HumanScrollYToRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BrowserService_GetCookies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetCookiesRequest)
 	if err := dec(in); err != nil {
@@ -358,6 +574,30 @@ var BrowserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "WaitForNavigation",
 			Handler:    _BrowserService_WaitForNavigation_Handler,
+		},
+		{
+			MethodName: "GetNode",
+			Handler:    _BrowserService_GetNode_Handler,
+		},
+		{
+			MethodName: "HumanMouseMove",
+			Handler:    _BrowserService_HumanMouseMove_Handler,
+		},
+		{
+			MethodName: "HumanMouseClick",
+			Handler:    _BrowserService_HumanMouseClick_Handler,
+		},
+		{
+			MethodName: "HumanType",
+			Handler:    _BrowserService_HumanType_Handler,
+		},
+		{
+			MethodName: "HumanScrollY",
+			Handler:    _BrowserService_HumanScrollY_Handler,
+		},
+		{
+			MethodName: "HumanScrollYTo",
+			Handler:    _BrowserService_HumanScrollYTo_Handler,
 		},
 		{
 			MethodName: "GetCookies",

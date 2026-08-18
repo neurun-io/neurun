@@ -354,9 +354,16 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	browserSupervisor := browsergrpc.NewSupervisor(cfg.BrowserService)
 	defer browserSupervisor.Close()
-	browserRPC, err := browsergrpc.NewServer(
-		browserSessionService, browserService, executionTokens, browserSupervisor,
+	// One driver, two doors: the SDK's gRPC broker below and the operator's HTTP
+	// API further down both open and drive sessions through it, so a session is
+	// the same thing whichever asked for it.
+	browserDriver, err := service.NewBrowserDriverService(
+		browserSessionService, browserService, browserSupervisor,
 	)
+	if err != nil {
+		return fmt.Errorf("configure browser driver: %w", err)
+	}
+	browserRPC, err := browsergrpc.NewServer(browserDriver, executionTokens)
 	if err != nil {
 		return fmt.Errorf("configure browser grpc: %w", err)
 	}
@@ -462,6 +469,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		GitHub:          gitHubService,
 		Browsers:        browserService,
 		BrowserSessions: browserSessionService,
+		BrowserDriver:   browserDriver,
 		AllowedOrigins:  cfg.AllowedOrigins,
 		Ready: func(readyCtx context.Context) error {
 			return errors.Join(
