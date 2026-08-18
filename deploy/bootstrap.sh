@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One-time setup for a bare Ubuntu VPS to host neurun: app user, /var/apps
-# layout, Redis, nginx, firewall. Idempotent — safe to re-run after upgrades.
+# layout, Redis, nginx, the two units and the firewall. Idempotent — safe to
+# re-run after upgrades.
 #
 # Run as root: ./bootstrap.sh
 set -euo pipefail
@@ -104,6 +105,69 @@ systemctl reload nginx
 if ! command -v node >/dev/null; then
   curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
   apt-get install -y nodejs
+fi
+
+# --- units ---
+# systemd owns both processes: they come back after a reboot and after a crash,
+# which a backgrounded process does not. Neither is Type=notify — nothing here
+# signals readiness — so a restart returns long before the port answers, and the
+# deploy scripts poll for health themselves.
+cat >/etc/systemd/system/neurun.service <<'EOF'
+[Unit]
+Description=Neurun control plane
+Wants=network-online.target
+After=network-online.target redis-server.service
+
+[Service]
+User=neurun
+Group=neurun
+# The server reads .env out of its working directory, so this is what
+# configures it. EnvironmentFile would parse those values by different rules.
+WorkingDirectory=/var/apps/neurun
+ExecStart=/var/apps/neurun/neurun serve
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat >/etc/systemd/system/neurun-dashboard.service <<'EOF'
+[Unit]
+Description=Neurun dashboard
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=neurun
+Group=neurun
+WorkingDirectory=/var/apps/dashboard/current
+Environment=NODE_ENV=production PORT=3001 HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Whatever an earlier deploy backgrounded is not ours to leave running: it holds
+# the port the unit is about to want.
+pkill -f '/var/apps/neurun/neurun serve' 2>/dev/null || true
+pkill -f 'node server.js' 2>/dev/null || true
+rm -f "$APP_DIR/neurun.pid" "$DASHBOARD_DIR/dashboard.pid"
+
+systemctl daemon-reload
+systemctl enable neurun neurun-dashboard
+# Started only once there is something to start: a fresh box has neither until
+# the first deploy lands.
+if [ -x "$APP_DIR/neurun" ]; then
+  systemctl restart neurun
+fi
+if [ -f "$DASHBOARD_DIR/current/server.js" ]; then
+  systemctl restart neurun-dashboard
 fi
 
 # --- firewall: allow SSH before enabling, or this locks itself out ---
