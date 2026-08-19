@@ -14,6 +14,10 @@ CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
 # Both processes run as this unprivileged user; root (this script, and the CI
 # deploy) only ever prepares files for it to run.
 id -u neurun >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin neurun
+# Chrome writes under $HOME regardless of --user-data-dir, and dies without it —
+# a browser session got as far as launching and then never opened its debug
+# port. The account is created with no home, so the directory is made here.
+install -d -o neurun -g neurun -m 700 "$(getent passwd neurun | cut -d: -f6)"
 mkdir -p "$APP_DIR/data" "$DASHBOARD_DIR"
 touch "$APP_DIR/neurun.log" "$DASHBOARD_DIR/dashboard.log"
 chown -R neurun:neurun "$APP_DIR" "$DASHBOARD_DIR"
@@ -55,6 +59,13 @@ fi
 # The API is not what a browser expects at the bare host, so it sits on its
 # own port and the dashboard takes the default one — see dashboard.conf.
 cat >/etc/nginx/conf.d/neurun.conf <<'EOF'
+# "upgrade" only when the client asked for one, so ordinary requests are still
+# answered on a keep-alive connection.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 server {
     listen 8080;
     server_name _;
@@ -71,10 +82,15 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        # A deployment build can run for minutes; the connection that is
-        # following its logs has to survive at least that long.
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
+        # A display is streamed over a websocket, which does not survive a proxy
+        # that drops the upgrade — the browser reports it as the display having
+        # stopped responding.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        # And it stays open as long as somebody is watching, so it must not be
+        # read-timed out the way a request is.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 }
 EOF
@@ -123,7 +139,10 @@ fi
 # compiler alone is not enough. Python is the system one and Node is above; Go
 # and Ruby are deliberately absent, and deployments naming them will fail until
 # they are added here.
-apt-get install -y -qq cargo rustc build-essential pkg-config libssl-dev
+# protoc is here because a crate's build.rs may compile .proto files — prost
+# shells out to it, and cargo reports its absence as a failed build script
+# rather than as a missing tool.
+apt-get install -y -qq cargo rustc build-essential pkg-config libssl-dev protobuf-compiler
 
 # --- units ---
 # systemd owns both processes: they come back after a reboot and after a crash,

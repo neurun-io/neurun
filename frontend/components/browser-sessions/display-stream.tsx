@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Expand, Maximize2, Minimize2, MousePointerClick, Eye } from "lucide-react";
 import type RFBType from "@novnc/novnc/lib/rfb";
 
+import { Button } from "@/components/ui/button";
 import { API_BASE_URL } from "@/lib/api/client";
 
 /**
@@ -13,8 +15,10 @@ import { API_BASE_URL } from "@/lib/api/client";
  * thing that checks who is watching. Nothing here knows where the display
  * actually is; it names a session and asks.
  *
- * View-only by default: watching is a diagnostic, and a stray click landing in
- * somebody's signed-in browser is not.
+ * It opens view-only, and taking control is a deliberate click: watching is a
+ * diagnostic, and a stray click landing in somebody's signed-in browser is not.
+ * Control is handed over on the live connection rather than by reconnecting,
+ * so the session is never interrupted to change your mind.
  */
 export function DisplayStream({
   sessionId,
@@ -24,8 +28,12 @@ export function DisplayStream({
   interactive?: boolean;
 }) {
   const target = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
+  const client = useRef<RFBType | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [controlling, setControlling] = useState(interactive);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const mount = target.current;
@@ -35,7 +43,6 @@ export function DisplayStream({
       sessionId,
     )}/display`;
 
-    let client: { disconnect: () => void } | null = null;
     let cancelled = false;
 
     (async () => {
@@ -48,7 +55,7 @@ export function DisplayStream({
       if (cancelled) return;
       const instance = new RFB(mount, url);
       instance.scaleViewport = true;
-      instance.viewOnly = !interactive;
+      instance.viewOnly = true;
       instance.addEventListener("connect", () => setConnected(true));
       instance.addEventListener("disconnect", (event: { detail?: { clean?: boolean } }) => {
         setConnected(false);
@@ -57,18 +64,60 @@ export function DisplayStream({
       instance.addEventListener("securityfailure", (event: { detail?: { reason?: string } }) => {
         setError(event?.detail?.reason ?? "The display refused the connection");
       });
-      client = instance;
+      client.current = instance;
     })().catch((cause) => setError((cause as Error).message));
 
     return () => {
       cancelled = true;
-      client?.disconnect();
+      client.current?.disconnect();
+      client.current = null;
     };
-  }, [sessionId, interactive]);
+  }, [sessionId]);
+
+  // Set on the live connection, so control can be taken and given back without
+  // dropping the session.
+  useEffect(() => {
+    if (client.current) client.current.viewOnly = !controlling;
+  }, [controlling, connected]);
+
+  const toggleFullscreen = useCallback(() => {
+    const element = frame.current;
+    if (!element) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    void element.requestFullscreen?.();
+  }, []);
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-line bg-black">
-      <div ref={target} className="aspect-video w-full" />
+    <div ref={frame} className="relative overflow-hidden rounded-lg border border-line bg-black">
+      <div
+        ref={target}
+        className={expanded ? "h-[80vh] w-full" : "aspect-video w-full"}
+      />
+      <div className="absolute right-2 top-2 flex gap-1">
+        <Button
+          size="sm"
+          variant={controlling ? "default" : "secondary"}
+          onClick={() => setControlling((taken) => !taken)}
+          title={controlling ? "Stop sending input" : "Send keyboard and mouse to this browser"}
+        >
+          {controlling ? <MousePointerClick className="size-3" /> : <Eye className="size-3" />}
+          {controlling ? "Controlling" : "View only"}
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => setExpanded((open) => !open)}
+          title={expanded ? "Shrink" : "Enlarge"}
+        >
+          {expanded ? <Minimize2 className="size-3" /> : <Maximize2 className="size-3" />}
+        </Button>
+        <Button size="sm" variant="secondary" onClick={toggleFullscreen} title="Fullscreen">
+          <Expand className="size-3" />
+        </Button>
+      </div>
       {!connected || error ? (
         <p className="absolute inset-x-0 bottom-0 bg-black/70 px-3 py-1 font-mono text-micro text-fg-muted">
           {error ?? "Connecting…"}
