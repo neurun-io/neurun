@@ -37,6 +37,7 @@ Two rules govern everything here.
 | Operating system | `navigator.platform`, bitness, architecture, which browsers exist, which releases exist, which GPUs can report, desktop vs mobile |
 | Release | the UA-CH platform version — a **different string**: Win 11 → `15.0.0`, Win 10 → `10.0.0`, Win 8 and 7 → `0.0.0`, macOS 14 → `14.6`, Android 13 → `13.0.0` |
 | Browser | its version list, and which JS APIs exist at all. `chrome` or `safari` — Neurun offers no others, and the field is `browser`, on the identity |
+| Browser **version** | the GREASE brand in `Sec-CH-UA` — both its punctuation and its version rotate with the major, so a fixed pair matches at most one release |
 | Handset (mobile) | screen, ratio, GPU, cores, memory, `Sec-CH-UA-Model`, release list — they shipped in one box |
 | Screen + ratio | the physical resolution. Derived, never typed twice |
 | Country | the language list and the IANA timezone |
@@ -93,6 +94,7 @@ profiles.
 | Treating no WebGL as safer than a spoofed one | A desktop with `getContext("webgl") === null` fails the first vector every detector reads, and leaves nothing for the GPU strings to apply to. See `references/graphics.md` |
 | Building the browser host from Chrome's package dependencies alone | That ships one font family. A desktop has hundreds, and no JS patch can add them — see `references/audio-and-fonts.md` |
 | Sizing the window to the screen | Chrome lands a pixel short of it, identically on every session. Maximize under a window manager instead — see `references/device-class.md` |
+| Hardcoding the greasey `Not;A=Brand` entry | It is derived from the browser major. A fixed one contradicts the version claimed in the UA beside it — see `references/binding-graph.md` |
 | Typing a value the catalogue already lists | Select it. A hand-typed release or GPU is how a profile stops matching any real machine |
 | Using the release as the platform version | They are different strings. Win 11 reports `15.0.0`; Win 7 and 8 both report `0.0.0` |
 | Offering Safari on Windows | `build_user_agent` errors on unsupported pairs — the profile is refused at launch. Safari is a Mac and iOS answer |

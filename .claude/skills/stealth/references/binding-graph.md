@@ -92,6 +92,40 @@ It fixes:
 It does **not** fix the WebGL pair: the card belongs to the system or the
 handset. See `references/graphics.md`.
 
+## Browser version → the GREASE brand
+
+The greasey entry in `Sec-CH-UA` is not a constant. Chromium derives both halves
+of it from the **major version**, indexing two tables:
+
+```
+brand   = "Not" + CHARS[major % 11] + "A" + CHARS[(major + 1) % 11] + "Brand"
+version = VERSIONS[major % 3]
+
+CHARS    = [" ", "(", ":", "-", ".", "/", ")", ";", "=", "?", "_"]
+VERSIONS = ["8", "99", "24"]
+```
+
+| Major | Brand | Version |
+| --- | --- | --- |
+| 150 | `Not;A=Brand` | `8` |
+| 151 | `Not=A?Brand` | `99` |
+| 152 | `Not?A_Brand` | `24` |
+| 153 | `Not_A Brand` | `8` |
+
+151 and 152 were read off running browsers; `grease()` in `cdp.rs` is pinned to
+both by test. **A hardcoded pair is wrong for all but one release** — the value
+the crate used to ship, `Not;A=Brand` with version `24`, is 150's brand beside
+152's version, which no browser has ever sent together.
+
+The OS does **not** enter into it. An earlier Android special case (`Not-A.Brand`)
+was removed: the derivation is platform-independent, so the same major greases
+the same way everywhere.
+
+The point of the field is that a parser must tolerate junk, which makes it easy
+to assume nothing reads it. What it actually carries is a third, independent
+statement of the browser version — so a stale one contradicts the UA string and
+the full version list beside it.
+
 ## Handset — the binding unit on mobile
 
 One model fixes the screen, the ratio, the GPU, the cores and the memory
