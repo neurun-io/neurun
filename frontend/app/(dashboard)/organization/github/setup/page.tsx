@@ -9,9 +9,9 @@
  * next request into a same-site one, which does carry it.
  */
 
-import { use, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { InlineError } from "@/components/neurun/error-panel";
@@ -20,13 +20,15 @@ import { Panel } from "@/components/neurun/panel";
 import { Button } from "@/components/ui/button";
 import { useRecordInstallationMutation } from "@/lib/api/queries";
 
-export default function Page({
-  searchParams,
-}: {
-  searchParams: Promise<{ installation_id?: string; setup_action?: string }>;
-}) {
-  const { installation_id: installationId, setup_action: action } =
-    use(searchParams);
+function SetupView() {
+  // Read from the hook rather than the page's `searchParams` prop. Unwrapping
+  // that promise suspends, and this route prerenders — with no boundary above
+  // to suspend into, the id never arrived and the page reported that GitHub had
+  // not sent one. Development renders on demand and never suspends, so it only
+  // ever went wrong once built.
+  const searchParams = useSearchParams();
+  const installationId = searchParams.get("installation_id") ?? undefined;
+  const action = searchParams.get("setup_action");
   const record = useRecordInstallationMutation();
   const router = useRouter();
   // GitHub sends the browser here on install and again on every configure, and
@@ -98,5 +100,13 @@ export default function Page({
         </Panel>
       </div>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <SetupView />
+    </Suspense>
   );
 }
