@@ -205,6 +205,8 @@ NEURUN_REDIS_URL=redis://localhost:6379/0
 NEURUN_PYTHON_EXECUTABLE=python3
 NEURUN_SESSION_COOKIE_SECURE=false
 NEURUN_DEFAULT_PROJECT_ID=prj_default
+# A cold cargo or npm build is minutes, and the default 5m cut them off.
+NEURUN_DEPLOYMENT_BUILD_TIMEOUT=15m
 # The dashboard's own origin — it calls this API cross-origin, with credentials.
 NEURUN_ALLOWED_ORIGINS=http://$HOST_IP
 
