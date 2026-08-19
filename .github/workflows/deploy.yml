@@ -73,11 +73,11 @@ jobs:
         working-directory: frontend
         env:
           # The API sits on its own port behind nginx; the dashboard takes the
-          # default one — see deploy/bootstrap.sh. No GitHub App is configured
-          # on this deployment yet, so the slug is left empty rather than
-          # naming one that isn't there.
+          # default one — see deploy/bootstrap.sh. Both are read by the browser,
+          # so Next.js inlines them here: changing either is a rebuild, not an
+          # edit on the host.
           NEXT_PUBLIC_NEURUN_API_URL: http://${{ secrets.INTERSERVER_HOST }}:8080
-          NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG: ""
+          NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG: neurun-io
         run: |
           npm ci
           npm run build
