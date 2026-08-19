@@ -139,6 +139,11 @@ func (supervisor *Supervisor) start(ctx context.Context) error {
 
 	command := exec.Command(supervisor.executable, "--listen", address)
 	command.Env = browserEnvironment()
+	// Inherited rather than left nil, which is /dev/null: the browser service is
+	// where a session actually fails, and without this the only thing that
+	// reaches the log is the address it started on.
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
 	if err := command.Start(); err != nil {
 		return fmt.Errorf("start browser service: %w", err)
 	}
