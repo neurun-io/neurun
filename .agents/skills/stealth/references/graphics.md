@@ -128,12 +128,48 @@ Diagnose with `SystemInfo.getInfo` over CDP rather than guessing. It reports
 is a switch or blocklist, `disabled_software` is a fallback. Chrome's own
 `glRenderer` there tells you which backend really came up.
 
+## Claim the driver stack you actually have
+
+Only the two strings are substituted, so every other answer — the limits, the
+extension list, the precision formats — comes from the real driver. The size of
+the hole is therefore the **distance between the card you claim and the stack
+underneath it**, and that distance is a choice.
+
+The useful part: `llvmpipe` is a **Mesa** driver. Its surface is shaped by Mesa,
+not by silicon — measured on a headless Ubuntu box, 32 extensions with a
+desktop-GL flavour (`EXT_clip_control`, `WEBGL_polygon_mode`,
+`WEBGL_provoking_vertex`, `EXT_depth_clamp`), `MAX_TEXTURE_SIZE` 16384,
+`MAX_VERTEX_UNIFORM_VECTORS` 1024.
+
+Intel and AMD GPUs **on Linux run that same Mesa stack**. Different silicon, same
+driver, so nearly the same extension list and limits. NVIDIA's proprietary driver
+is a separate codebase with its own extension set and its own limits.
+
+So the ranking, cheapest fix first:
+
+| Claim | Distance from llvmpipe |
+| --- | --- |
+| Intel iGPU on Mesa | closest — same driver, modest limits |
+| AMD integrated on Mesa (`radeonsi`) | close — same driver |
+| AMD/NVIDIA discrete | further — same or different driver, much larger limits |
+| NVIDIA on the proprietary blob | furthest — different driver entirely |
+
+The catalogue's Linux entry therefore offers Mesa integrated cards only. Naming a
+GeForce costs nothing to type and is the one claim the host cannot back up on any
+axis.
+
+Match the Mesa version to the release too: Ubuntu 26.04 ships Mesa 26.0.x, so a
+renderer string naming 24.2.3 is implausible before anyone looks at the GPU.
+
 ## Gaps in this implementation
 
-- Only 37445 and 37446 are spoofed. Capability limits still describe the host —
-  and on a server that host is **llvmpipe**, whose extension list and limits look
-  nothing like the discrete card a persona claims. The strings are consistent;
-  the machine underneath them is not.
+- Only 37445 and 37446 are spoofed. Limits, extension lists and precision formats
+  still describe the real driver. Choosing a card on the same stack (above)
+  narrows this; it does not close it.
+- **Rendered pixels and speed cannot be spoofed at all.** A software renderer
+  draws what it draws, and it is orders of magnitude slower than the card being
+  claimed — a page that times a heavy render sees it. Nothing in JS fixes either;
+  only real hardware does.
 - Nothing coordinates the canvas hash with the *claimed* GPU: two personas with
   the same card get different hashes, which is right, but a persona's hash is not
   derived from anything a real card would produce.

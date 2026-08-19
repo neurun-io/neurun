@@ -99,6 +99,7 @@ profiles.
 | Using the release as the platform version | They are different strings. Win 11 reports `15.0.0`; Win 7 and 8 both report `0.0.0` |
 | Offering Safari on Windows | `build_user_agent` errors on unsupported pairs — the profile is refused at launch. Safari is a Mac and iOS answer |
 | A Direct3D renderer on macOS | ANGLE over Direct3D exists only on Windows. Bind the GPU list to the OS |
+| Claiming a GeForce from a host with no GPU | Only the two strings are spoofed; the limits and extension list come from the real driver. Claim a card on the *same driver stack* the host runs — see `references/graphics.md` |
 | `Adreno 740` | Real strings carry the trademark: `ANGLE (Qualcomm, Adreno (TM) 740, OpenGL ES 3.2)` |
 | `deviceMemory: 16` | The browser rounds to a power of two and caps at 8. Only 1, 2, 4, 8 appear |
 | Client hints on Safari or on any iOS browser | iOS is WebKit throughout — no `navigator.userAgentData`, no `deviceMemory` |

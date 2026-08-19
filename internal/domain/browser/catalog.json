@@ -20,17 +20,12 @@
    "gpus": [
     {
      "vendor": "Intel Inc.",
-     "webgl_renderer": "ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL 4.6 (Core Profile) Mesa 24.2.3-1ubuntu1)",
+     "webgl_renderer": "ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL 4.6 (Core Profile) Mesa 26.0.3-1ubuntu1)",
      "webgl_vendor": "Google Inc. (Intel)"
     },
     {
-     "vendor": "NVIDIA Corporation",
-     "webgl_renderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 SUPER/PCIe/SSE2, OpenGL 4.6.0 NVIDIA 550.120)",
-     "webgl_vendor": "Google Inc. (NVIDIA)"
-    },
-    {
-     "vendor": "Advanced Micro Devices, Inc.",
-     "webgl_renderer": "ANGLE (AMD, AMD Radeon RX 6600 (radeonsi, navi23, LLVM 17.0.6, DRM 3.57, 7.0.0-29-generic), OpenGL 4.6 (Core Profile) Mesa 24.2.3-1ubuntu1)",
+     "vendor": "AMD",
+     "webgl_renderer": "ANGLE (AMD, AMD Radeon Graphics (radeonsi, renoir, LLVM 21.1.8, DRM 3.63, 7.0.0-29-generic), OpenGL 4.6 (Core Profile) Mesa 26.0.3-1ubuntu1)",
      "webgl_vendor": "Google Inc. (AMD)"
     }
    ]
