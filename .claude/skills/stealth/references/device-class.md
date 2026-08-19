@@ -90,13 +90,40 @@ The listener methods are present and inert; an object without them is not a
 8. **A phone in landscape with a portrait screen record**, or an orientation API
    that disagrees with the dimensions.
 
+## The desktop screen is the framebuffer, and the window needs a maximize
+
+Nothing spoofs `screen` on desktop — no device metrics are sent there, so
+`screen.width/height` is read straight off the X server. On a headless host that
+means **`Xvfb`'s geometry is the persona's screen**, and a fixed framebuffer
+gives every persona the same one no matter which the catalogue picked.
+
+The window is a separate trap. On a bare X server with no window manager:
+
+| asked for | `outerWidth` on a 1920×1080 screen |
+| --- | --- |
+| `--window-size=1920,1080` | **1919×1079** |
+| `Browser.setWindowBounds` | ignored entirely — nothing services the request |
+| `--start-fullscreen`, `--kiosk` | ignored — both need a window manager |
+| `--window-size=1600,900` | 1600×900, exact |
+
+Chrome will not make a window exactly the size of the screen; it lands a pixel
+short. Any size *below* the screen is honoured exactly, so the off-by-one only
+appears in the case you actually want. Left alone it is the same wrong number on
+every session — one integer linking the whole fleet, which is worse than the
+value being unusual.
+
+**Run a window manager and maximize.** `openbox` plus `--start-maximized` gives
+`outerWidth == screen.width` exactly, with an `innerHeight` that leaves realistic
+room for the toolbar (1920×937 on a 1920×1080 screen). Fullscreen also fills the
+screen but leaves `inner == outer`, which is a kiosk, not someone browsing.
+
 ## Gaps in this implementation
 
 - `deviceMemory` is JS-only, so workers see the host value.
 - `matchMedia` pointer/hover queries are not overridden; on a desktop host
   claiming a phone they will report `fine`/`hover`.
 - `screen.availWidth/availHeight` and the outer/inner deltas are not managed on
-  desktop — they come from the real window, so the launch window size is part of
-  the fingerprint whether you meant it or not.
+  desktop — they come from the real window, so the framebuffer geometry and the
+  maximize above are what set them.
 - `screen.orientation` is untouched.
 - Battery does not simulate charging progress or unplug events.

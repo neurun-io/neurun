@@ -23,6 +23,13 @@ proxy**. Consequences:
   `webdriver` if it is still `true`, which happens when attaching to a browser
   the flag never reached. Patching it unconditionally would be a worse spoof than
   not needing to.
+- `--use-gl=angle --use-angle=gl --ignore-gpu-blocklist` — keeps WebGL alive on a
+  host with no GPU. ANGLE's default path there is bundled SwiftShader over
+  Vulkan, which cannot initialize headless, and Chrome blocklists the software
+  renderer it falls back to, so `getContext("webgl")` returns `null`. These point
+  ANGLE at the system GL and unblock it. They say nothing about which card the
+  page sees — that is the identity's GPU, spoofed on `getParameter`. See
+  `references/graphics.md`.
 - `--proxy-server=http://127.0.0.1:{port}` when a proxy is set. Chrome cannot
   carry credentials on that flag, so the crate starts a **local overlay proxy**
   first (`local_proxy_server.rs`), binds it on `127.0.0.1:0`, and has it inject

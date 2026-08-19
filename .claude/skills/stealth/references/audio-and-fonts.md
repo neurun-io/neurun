@@ -74,6 +74,30 @@ This is worth stating plainly when choosing an identity: **claim an OS whose fon
 set the host can actually present**, or accept that font-set probes will
 disagree with the UA.
 
+### A server ships almost no fonts, and that is the tell
+
+The default is not a *wrong* font set, it is an empty one. A fresh Ubuntu server
+carries on the order of a dozen families; a desktop carries hundreds. Chrome's
+own runtime dependencies pull in only `fonts-liberation`, so a browser host built
+from the package list alone presents a set no human desktop has ever had —
+before any persona is chosen, and unaffected by every JS patch above.
+
+Fix it in the image, since nothing else can. What an Ubuntu desktop actually
+ships:
+
+```
+fonts-dejavu-core fonts-dejavu-extra fonts-liberation fonts-ubuntu
+fonts-noto-core fonts-noto-color-emoji fonts-freefont-ttf
+fonts-crosextra-carlito fonts-crosextra-caladea
+```
+
+Emoji matter more than their share of the list suggests: `fonts-noto-color-emoji`
+is what makes an emoji canvas render like a desktop's instead of as tofu, and
+emoji renders are where the canvas fingerprint's entropy is concentrated.
+
+Count families with `fc-list : family | tr ',' '\n' | sort -u | wc -l` — under
+about 20 says server, a few hundred says desktop.
+
 ## How they play with the rest of the suite
 
 - **← Graphics.** Both are seeded from the same `FP_SEED`, so a persona's canvas,

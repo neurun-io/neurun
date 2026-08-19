@@ -37,14 +37,27 @@ stack*. `ANGLE (…, Direct3D11 vs_5_0 ps_5_0)` says Chromium on Windows;
 | iOS | `Apple A16 GPU` | `Apple` |
 | Android | `ANGLE (Qualcomm, Adreno (TM) 750, OpenGL ES 3.2)` | `Google Inc. (Qualcomm)` |
 
-**Pixels.** `hardware.js` perturbs about 3% of pixels by ±1 on R, G and B (never
-alpha — that would change compositing) in `getImageData`, in `readPixels` on both
-WebGL contexts, and in `toDataURL`/`toBlob` via a **noised clone** so the source
+**Pixels.** `hardware.js` forces the low bit of R, G and B — a deterministic
+function of `(FP_SEED, pixel index)`, never `Math.random()` — in `getImageData`,
+and in `toDataURL`/`toBlob`/`convertToBlob` via a **noised clone** so the source
 canvas is never mutated. The clone is produced with `drawImage`, which also
 covers WebGL-backed canvases.
 
-Every noise value is a pure function of `(FP_SEED, pixel index)`. No
-`Math.random()` is in the path.
+Three restrictions carry the whole thing, and each exists because a one-line
+probe catches its absence:
+
+- **Only pixels differing from their left neighbour, at alpha 255.** A solid
+  `fillRect` must read back perfectly uniform and an untouched canvas must be
+  all zero. Speckling either is louder than the true hash ever was. Antialiased
+  glyph edges — where the entropy actually lives — still qualify.
+- **Forcing, not adding.** The write is idempotent, so a canvas read twice
+  through different paths (direct `getImageData` vs encode→decode→draw→read)
+  agrees with itself. Real hardware round-trips PNG losslessly.
+- **Nothing below 16×16.** Detectors render a tiny fixed shape *because* it is
+  low entropy and identical on every machine of an engine, which is what makes a
+  known-good table possible. Moving it off the table is the signal.
+
+**`readPixels` is deliberately not noised** — see the removals below.
 
 ## How it plays with the rest of the suite
 
@@ -87,12 +100,40 @@ Every noise value is a pure function of `(FP_SEED, pixel index)`. No
 7. **`getParameter` stringifying to injected source.** Covered by the `toString`
    cloak — see `automation-artifacts.md`.
 
+## Getting a context at all on a host with no GPU
+
+A server has no GPU, and Chrome's default path there ends in **no WebGL**:
+ANGLE tries its bundled SwiftShader over Vulkan, which fails to initialize
+headless, and Chrome then blocklists the software renderer it falls back to. The
+symptom is `canvas.getContext("webgl")` returning `null`.
+
+That is worse than any renderer string. The highest-entropy vector is simply
+absent on a desktop persona that must have it, and the vendor/renderer
+substitution has nothing to apply to — a context that does not exist cannot be
+spoofed, and the canvas noise has nothing to work on.
+
+`rustenium-identity` therefore launches with:
+
+```
+--use-gl=angle --use-angle=gl --ignore-gpu-blocklist
+```
+
+`--use-angle=gl` points ANGLE at the system GL — Mesa's llvmpipe on a headless
+Linux box — and `--ignore-gpu-blocklist` is what actually unblocks it, since the
+renderer is software. `--enable-unsafe-swiftshader` is the wrong lever: it
+applies to the SwiftShader backend, which is the one that could not start.
+
+Diagnose with `SystemInfo.getInfo` over CDP rather than guessing. It reports
+`featureStatus.webgl`, and the two answers mean different things: `disabled_off`
+is a switch or blocklist, `disabled_software` is a fallback. Chrome's own
+`glRenderer` there tells you which backend really came up.
+
 ## Gaps in this implementation
 
-- Only 37445 and 37446 are spoofed. Capability limits still describe the host.
-- `update_gpu.js`, the runtime re-patch, does not `markNative`, so a page that
-  stringifies `getParameter` after a mid-session GPU change sees the patch.
-- Noise is applied unconditionally rather than only after a draw.
+- Only 37445 and 37446 are spoofed. Capability limits still describe the host —
+  and on a server that host is **llvmpipe**, whose extension list and limits look
+  nothing like the discrete card a persona claims. The strings are consistent;
+  the machine underneath them is not.
 - Nothing coordinates the canvas hash with the *claimed* GPU: two personas with
   the same card get different hashes, which is right, but a persona's hash is not
   derived from anything a real card would produce.
