@@ -107,11 +107,23 @@ systemctl enable --now nginx
 systemctl reload nginx
 
 # --- Node.js runtime for the dashboard's standalone server. CI builds it;
-# this box only ever runs `node server.js`. ---
+# this box only ever runs `node server.js`. It doubles as the toolchain the
+# deployer builds Node apps with, since that needs npm and nothing more. ---
 if ! command -v node >/dev/null; then
   curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
   apt-get install -y nodejs
 fi
+
+# --- toolchains the deployer builds tenant apps with ---
+# A runtime is available when its toolchain is on this host. Nothing checks at
+# boot: a missing one fails the deployment that asked for it, which is why an
+# absent cargo surfaced as build_failed on a Rust app rather than at startup.
+#
+# cargo shells out to a linker and links against system OpenSSL, so the
+# compiler alone is not enough. Python is the system one and Node is above; Go
+# and Ruby are deliberately absent, and deployments naming them will fail until
+# they are added here.
+apt-get install -y -qq cargo rustc build-essential pkg-config libssl-dev
 
 # --- units ---
 # systemd owns both processes: they come back after a reboot and after a crash,
