@@ -34,6 +34,7 @@ export function DisplayStream({
   const [error, setError] = useState<string | null>(null);
   const [controlling, setControlling] = useState(interactive);
   const [expanded, setExpanded] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     const mount = target.current;
@@ -80,6 +81,14 @@ export function DisplayStream({
     if (client.current) client.current.viewOnly = !controlling;
   }, [controlling, connected]);
 
+  // The element fills the screen on its own; what does not is the canvas
+  // inside it, which keeps whatever box it was given and merely stretches.
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === frame.current);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
   const toggleFullscreen = useCallback(() => {
     const element = frame.current;
     if (!element) return;
@@ -91,10 +100,23 @@ export function DisplayStream({
   }, []);
 
   return (
-    <div ref={frame} className="relative overflow-hidden rounded-lg border border-line bg-black">
+    <div
+      ref={frame}
+      className={
+        fullscreen
+          ? "relative flex h-screen w-screen items-center justify-center bg-black"
+          : "relative overflow-hidden rounded-lg border border-line bg-black"
+      }
+    >
       <div
         ref={target}
-        className={expanded ? "h-[80vh] w-full" : "aspect-video w-full"}
+        className={
+          fullscreen
+            ? "h-full w-full"
+            : expanded
+              ? "h-[80vh] w-full"
+              : "aspect-video w-full"
+        }
       />
       <div className="absolute right-2 top-2 flex gap-1">
         <Button
