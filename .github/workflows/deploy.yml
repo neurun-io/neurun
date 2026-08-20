@@ -40,21 +40,21 @@ jobs:
       - name: Configure SSH
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.INTERSERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "${{ secrets.INTERSERVER_HOST_KEY }}" > ~/.ssh/known_hosts
+          printf '%s\n' "${{ secrets.DEPLOY_HOST_KEY }}" > ~/.ssh/known_hosts
 
       - name: Upload binary and deploy script
         run: |
           scp -i ~/.ssh/id_ed25519 neurun \
-            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}:/var/apps/neurun/neurun.new"
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/apps/neurun/neurun.new"
           scp -i ~/.ssh/id_ed25519 deploy/redeploy.sh \
-            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}:/var/apps/neurun/redeploy.sh"
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/apps/neurun/redeploy.sh"
 
       - name: Terminate and re-serve
         run: |
           ssh -i ~/.ssh/id_ed25519 \
-            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "chmod 700 /var/apps/neurun/redeploy.sh && /var/apps/neurun/redeploy.sh"
 
   deploy-dashboard:
@@ -76,7 +76,7 @@ jobs:
           # default one — see deploy/bootstrap.sh. Both are read by the browser,
           # so Next.js inlines them here: changing either is a rebuild, not an
           # edit on the host.
-          NEXT_PUBLIC_NEURUN_API_URL: http://${{ secrets.INTERSERVER_HOST }}:8080
+          NEXT_PUBLIC_NEURUN_API_URL: http://${{ secrets.DEPLOY_HOST }}:8080
           NEXT_PUBLIC_NEURUN_GITHUB_APP_SLUG: neurun-io
         run: |
           npm ci
@@ -88,19 +88,19 @@ jobs:
       - name: Configure SSH
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.INTERSERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "${{ secrets.INTERSERVER_HOST_KEY }}" > ~/.ssh/known_hosts
+          printf '%s\n' "${{ secrets.DEPLOY_HOST_KEY }}" > ~/.ssh/known_hosts
 
       - name: Upload build and deploy script
         run: |
           scp -i ~/.ssh/id_ed25519 dashboard.tar.gz \
-            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}:/var/apps/dashboard/dashboard.new.tar.gz"
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/apps/dashboard/dashboard.new.tar.gz"
           scp -i ~/.ssh/id_ed25519 deploy/redeploy-dashboard.sh \
-            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}:/var/apps/dashboard/redeploy-dashboard.sh"
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/apps/dashboard/redeploy-dashboard.sh"
 
       - name: Terminate and re-serve
         run: |
           ssh -i ~/.ssh/id_ed25519 \
-            "${{ secrets.INTERSERVER_USER }}@${{ secrets.INTERSERVER_HOST }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "chmod 700 /var/apps/dashboard/redeploy-dashboard.sh && /var/apps/dashboard/redeploy-dashboard.sh"

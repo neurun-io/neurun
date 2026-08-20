@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup for a bare Ubuntu VPS to host neurun: app user, /var/apps
+# One-time setup for a bare Debian or Ubuntu host to run neurun: app user, /var/apps
 # layout, Redis, nginx, the two units and the firewall. Idempotent — safe to
 # re-run after upgrades.
 #
@@ -9,6 +9,26 @@ set -euo pipefail
 APP_DIR=/var/apps/neurun
 DASHBOARD_DIR=/var/apps/dashboard
 CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+# Only the vendor repo path differs between them; every package here is
+# named the same on both.
+DISTRO=$(. /etc/os-release && echo "$ID")
+
+
+# --- prerequisites ---
+# A minimal cloud image ships none of these, and the vendor repos below are
+# fetched and verified with them.
+apt-get update -qq
+apt-get install -y -qq ca-certificates curl gnupg ufw
+
+# --- root login by key ---
+# The CI deploy connects as root to swap binaries and bounce units. Cloud images
+# ship PermitRootLogin no; this restores key-only root, never password — which is
+# what the deploy key already relies on.
+install -d -m 755 /etc/ssh/sshd_config.d
+cat >/etc/ssh/sshd_config.d/10-neurun-deploy.conf <<'EOF'
+PermitRootLogin prohibit-password
+EOF
+systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 
 # --- app user & directories ---
 # Both processes run as this unprivileged user; root (this script, and the CI
@@ -45,7 +65,7 @@ systemctl enable --now redis-server
 # --- nginx: official repo for the latest release ---
 if ! command -v nginx >/dev/null; then
   curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
-  echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu $CODENAME nginx" \
+  echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/$DISTRO $CODENAME nginx" \
     >/etc/apt/sources.list.d/nginx.list
   cat >/etc/apt/preferences.d/nginx <<'EOF'
 Package: *
