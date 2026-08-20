@@ -162,7 +162,20 @@ fi
 # protoc is here because a crate's build.rs may compile .proto files — prost
 # shells out to it, and cargo reports its absence as a failed build script
 # rather than as a missing tool.
-apt-get install -y -qq cargo rustc build-essential pkg-config libssl-dev protobuf-compiler
+apt-get install -y -qq build-essential pkg-config libssl-dev protobuf-compiler
+
+# Rust comes from rustup, not apt: the distro's is whatever that release froze,
+# and Debian 13 ships 1.85 where tonic already requires 1.88. Installed into
+# /usr/local so every user has it, and the toolchain's own binaries are linked
+# rather than rustup's shims — a shim resolves its toolchain through RUSTUP_HOME,
+# which the build does not carry.
+if [ ! -x /usr/local/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo ]; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+    RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo     sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+for tool in cargo rustc rustdoc; do
+  ln -sfn "/usr/local/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/$tool" "/usr/local/bin/$tool"
+done
 
 # --- units ---
 # systemd owns both processes: they come back after a reboot and after a crash,
