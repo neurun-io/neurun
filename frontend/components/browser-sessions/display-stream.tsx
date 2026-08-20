@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Expand, Maximize2, Minimize2, MousePointerClick, Eye } from "lucide-react";
+import { Expand, MousePointerClick, Eye } from "lucide-react";
 import type RFBType from "@novnc/novnc/lib/rfb";
 
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,6 @@ export function DisplayStream({
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [controlling, setControlling] = useState(interactive);
-  const [expanded, setExpanded] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
@@ -110,13 +109,7 @@ export function DisplayStream({
     >
       <div
         ref={target}
-        className={
-          fullscreen
-            ? "h-full w-full"
-            : expanded
-              ? "h-[80vh] w-full"
-              : "aspect-video w-full"
-        }
+        className={fullscreen ? "h-full w-full" : "aspect-video w-full"}
       />
       <div className="absolute right-2 top-2 flex gap-1">
         <Button
@@ -127,14 +120,6 @@ export function DisplayStream({
         >
           {controlling ? <MousePointerClick className="size-3" /> : <Eye className="size-3" />}
           {controlling ? "Controlling" : "View only"}
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => setExpanded((open) => !open)}
-          title={expanded ? "Shrink" : "Enlarge"}
-        >
-          {expanded ? <Minimize2 className="size-3" /> : <Maximize2 className="size-3" />}
         </Button>
         <Button size="sm" variant="secondary" onClick={toggleFullscreen} title="Fullscreen">
           <Expand className="size-3" />
